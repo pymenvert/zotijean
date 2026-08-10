@@ -159,7 +159,18 @@ export const routes = {
       if (préréglage) corps.rythme.attenteEntreTitres = préréglage.attente;
     }
 
-    return enregistrer(corps);
+    // LA LISTE DES PLAYLISTS N'EST JAMAIS MODIFIABLE PAR CETTE ROUTE.
+    //
+    // L'interface envoie la configuration entière à chaque changement de
+    // réglage, à partir d'un instantané pris au chargement de la page. Si cet
+    // instantané est antérieur à l'ajout d'une playlist, il ne la contient pas —
+    // et comme la fusion REMPLACE les tableaux, enregistrer écraserait la liste
+    // du disque. Concrètement : ajouter une playlist puis cliquer sur « FLAC »
+    // effaçait la playlist, sans le moindre message.
+    //
+    // Les playlists ont leurs propres routes (POST, PATCH, DELETE). Elles sont
+    // donc reprises ici depuis l'état courant, quoi que le client ait envoyé.
+    return enregistrer({ ...corps, playlists: config().playlists });
   },
 
   'POST /api/apercu': (corps) => {

@@ -61,6 +61,21 @@ jobs:
         run: |
           if node --test --test-reporter=tap > resultat.tap 2>&1; then
             tail -12 resultat.tap
+
+            # GARDE-FOU. Les tests d'intégration ne s'exécutent que hors Windows.
+            # Une panne totale de la synchronisation est passée inaperçue parce
+            # qu'ils ne tournaient nulle part : mal appelés, ils étaient sautés
+            # partout sans que le rapport ne le montre. Une CI verte qui ne teste
+            # rien est pire qu'une CI rouge.
+            if [ "${{ runner.os }}" != "Windows" ]; then
+              temoin="une synchronisation complète télécharge, range et recense"
+              if ! grep -qF "ok 1 - $temoin" resultat.tap; then
+                echo "::error title=Tests d'intégration non exécutés::Le test « $temoin » n'a pas tourné sur ${{ matrix.os }}. La suite ne valide donc pas la chaîne de synchronisation."
+                grep -F "$temoin" resultat.tap || echo "(test introuvable dans le rapport)"
+                exit 1
+              fi
+              echo "Tests d'intégration confirmés exécutés."
+            fi
             exit 0
           fi
 

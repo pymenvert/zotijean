@@ -18,7 +18,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { config, attenteEffective, modifier as modifierConfig } from './config.js';
+import {
+  config, attenteEffective, configPourPlaylist, modifier as modifierConfig,
+} from './config.js';
 import { fichierVerrou, assurerDossier, dossierDonnées, volumeMonté } from './chemins.js';
 import { journal } from './journal.js';
 import { diagnostiquer, GRAVITÉ } from './diagnostic.js';

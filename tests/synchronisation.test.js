@@ -84,7 +84,7 @@ function préparer(surcharges = {}) {
 // Chaîne nominale
 // ---------------------------------------------------------------------------
 
-test({ skip: SAUTER }, 'une synchronisation complète télécharge, range et recense', async () => {
+test('une synchronisation complète télécharge, range et recense', { skip: SAUTER }, async () => {
   const { musique, nettoyer } = préparer();
   process.env.FAUX_ZOTIFY_SCENARIO = 'normal';
   process.env.FAUX_ZOTIFY_PLAYLIST = 'Été 2026';
@@ -108,7 +108,7 @@ test({ skip: SAUTER }, 'une synchronisation complète télécharge, range et rec
   }
 });
 
-test({ skip: SAUTER }, 'les caractères interdits sont neutralisés dans les noms produits', async () => {
+test('les caractères interdits sont neutralisés dans les noms produits', { skip: SAUTER }, async () => {
   const { musique, nettoyer } = préparer();
   process.env.FAUX_ZOTIFY_SCENARIO = 'normal';
 
@@ -129,7 +129,7 @@ test({ skip: SAUTER }, 'les caractères interdits sont neutralisés dans les nom
   }
 });
 
-test({ skip: SAUTER }, 'une liste de lecture est écrite à côté des fichiers', async () => {
+test('une liste de lecture est écrite à côté des fichiers', { skip: SAUTER }, async () => {
   const { musique, nettoyer } = préparer();
   process.env.FAUX_ZOTIFY_SCENARIO = 'normal';
 
@@ -155,7 +155,7 @@ test({ skip: SAUTER }, 'une liste de lecture est écrite à côté des fichiers'
 // Le disque comme seule vérité
 // ---------------------------------------------------------------------------
 
-test({ skip: SAUTER }, 'un code de sortie 0 trompeur ne fait pas conclure au succès', async () => {
+test('un code de sortie 0 trompeur ne fait pas conclure au succès', { skip: SAUTER }, async () => {
   // Le vrai zotify renvoie 0 même quand tout échoue. Se fier au code de sortie
   // ferait croire à une bibliothèque complète alors qu'aucun fichier n'existe.
   const { musique, nettoyer } = préparer();
@@ -171,7 +171,7 @@ test({ skip: SAUTER }, 'un code de sortie 0 trompeur ne fait pas conclure au suc
   }
 });
 
-test({ skip: SAUTER }, 'les téléchargements avortés ne sont pas comptés comme des réussites', async () => {
+test('les téléchargements avortés ne sont pas comptés comme des réussites', { skip: SAUTER }, async () => {
   // zotify laisse parfois un fichier de quelques octets. Le compter ferait
   // croire le morceau acquis, et il ne serait jamais repris.
   const { nettoyer } = préparer();
@@ -186,7 +186,7 @@ test({ skip: SAUTER }, 'les téléchargements avortés ne sont pas comptés comm
   }
 });
 
-test({ skip: SAUTER }, 'une piste en échec n’empêche pas les autres', async () => {
+test('une piste en échec n’empêche pas les autres', { skip: SAUTER }, async () => {
   const { musique, nettoyer } = préparer();
   process.env.FAUX_ZOTIFY_SCENARIO = 'une-piste-echoue';
 
@@ -204,7 +204,7 @@ test({ skip: SAUTER }, 'une piste en échec n’empêche pas les autres', async 
 // Verrou d'exécution
 // ---------------------------------------------------------------------------
 
-test({ skip: SAUTER }, 'deux synchronisations ne peuvent pas se chevaucher', async () => {
+test('deux synchronisations ne peuvent pas se chevaucher', { skip: SAUTER }, async () => {
   const { nettoyer } = préparer();
   process.env.FAUX_ZOTIFY_SCENARIO = 'normal';
 
@@ -221,7 +221,7 @@ test({ skip: SAUTER }, 'deux synchronisations ne peuvent pas se chevaucher', asy
   }
 });
 
-test({ skip: SAUTER }, 'un verrou laissé par un processus mort est repris', async () => {
+test('un verrou laissé par un processus mort est repris', { skip: SAUTER }, async () => {
   // Sans cette reprise, un plantage ou une coupure de courant bloquerait l'app
   // définitivement, sans aucun moyen de s’en sortir pour un non-développeur.
   const { nettoyer } = préparer();
@@ -239,7 +239,7 @@ test({ skip: SAUTER }, 'un verrou laissé par un processus mort est repris', asy
   }
 });
 
-test({ skip: SAUTER }, 'aucune exécution n’est signalée en cours au repos', () => {
+test('aucune exécution n’est signalée en cours au repos', { skip: SAUTER }, () => {
   assert.equal(exécutionEnCours(), null);
 });
 
@@ -247,7 +247,7 @@ test({ skip: SAUTER }, 'aucune exécution n’est signalée en cours au repos', 
 // Garde-fous
 // ---------------------------------------------------------------------------
 
-test({ skip: SAUTER }, 'une destination introuvable arrête proprement', async () => {
+test('une destination introuvable arrête proprement', { skip: SAUTER }, async () => {
   const { nettoyer } = préparer();
   try {
     // Un chemin impossible : le diagnostic doit bloquer avant tout lancement.
@@ -269,7 +269,7 @@ test({ skip: SAUTER }, 'une destination introuvable arrête proprement', async (
   }
 });
 
-test({ skip: SAUTER }, 'une playlist désactivée est ignorée', async () => {
+test('une playlist désactivée est ignorée', { skip: SAUTER }, async () => {
   const { musique, nettoyer } = préparer();
   process.env.FAUX_ZOTIFY_SCENARIO = 'normal';
 
