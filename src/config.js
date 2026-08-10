@@ -6,7 +6,10 @@
 // migration, et un fichier corrompu ne bloque jamais le démarrage.
 
 import crypto from 'node:crypto';
-import { configParDéfaut, trouver, RYTHMES, QUALITÉS, FORMATS, SCHÉMAS, POLITIQUES_RETRAIT } from './options.js';
+import {
+  configParDéfaut, trouver, RYTHMES, QUALITÉS, FORMATS, SCHÉMAS,
+  POLITIQUES_RETRAIT, SOURCES_APRÈS_CONVERSION,
+} from './options.js';
 import { fichierConfig, écrireAtomique, lireJSON } from './chemins.js';
 import { journal } from './journal.js';
 
@@ -54,6 +57,11 @@ function assainir(config) {
   corriger('qualité.format', (v) => !!trouver(FORMATS, v), 'copie');
   corriger('organisation.schéma', (v) => !!trouver(SCHÉMAS, v), 'par_playlist');
   corriger('retrait.politique', (v) => !!trouver(POLITIQUES_RETRAIT, v), 'conserver');
+  corriger(
+    'retrait.sourcesAprèsConversion',
+    (v) => !!trouver(SOURCES_APRÈS_CONVERSION, v),
+    'conserver',
+  );
   corriger('rythme.préréglage', (v) => v === 'personnalise' || !!trouver(RYTHMES, v), 'prudent');
 
   corriger(

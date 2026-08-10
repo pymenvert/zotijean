@@ -472,7 +472,23 @@ function afficherAperçu(résultat) {
 }
 
 function rendrePlanification() {
-  const { intervalles, notePlanification, rythmes, politiquesRetrait } = état.catalogue;
+  const {
+    intervalles, notePlanification, rythmes, politiquesRetrait,
+    noteRetrait, sourcesAprèsConversion,
+  } = état.catalogue;
+
+  remplir($('#choix-sources'), sourcesAprèsConversion.map((s) =>
+    fabriquerOption({
+      ...s,
+      choisi: état.config.retrait.sourcesAprèsConversion === s.id,
+      surChoix: async (id) => {
+        await enregistrerConfig({ retrait: { sourcesAprèsConversion: id } });
+        rendrePlanification();
+        noter('Enregistré.', 'succes');
+      },
+    })));
+
+  $('#note-retrait').textContent = noteRetrait;
 
   $('#bascule-planif').checked = état.config.planification.actif;
   $('#note-planification').textContent = notePlanification;

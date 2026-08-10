@@ -244,16 +244,56 @@ export const POLITIQUES_RETRAIT = [
     id: 'archiver',
     libellé: 'Déplacer vers un dossier d’archive',
     explication:
-      "Le fichier part dans « _Archive/<date> ». Vous gardez tout, mais le dossier de " +
-      "la playlist reflète exactement son contenu actuel. Attention si vous utilisez " +
-      "un logiciel DJ : déplacer un fichier déjà importé le marque comme manquant.",
+      "Le fichier partirait dans « _Archive/<date> ». Vous garderiez tout, mais le " +
+      "dossier de la playlist refléterait son contenu actuel.",
   },
   {
     id: 'corbeille',
     libellé: 'Mettre à la corbeille',
     explication:
-      "Le fichier part à la corbeille du système — récupérable tant que vous ne la " +
-      "videz pas. Jamais de suppression définitive.",
+      "Le fichier partirait à la corbeille du système — récupérable tant que vous ne " +
+      "la videz pas. Jamais de suppression définitive.",
+  },
+];
+
+/** Dit franchement pourquoi les deux dernières options ne s'appliquent pas encore. */
+export const NOTE_RETRAIT =
+  "À ce jour, seule l'option « ne rien faire » a un effet, et c'est celle qui est " +
+  "active. Pour savoir qu'un titre a été retiré d'une playlist, il faudrait interroger " +
+  "l'API officielle de Spotify, ce que Zotijean ne fait pas encore : il se contente de " +
+  "piloter zotify, qui ne lui rapporte que ce qu'il télécharge. Les deux autres options " +
+  "sont écrites et testées, mais rien ne les déclenche — plutôt que de les masquer, " +
+  "autant dire où en est le sujet.";
+
+// ---------------------------------------------------------------------------
+// Sort des fichiers d'origine après conversion
+// ---------------------------------------------------------------------------
+
+export const SOURCES_APRÈS_CONVERSION = [
+  {
+    id: 'conserver',
+    libellé: 'Garder les fichiers d’origine',
+    explication:
+      "Le fichier Ogg d'origine reste à côté du fichier converti. C'est ce qui permet " +
+      "de changer de format plus tard sans retélécharger — précieux quand un rattrapage " +
+      "complet prend 17 heures. Coût : environ 40 % de place en plus.",
+    recommandé: true,
+  },
+  {
+    id: 'archiver',
+    libellé: 'Les déplacer dans « _Archive »',
+    explication:
+      "Les dossiers de playlists ne contiennent plus que les fichiers convertis, ce qui " +
+      "évite que votre logiciel DJ ou votre serveur média voie deux fois le même morceau. " +
+      "Les originaux restent récupérables.",
+  },
+  {
+    id: 'corbeille',
+    libellé: 'Les mettre à la corbeille',
+    explication:
+      "Récupère toute la place, au prix d'un retéléchargement complet si vous changez " +
+      "de format un jour. Les fichiers restent dans la corbeille tant que vous ne la " +
+      "videz pas.",
   },
 ];
 
@@ -380,6 +420,7 @@ export function configParDéfaut() {
     },
     retrait: {
       politique: 'conserver',
+      sourcesAprèsConversion: 'conserver',
     },
     exportsDJ: {
       rekordbox: false,
@@ -408,6 +449,8 @@ export function catalogueComplet() {
     schémas: SCHÉMAS,
     variables: VARIABLES,
     politiquesRetrait: POLITIQUES_RETRAIT,
+    noteRetrait: NOTE_RETRAIT,
+    sourcesAprèsConversion: SOURCES_APRÈS_CONVERSION,
     rythmes: RYTHMES,
     intervalles: INTERVALLES,
     notePlanification: NOTE_PLANIFICATION,

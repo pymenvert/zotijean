@@ -28,6 +28,7 @@ import { nécessiteConversion, convertirLot, PROFILS } from './conversion.js';
 import { exporterDepuisConfig } from './exports-dj.js';
 import {
   écrireListeLecture, listerAudio, dossierCommun, déduireNomPlaylist,
+  archiver, mettreÀLaCorbeille,
 } from './bibliotheque.js';
 import * as étatModule from './etat.js';
 
@@ -424,11 +425,42 @@ export async function finaliserPlaylist({
       );
     }
 
-    // Les sources restent sur disque : c'est volontaire. Un Ogg d'origine permet
-    // de re-dériver n'importe quelle cible plus tard sans retélécharger, ce qui
-    // vaut cher quand un rattrapage complet prend 17 heures.
     fichiersFinaux = bilan.convertis.map((c2) => c2.destination);
     if (fichiersFinaux.length === 0) fichiersFinaux = nouveaux;
+
+    // Sort des fichiers d'origine. Par défaut on les garde : un Ogg permet de
+    // re-dériver n'importe quelle cible plus tard sans retélécharger, ce qui vaut
+    // cher quand un rattrapage complet prend 17 heures. On ne touche QUE les
+    // sources effectivement converties — jamais un fichier dont la conversion a
+    // échoué, sinon un échec ferait perdre le téléchargement.
+    const politiqueSources = c.retrait?.sourcesAprèsConversion ?? 'conserver';
+    if (politiqueSources !== 'conserver' && bilan.convertis.length) {
+      résultat.sourcesTraitées = 0;
+      for (const { source } of bilan.convertis) {
+        try {
+          if (politiqueSources === 'archiver') {
+            archiver(source, racine);
+          } else {
+            const misÀLaCorbeille = await mettreÀLaCorbeille(source);
+            // Repli non destructif : si la corbeille refuse, on archive.
+            if (!misÀLaCorbeille.réussi) archiver(source, racine);
+          }
+          résultat.sourcesTraitées += 1;
+        } catch (erreur) {
+          journal.avertir(
+            `Le fichier d'origine « ${path.basename(source)} » n'a pas pu être déplacé.`,
+            erreur.message,
+          );
+        }
+      }
+      if (résultat.sourcesTraitées) {
+        journal.info(
+          `${résultat.sourcesTraitées} fichier(s) d'origine ${
+            politiqueSources === 'archiver' ? 'archivé(s)' : 'mis à la corbeille'
+          } après conversion.`,
+        );
+      }
+    }
   }
 
   // --- Liste de lecture ------------------------------------------------
