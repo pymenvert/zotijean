@@ -1,0 +1,56 @@
+ZOTIJEAN
+========
+
+Pour démarrer, double-cliquez sur :
+
+    Zotijean - Mac.command      (sur Mac)
+    Zotijean - PC.bat           (sur PC)
+
+Une fenêtre noire s'ouvre — c'est normal, c'est le moteur. Laissez-la ouverte.
+L'interface apparaît toute seule dans votre navigateur.
+
+Pour arrêter Zotijean : fermez la fenêtre noire.
+
+
+LA PREMIÈRE FOIS
+----------------
+
+1. Allez dans l'onglet DIAGNOSTIC. Il vérifie que tout est en place et vous dit
+   exactement quoi faire si quelque chose manque. Tant qu'un point est en rouge,
+   la synchronisation ne démarrera pas.
+
+2. Allez dans RANGEMENT et choisissez où les fichiers doivent aller, et comment
+   ils doivent être classés. L'aperçu vous montre le résultat avant de valider.
+
+3. Allez dans PLAYLISTS et collez le lien d'une playlist Spotify.
+   Pour l'obtenir : dans Spotify, clic droit sur la playlist, puis Partager,
+   puis Copier le lien de la playlist.
+
+4. Cliquez sur SYNCHRONISER.
+
+
+SI ÇA NE MARCHE PAS
+-------------------
+
+« Node.js est introuvable »
+    Installez-le depuis nodejs.org (version LTS), puis relancez.
+
+« zotify est introuvable »
+    Zotijean ne télécharge pas lui-même : il pilote votre zotify.
+    Vérifiez qu'il répond en tapant « zotify --version » dans le Terminal.
+
+« ffmpeg est introuvable »
+    Important : sans lui, des morceaux sont détruits silencieusement.
+    Installez-le avec « brew install ffmpeg ».
+
+Pour tout le reste, l'onglet JOURNAL montre en direct ce que fait l'app.
+
+
+COMBIEN DE TEMPS ÇA PREND
+-------------------------
+
+Beaucoup plus longtemps qu'on ne l'imagine : comptez environ 17 heures pour
+2 000 titres. L'app attend 30 secondes entre chaque morceau, volontairement.
+C'est ce qui évite les erreurs de téléchargement et ce qui protège le mieux
+votre compte Spotify. Vous pouvez accélérer dans PLANIFICATION, mais lisez
+l'explication sous chaque option avant.

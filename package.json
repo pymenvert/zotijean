@@ -1,0 +1,18 @@
+{
+  "name": "zotijean",
+  "version": "0.1.0",
+  "description": "Compagnon de zotify : surveille des playlists Spotify, télécharge les nouveaux titres et les range selon des schémas configurables.",
+  "type": "module",
+  "main": "server.js",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "dependencies": {},
+  "devDependencies": {},
+  "license": "MIT"
+}

@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zotijean</title>
+<link rel="stylesheet" href="app.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🎧</text></svg>">
+</head>
+<body>
+
+<!-- Bibliothèque d'icônes : définies une fois, réutilisées par <use>. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-accueil" viewBox="0 0 24 24">
+      <path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>
+    </symbol>
+    <symbol id="i-playlist" viewBox="0 0 24 24">
+      <path d="M3 6h12M3 12h12M3 18h8"/><circle cx="18" cy="16" r="3"/><path d="M21 16V6l-3 1"/>
+    </symbol>
+    <symbol id="i-qualite" viewBox="0 0 24 24">
+      <path d="M3 14v-4M7.5 18V6M12 21V3M16.5 18V6M21 14v-4"/>
+    </symbol>
+    <symbol id="i-dossier" viewBox="0 0 24 24">
+      <path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+    </symbol>
+    <symbol id="i-horloge" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="9"/><path d="M12 7v5.5l3.5 2"/>
+    </symbol>
+    <symbol id="i-stetho" viewBox="0 0 24 24">
+      <path d="M6 3v6a4 4 0 0 0 8 0V3M4 3h3M13 3h3M10 13v2a5 5 0 0 0 5 5 4 4 0 0 0 4-4v-2"/>
+      <circle cx="19" cy="9" r="2"/>
+    </symbol>
+    <symbol id="i-journal" viewBox="0 0 24 24">
+      <path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5"/>
+    </symbol>
+    <symbol id="i-sync" viewBox="0 0 24 24">
+      <path d="M20 11a8 8 0 0 0-13.9-5.4L4 8"/><path d="M4 4v4h4"/>
+      <path d="M4 13a8 8 0 0 0 13.9 5.4L20 16"/><path d="M20 20v-4h-4"/>
+    </symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-poubelle" viewBox="0 0 24 24">
+      <path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13M10 11v6M14 11v6"/>
+    </symbol>
+    <symbol id="i-ok" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+    <symbol id="i-alerte" viewBox="0 0 24 24">
+      <path d="M12 3 2 20h20zM12 10v4M12 17.5v.5"/>
+    </symbol>
+    <symbol id="i-info" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8v.5"/>
+    </symbol>
+    <symbol id="i-ouvrir" viewBox="0 0 24 24">
+      <path d="M15 3h6v6M21 3l-9 9M10 5H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5"/>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="coque">
+
+  <!-- ------------------------------------------------ Barre latérale -->
+  <nav class="rail" aria-label="Navigation principale">
+    <div class="marque">
+      <span class="marque-glyphe" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M9 18V6l10-2v12" fill="none"/><circle cx="6.5" cy="18" r="2.6"/><circle cx="16.5" cy="16" r="2.6"/></svg>
+      </span>
+      <span class="marque-texte">Zotijean</span>
+    </div>
+
+    <button class="onglet actif" data-vue="accueil" title="Vue d’ensemble et lancement d’une synchronisation">
+      <svg class="ic"><use href="#i-accueil"/></svg><span>Accueil</span>
+    </button>
+    <button class="onglet" data-vue="playlists" title="Les playlists Spotify surveillées">
+      <svg class="ic"><use href="#i-playlist"/></svg><span>Playlists</span>
+    </button>
+    <button class="onglet" data-vue="qualite" title="Qualité audio et format des fichiers">
+      <svg class="ic"><use href="#i-qualite"/></svg><span>Qualité</span>
+    </button>
+    <button class="onglet" data-vue="rangement" title="Comment les fichiers sont organisés en dossiers">
+      <svg class="ic"><use href="#i-dossier"/></svg><span>Rangement</span>
+    </button>
+    <button class="onglet" data-vue="planification" title="À quelle fréquence vérifier les nouveautés">
+      <svg class="ic"><use href="#i-horloge"/></svg><span>Planification</span>
+    </button>
+    <button class="onglet" data-vue="diagnostic" title="État de zotify, ffmpeg et du dossier de destination">
+      <svg class="ic"><use href="#i-stetho"/></svg><span>Diagnostic</span>
+      <span class="pastille" id="pastille-diagnostic" hidden></span>
+    </button>
+    <button class="onglet" data-vue="journal" title="Ce que fait l’app, en direct">
+      <svg class="ic"><use href="#i-journal"/></svg><span>Journal</span>
+    </button>
+
+    <div class="rail-pied">
+      <button class="lien-discret" id="btn-ouvrir-dossier" title="Ouvrir le dossier de musique dans le Finder">
+        <svg class="ic"><use href="#i-ouvrir"/></svg><span>Ouvrir le dossier</span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- ------------------------------------------------ Contenu -->
+  <main class="scene">
+
+    <!-- Bandeau d'état, visible sur toutes les vues -->
+    <header class="heros" id="heros">
+      <div class="heros-texte">
+        <h1 id="heros-titre">Chargement…</h1>
+        <p id="heros-detail"></p>
+      </div>
+      <div class="heros-actions">
+        <button class="bouton primaire" id="btn-synchro" title="Vérifier les playlists et télécharger les nouveaux titres maintenant">
+          <svg class="ic"><use href="#i-sync"/></svg><span>Synchroniser</span>
+        </button>
+        <button class="bouton danger" id="btn-arreter" hidden title="Arrêter la synchronisation en cours">
+          <svg class="ic"><use href="#i-stop"/></svg><span>Arrêter</span>
+        </button>
+      </div>
+    </header>
+
+    <div class="progression" id="progression" hidden>
+      <div class="progression-barre"><span id="progression-jauge"></span></div>
+      <p class="progression-ligne" id="progression-ligne"></p>
+    </div>
+
+    <!-- ACCUEIL -->
+    <section class="vue active" data-vue="accueil">
+      <div class="grille-cartes" id="cartes-resume"></div>
+      <div class="carte">
+        <h2>Playlists surveillées</h2>
+        <div id="accueil-playlists" class="liste-playlists"></div>
+      </div>
+      <div class="carte">
+        <h2>Dernières exécutions</h2>
+        <div id="historique" class="historique"></div>
+      </div>
+    </section>
+
+    <!-- PLAYLISTS -->
+    <section class="vue" data-vue="playlists">
+      <div class="carte">
+        <h2>Ajouter une playlist</h2>
+        <p class="aide">
+          Dans Spotify : clic droit sur la playlist, puis <em>Partager</em>, puis
+          <em>Copier le lien de la playlist</em>. Les liens d’album et d’artiste
+          fonctionnent aussi.
+        </p>
+        <form class="ligne-formulaire" id="form-playlist">
+          <input type="text" id="champ-url" placeholder="https://open.spotify.com/playlist/…" autocomplete="off" spellcheck="false">
+          <input type="text" id="champ-nom" placeholder="Nom (facultatif)" autocomplete="off">
+          <button class="bouton primaire" type="submit">
+            <svg class="ic"><use href="#i-plus"/></svg><span>Ajouter</span>
+          </button>
+        </form>
+        <p class="erreur-champ" id="erreur-playlist" hidden></p>
+      </div>
+      <div class="carte">
+        <h2>Surveillées</h2>
+        <div id="gestion-playlists" class="liste-playlists"></div>
+      </div>
+    </section>
+
+    <!-- QUALITÉ -->
+    <section class="vue" data-vue="qualite">
+      <div class="carte">
+        <h2>Qualité audio</h2>
+        <div id="choix-qualite" class="choix"></div>
+      </div>
+      <div class="carte">
+        <h2>Format des fichiers</h2>
+        <div id="choix-format" class="choix"></div>
+        <div class="note" id="note-qualite"></div>
+      </div>
+    </section>
+
+    <!-- RANGEMENT -->
+    <section class="vue" data-vue="rangement">
+      <div class="carte">
+        <h2>Dossier de destination</h2>
+        <div class="ligne-formulaire">
+          <input type="text" id="champ-dossier" spellcheck="false">
+          <button class="bouton" id="btn-enregistrer-dossier">Enregistrer</button>
+        </div>
+        <p class="aide">
+          Évitez le Bureau, Documents et Téléchargements : macOS y demande une
+          autorisation à chaque écriture. Un disque externe fonctionne, à condition
+          qu’il soit branché au moment de la synchronisation.
+        </p>
+      </div>
+      <div class="carte">
+        <h2>Comment ranger les fichiers</h2>
+        <div id="choix-schema" class="choix"></div>
+
+        <div id="bloc-personnalise" hidden>
+          <label class="etiquette" for="champ-modele">Votre modèle</label>
+          <input type="text" id="champ-modele" spellcheck="false" autocomplete="off">
+          <div class="jetons" id="jetons-variables"></div>
+        </div>
+
+        <div class="apercu">
+          <h3>Aperçu</h3>
+          <p class="aide">Ce que donneront réellement les noms de fichiers, nettoyage compris.</p>
+          <div id="apercu-lignes"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PLANIFICATION -->
+    <section class="vue" data-vue="planification">
+      <div class="carte">
+        <h2>Vérification automatique</h2>
+        <label class="bascule">
+          <input type="checkbox" id="bascule-planif">
+          <span class="curseur"></span>
+          <span class="bascule-texte">
+            <strong>Vérifier automatiquement les nouveautés</strong>
+            <em>Désactivé, l’app ne télécharge que lorsque vous cliquez sur Synchroniser.</em>
+          </span>
+        </label>
+        <div id="choix-intervalle" class="choix compact"></div>
+        <div class="note" id="note-planification"></div>
+      </div>
+      <div class="carte">
+        <h2>Rythme de téléchargement</h2>
+        <div id="choix-rythme" class="choix"></div>
+      </div>
+      <div class="carte">
+        <h2>Quand un titre est retiré d’une playlist</h2>
+        <div id="choix-retrait" class="choix"></div>
+      </div>
+    </section>
+
+    <!-- DIAGNOSTIC -->
+    <section class="vue" data-vue="diagnostic">
+      <div class="carte">
+        <div class="entete-carte">
+          <h2>État de l’installation</h2>
+          <button class="bouton" id="btn-diagnostic">
+            <svg class="ic"><use href="#i-sync"/></svg><span>Relancer</span>
+          </button>
+        </div>
+        <div id="liste-diagnostic" class="diagnostic"></div>
+      </div>
+    </section>
+
+    <!-- JOURNAL -->
+    <section class="vue" data-vue="journal">
+      <div class="carte">
+        <div class="entete-carte">
+          <h2>Journal</h2>
+          <label class="mini-bascule" title="Suivre automatiquement les nouvelles lignes">
+            <input type="checkbox" id="suivre-journal" checked><span>Suivre</span>
+          </label>
+        </div>
+        <div id="journal" class="journal"></div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<div class="notes" id="notes" aria-live="polite"></div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

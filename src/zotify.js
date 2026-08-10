@@ -1,0 +1,335 @@
+// Pilotage de zotify en sous-processus.
+//
+// TROIS RÈGLES, TIRÉES DE LA RECHERCHE ET NON NÉGOCIABLES.
+//
+// 1. LE CODE DE SORTIE NE VEUT RIEN DIRE. zotify renvoie 0 même quand des pistes
+//    ont échoué. La seule vérité, c'est le disque : on inventorie le dossier
+//    avant et après, et ce sont les fichiers réellement apparus qui font foi.
+//
+// 2. LA SORTIE UTILISE DES RETOURS CHARIOT. Les barres de progression réécrivent
+//    la même ligne avec « \r » et n'émettent jamais de « \n ». Un découpeur qui
+//    n'attend que des sauts de ligne ne reçoit rien jusqu'à la fin du processus,
+//    et l'interface reste figée pendant des heures.
+//
+// 3. LES OPTIONS VARIENT SELON LE FORK. On ne passe une option que si le
+//    `--help` de l'installation réelle la déclare. Une option inconnue ferait
+//    échouer tout le téléchargement.
+
+import { spawn } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+
+import { environnement } from './processus.js';
+import { journal } from './journal.js';
+import { cléComparaison } from './organisation.js';
+
+/**
+ * Correspondance entre un réglage de l'app et les noms d'options possibles chez
+ * zotify, par ordre de préférence. On retient la première que l'installation
+ * déclare supporter.
+ *
+ * Les forks n'ont pas harmonisé leurs noms : `zotify-dev` (abandonné) et
+ * `Googolplexed0` (vivant) diffèrent, et les versions intermédiaires aussi.
+ * Deviner produirait une erreur au premier téléchargement ; sonder ne coûte rien.
+ */
+const OPTIONS_CANDIDATES = {
+  dossierRacine: ['root-path', 'output-path', 'download-path'],
+  modèleSortie: ['output', 'output-template'],
+  qualité: ['download-quality', 'quality', 'audio-quality'],
+  format: ['audio-format', 'codec', 'download-format', 'format'],
+  attente: ['bulk-wait-time', 'download-delay', 'wait-time'],
+  ignorerExistants: ['skip-existing', 'skip-previously-downloaded', 'no-overwrite'],
+  interfaceSimple: ['standard-interface', 'no-interactive', 'simple-output'],
+};
+
+/** Valeurs de qualité, telles que zotify les attend. */
+const VALEURS_QUALITÉ = {
+  normale: 'normal',
+  elevee: 'high',
+  tres_elevee: 'very_high',
+};
+
+/** Valeurs de format. « copie » signifie : ne rien réencoder. */
+const VALEURS_FORMAT = {
+  copie: 'copy',
+  flac: 'flac',
+  aiff: 'aiff',
+  mp3_320: 'mp3',
+  aac_256: 'aac',
+};
+
+/** Choisit le nom d'option réellement supporté, ou null. */
+function optionSupportée(clé, optionsDéclarées) {
+  for (const candidat of OPTIONS_CANDIDATES[clé] || []) {
+    if (optionsDéclarées.has(candidat)) return candidat;
+  }
+  return null;
+}
+
+/**
+ * Construit la ligne de commande.
+ * Renvoie aussi la liste des réglages qui n'ont pas pu être appliqués, pour que
+ * l'interface le dise franchement plutôt que de laisser croire qu'ils le sont.
+ */
+export function construireArguments({ url, config, attente, capacités, modèle, dossierRacine }) {
+  const déclarées = new Set(capacités.options || []);
+  const arguments_ = [];
+  const nonAppliqués = [];
+
+  const ajouter = (clé, valeur, libellé) => {
+    const nom = optionSupportée(clé, déclarées);
+    if (!nom) {
+      nonAppliqués.push(libellé);
+      return;
+    }
+    arguments_.push(`--${nom}`, String(valeur));
+  };
+
+  ajouter('dossierRacine', dossierRacine, 'le dossier de destination');
+  ajouter('modèleSortie', modèle, "le modèle d'organisation des dossiers");
+  ajouter('qualité', VALEURS_QUALITÉ[config.qualité.niveau] ?? 'very_high', 'la qualité audio');
+  ajouter('format', VALEURS_FORMAT[config.qualité.format] ?? 'copy', 'le format de fichier');
+  ajouter('attente', attente, "le rythme d'attente entre les titres");
+
+  // Options sans valeur : on les passe seulement si elles existent.
+  const ignorer = optionSupportée('ignorerExistants', déclarées);
+  if (ignorer) arguments_.push(`--${ignorer}`);
+
+  const supplémentaires = String(config.zotify?.argumentsSupplémentaires || '').trim();
+  if (supplémentaires) {
+    arguments_.push(...supplémentaires.split(/\s+/));
+  }
+
+  arguments_.push(url);
+
+  return { arguments: arguments_, nonAppliqués };
+}
+
+// ---------------------------------------------------------------------------
+// Découpage de la sortie
+// ---------------------------------------------------------------------------
+
+/**
+ * Découpe un flux sur « \n » ET « \r ».
+ * Renvoie une fonction à appeler sur chaque bloc reçu ; elle appelle `surLigne`
+ * pour chaque ligne complète et conserve le reste en tampon.
+ */
+export function créerDécoupeur(surLigne) {
+  let tampon = '';
+
+  return function absorber(bloc) {
+    tampon += bloc;
+
+    // On découpe sur les deux, en traitant « \r\n » comme un seul séparateur.
+    const morceaux = tampon.split(/\r\n|\r|\n/);
+    tampon = morceaux.pop() ?? '';
+
+    for (const morceau of morceaux) {
+      const ligne = morceau.trim();
+      if (ligne) surLigne(ligne);
+    }
+  };
+}
+
+const MOTIFS_ERREUR = [
+  /failed/i,
+  /error/i,
+  /unable to/i,
+  /not found/i,
+  /audio key/i,
+  /rate.?limit/i,
+  /too many requests/i,
+  /premium/i,
+  /unavailable/i,
+];
+
+const MOTIF_POURCENTAGE = /(\d{1,3})\s?%/;
+
+/** Classe une ligne de sortie pour l'affichage et le journal. */
+export function classerLigne(ligne) {
+  const pourcentage = ligne.match(MOTIF_POURCENTAGE);
+
+  if (MOTIFS_ERREUR.some((motif) => motif.test(ligne))) {
+    return { type: 'erreur', texte: ligne };
+  }
+  if (pourcentage) {
+    return { type: 'progression', texte: ligne, pourcentage: Number(pourcentage[1]) };
+  }
+  return { type: 'info', texte: ligne };
+}
+
+// ---------------------------------------------------------------------------
+// Inventaire du disque — la seule source de vérité
+// ---------------------------------------------------------------------------
+
+const EXTENSIONS_AUDIO = new Set(['.ogg', '.mp3', '.flac', '.aiff', '.aif', '.m4a', '.wav', '.opus']);
+
+/** Inventorie récursivement les fichiers audio d'un dossier. */
+export function inventorier(dossier) {
+  const fichiers = new Map(); // clé normalisée NFC → { chemin, taille }
+
+  const parcourir = (courant) => {
+    let entrées;
+    try {
+      entrées = fs.readdirSync(courant, { withFileTypes: true });
+    } catch {
+      return;
+    }
+
+    for (const entrée of entrées) {
+      const complet = path.join(courant, entrée.name);
+      if (entrée.isDirectory()) {
+        if (entrée.name.startsWith('.') || entrée.name.startsWith('_')) continue;
+        parcourir(complet);
+      } else if (EXTENSIONS_AUDIO.has(path.extname(entrée.name).toLowerCase())) {
+        try {
+          const stat = fs.statSync(complet);
+          fichiers.set(cléComparaison(complet), { chemin: complet, taille: stat.size });
+        } catch {
+          // Fichier disparu entre le listing et le stat : sans importance.
+        }
+      }
+    }
+  };
+
+  parcourir(dossier);
+  return fichiers;
+}
+
+/**
+ * Compare deux inventaires et renvoie les fichiers réellement apparus.
+ * Un fichier de moins de 32 Ko est considéré comme un téléchargement avorté :
+ * aucun morceau de musique ne pèse si peu, et zotify laisse parfois des restes.
+ */
+export function nouveauxFichiers(avant, après, tailleMinimale = 32 * 1024) {
+  const nouveaux = [];
+  const suspects = [];
+
+  for (const [clé, info] of après) {
+    if (avant.has(clé)) continue;
+    if (info.taille < tailleMinimale) suspects.push(info);
+    else nouveaux.push(info);
+  }
+
+  return { nouveaux, suspects };
+}
+
+// ---------------------------------------------------------------------------
+// Exécution
+// ---------------------------------------------------------------------------
+
+/**
+ * Lance zotify sur une URL et suit son déroulement.
+ *
+ * `surÉvénement` reçoit des objets typés au fil de l'eau. La promesse se résout
+ * avec le bilan établi à partir du DISQUE, pas du code de sortie.
+ */
+export function télécharger({
+  commande,
+  arguments: arguments_,
+  dossierRacine,
+  surÉvénement = () => {},
+  signalArrêt = null,
+}) {
+  return new Promise((résoudre) => {
+    const avant = inventorier(dossierRacine);
+    const débutMs = Date.now();
+    const lignes = [];
+
+    journal.info(`Lancement de zotify`, { commande, arguments: arguments_ });
+    surÉvénement({ type: 'début', commande, arguments: arguments_ });
+
+    let processus;
+    try {
+      processus = spawn(commande, arguments_, {
+        env: environnement(),
+        windowsHide: true,
+      });
+    } catch (erreur) {
+      résoudre({
+        lancé: false,
+        erreur: erreur.message,
+        nouveaux: [],
+        suspects: [],
+        lignes: [],
+        duréeMs: 0,
+      });
+      return;
+    }
+
+    const enregistrer = (ligne) => {
+      const classée = classerLigne(ligne);
+      lignes.push(classée);
+      if (lignes.length > 2000) lignes.shift();
+      surÉvénement({ type: 'ligne', ...classée });
+      if (classée.type === 'erreur') journal.avertir(`zotify : ${ligne}`);
+    };
+
+    const découpeurSortie = créerDécoupeur(enregistrer);
+    const découpeurErreur = créerDécoupeur(enregistrer);
+
+    processus.stdout?.setEncoding('utf8');
+    processus.stderr?.setEncoding('utf8');
+    processus.stdout?.on('data', découpeurSortie);
+    processus.stderr?.on('data', découpeurErreur);
+
+    let arrêtDemandé = false;
+    const arrêter = () => {
+      if (arrêtDemandé) return;
+      arrêtDemandé = true;
+      journal.info('Arrêt de zotify demandé.');
+      surÉvénement({ type: 'arrêt-demandé' });
+      processus.kill('SIGTERM');
+      // Laisser une chance à zotify de finir proprement le fichier en cours,
+      // puis forcer. Un fichier à moitié écrit sera écarté par le seuil de
+      // taille lors de la comparaison des inventaires.
+      setTimeout(() => {
+        if (!processus.killed) processus.kill('SIGKILL');
+      }, 10000);
+    };
+
+    signalArrêt?.addEventListener?.('abort', arrêter, { once: true });
+
+    processus.on('error', (erreur) => {
+      résoudre({
+        lancé: false,
+        erreur: erreur.message,
+        nouveaux: [],
+        suspects: [],
+        lignes,
+        duréeMs: Date.now() - débutMs,
+      });
+    });
+
+    processus.on('close', (code) => {
+      signalArrêt?.removeEventListener?.('abort', arrêter);
+
+      const après = inventorier(dossierRacine);
+      const { nouveaux, suspects } = nouveauxFichiers(avant, après);
+
+      if (suspects.length) {
+        journal.avertir(
+          `${suspects.length} fichier(s) trop petits ignorés : téléchargements interrompus.`,
+        );
+      }
+
+      const erreurs = lignes.filter((l) => l.type === 'erreur');
+
+      journal.info(
+        `zotify terminé — ${nouveaux.length} nouveau(x) fichier(s), ` +
+          `${erreurs.length} ligne(s) d'erreur, code de sortie ${code} (non fiable).`,
+      );
+
+      résoudre({
+        lancé: true,
+        interrompu: arrêtDemandé,
+        codeSortie: code,
+        nouveaux,
+        suspects,
+        erreurs,
+        lignes,
+        duréeMs: Date.now() - débutMs,
+      });
+    });
+  });
+}

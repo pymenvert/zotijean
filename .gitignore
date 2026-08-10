@@ -1,0 +1,16 @@
+# Rien à installer : Zotijean n'a aucune dépendance npm.
+node_modules/
+package-lock.json
+
+# Données locales éventuelles (la vraie configuration vit hors du dépôt,
+# dans ~/Library/Application Support/Zotijean sur macOS).
+donnees/
+*.log
+config.json
+etat.json
+execution.lock
+
+# Systèmes
+.DS_Store
+Thumbs.db
+desktop.ini
