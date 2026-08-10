@@ -600,6 +600,77 @@ async function chargerJournal() {
   entrées.forEach(ajouterLigneJournal);
 }
 
+// ------------------------------------------------------ Notifications système
+
+/**
+ * Notification du système, pour un outil qui travaille des heures en fond.
+ *
+ * L'autorisation n'est JAMAIS demandée au chargement : une fenêtre qui surgit
+ * avant qu'on ait rien fait se refuse par réflexe, et le navigateur ne
+ * redemande plus jamais. On attend la fin d'une vraie synchronisation, moment
+ * où l'intérêt est évident.
+ */
+const notifications = {
+  disponible: 'Notification' in window,
+
+  async demanderSiPertinent() {
+    if (!this.disponible || Notification.permission !== 'default') return;
+    if (localStorage.getItem('zotijean.notifsDemandees')) return;
+    localStorage.setItem('zotijean.notifsDemandees', '1');
+    try {
+      await Notification.requestPermission();
+    } catch {
+      // Certains navigateurs refusent hors interaction : sans importance.
+    }
+  },
+
+  montrer(titre, corps) {
+    if (!this.disponible || Notification.permission !== 'granted') return;
+    if (!document.hidden) return; // inutile si l'utilisateur regarde déjà
+    try {
+      const notification = new Notification(titre, { body: corps, tag: 'zotijean-synchro' });
+      notification.addEventListener('click', () => {
+        window.focus();
+        notification.close();
+      });
+    } catch {
+      // Une notification refusée ne doit jamais interrompre l'app.
+    }
+  },
+};
+
+// ------------------------------------------------------ Raccourcis clavier
+
+document.addEventListener('keydown', (événement) => {
+  // Jamais pendant une saisie : on ne détourne pas les touches de quelqu'un
+  // en train d'écrire un modèle de rangement.
+  const cible = événement.target;
+  if (cible.matches?.('input, textarea, select')) return;
+  if (événement.metaKey || événement.ctrlKey || événement.altKey) return;
+  if (!$('#onboarding').hidden) return;
+
+  const vues = ['accueil', 'playlists', 'qualite', 'rangement', 'planification', 'diagnostic', 'journal'];
+
+  // Chiffres 1 à 7 : navigation directe entre les onglets.
+  const chiffre = Number(événement.key);
+  if (chiffre >= 1 && chiffre <= vues.length) {
+    activerVue(vues[chiffre - 1]);
+    return;
+  }
+
+  if (événement.key === 's' && !$('#btn-synchro').hidden) {
+    événement.preventDefault();
+    $('#btn-synchro').click();
+  } else if (événement.key === 'd') {
+    activerVue('diagnostic');
+    chargerDiagnostic();
+  } else if (événement.key === '?') {
+    noter(
+      'Raccourcis : 1 à 7 pour les onglets · S pour synchroniser · D pour le diagnostic.',
+    );
+  }
+});
+
 // -------------------------------------------------------------- Événements
 
 function écouterÉvénements() {
@@ -631,7 +702,15 @@ function écouterÉvénements() {
     if (événement.type === 'synchro-fin') {
       rafraîchirTableau();
       const n = événement.bilan.nbFichiers;
-      noter(n > 0 ? `${n} nouveau${n > 1 ? 'x' : ''} titre${n > 1 ? 's' : ''} téléchargé${n > 1 ? 's' : ''}.` : 'Aucune nouveauté.', 'succes');
+      const phrase = n > 0
+        ? `${n} nouveau${n > 1 ? 'x' : ''} titre${n > 1 ? 's' : ''} téléchargé${n > 1 ? 's' : ''}.`
+        : 'Aucune nouveauté.';
+      noter(phrase, 'succes');
+
+      notifications.montrer('Zotijean', phrase);
+      // L'autorisation se demande ici, après une synchronisation réussie :
+      // c'est le seul moment où l'intérêt est évident pour l'utilisateur.
+      notifications.demanderSiPertinent();
       if (événement.bilan.réglagesNonAppliqués?.length) {
         noter(
           `Votre version de zotify ne gère pas : ${événement.bilan.réglagesNonAppliqués.join(', ')}. ` +
