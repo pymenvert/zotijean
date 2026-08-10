@@ -108,6 +108,18 @@ jobs:
             });
           "
 
+          echo "--- La notice et sa feuille de style sont servies ---"
+          # Régression déjà rencontrée : la politique de sécurité du contenu
+          # interdit les styles en ligne, donc la notice DOIT charger un fichier
+          # CSS séparé. Sans ce contrôle, elle se réafficherait un jour en texte
+          # brut sans que personne ne s'en aperçoive.
+          curl -sf "http://127.0.0.1:8799/notice.html" | grep -q 'rel="stylesheet"' \
+            || { echo "La notice n'utilise pas de feuille de style externe : la politique de sécurité la rendrait illisible."; exit 1; }
+          curl -sf "http://127.0.0.1:8799/notice.html" | grep -q '<style>' \
+            && { echo "La notice contient un bloc <style> en ligne, que la politique de sécurité bloque."; exit 1; }
+          curl -sf -o /dev/null "http://127.0.0.1:8799/notice.css" \
+            || { echo "notice.css est introuvable."; exit 1; }
+
           echo "--- Une requête croisée est refusée ---"
           code=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
             -H "Origin: https://site-malveillant.example" \

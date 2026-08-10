@@ -1,0 +1,292 @@
+<title>Zotijean — Notice</title>
+<link rel="stylesheet" href="notice.css">
+
+<div class="page">
+
+<header class="plaque">
+  <div class="plaque-haut">
+    <span class="diode" aria-hidden="true"></span>
+    <span class="label">Notice d’utilisation</span>
+  </div>
+  <h1>Zotijean<br><span class="fin">mode d’emploi</span></h1>
+  <p class="chapo">
+    Zotijean surveille vos playlists Spotify et télécharge tout seul les nouveaux
+    morceaux, rangés comme vous le décidez. Cette notice vous emmène du premier
+    double-clic à la première synchronisation.
+  </p>
+</header>
+
+<section>
+  <div class="titre-section">
+    <h2>Ce qu’il vous faut</h2>
+    <span class="label">Trois choses</span>
+  </div>
+  <p>
+    Zotijean ne télécharge rien lui-même : il pilote zotify, que vous utilisez déjà.
+    C’est voulu — vous n’avez rien à réinstaller ni à reconnecter.
+  </p>
+  <div class="prerequis">
+    <div class="item">
+      <span class="label">zotify</span>
+      <p>Déjà installé et connecté à votre compte Spotify. Vérifiez en tapant <kbd>zotify --version</kbd> dans le Terminal.</p>
+    </div>
+    <div class="item">
+      <span class="label">ffmpeg</span>
+      <p>Indispensable. <kbd>brew install ffmpeg</kbd> si vous ne l’avez pas.</p>
+    </div>
+    <div class="item">
+      <span class="label">Node.js 20 ou plus</span>
+      <p>Le moteur de Zotijean. <kbd>brew install node</kbd>, ou l’installeur sur nodejs.org.</p>
+    </div>
+  </div>
+
+  <div class="encadre cue">
+    <span class="label">Pourquoi ffmpeg n’est pas optionnel</span>
+    <p>
+      Sans lui, zotify renomme le fichier téléchargé <strong>avant</strong> de
+      s’apercevoir qu’il manque, et ne le remet jamais en place. Des morceaux
+      disparaissent sans le moindre message d’erreur. Zotijean refuse de
+      synchroniser tant qu’il ne l’a pas trouvé.
+    </p>
+  </div>
+</section>
+
+<section>
+  <div class="titre-section">
+    <h2>Les quatre premières minutes</h2>
+    <span class="label">Dans cet ordre</span>
+  </div>
+
+  <div class="voies">
+    <div class="voie">
+      <div class="voie-num">01</div>
+      <div class="voie-corps">
+        <h3>Lancer</h3>
+        <p>Double-cliquez <kbd>Zotijean - Mac.command</kbd>.</p>
+        <p>
+          Une fenêtre noire s’ouvre : c’est le moteur, laissez-la tranquille.
+          L’interface apparaît toute seule dans votre navigateur. Pour arrêter
+          Zotijean plus tard, il suffira de fermer cette fenêtre.
+        </p>
+      </div>
+    </div>
+
+    <div class="voie">
+      <div class="voie-num">02</div>
+      <div class="voie-corps">
+        <h3>Passer au diagnostic</h3>
+        <p>Onglet <span class="touche">Diagnostic</span>, tout de suite.</p>
+        <p>
+          Il contrôle zotify, ffmpeg, votre connexion Spotify et le dossier de
+          destination. Chaque point en rouge vous dit précisément quoi faire.
+          Tant qu’il en reste un, la synchronisation ne démarrera pas — c’est
+          une protection, pas un caprice.
+        </p>
+      </div>
+    </div>
+
+    <div class="voie">
+      <div class="voie-num">03</div>
+      <div class="voie-corps">
+        <h3>Choisir le rangement</h3>
+        <p>Onglet <span class="touche">Rangement</span>.</p>
+        <p>
+          Vous décidez où vont les fichiers et comment ils sont classés : un
+          dossier par playlist, une bibliothèque par artiste et album, par genre,
+          par année, à plat, ou votre propre modèle. L’aperçu du bas montre les
+          vrais noms de fichiers avant que vous validiez, accents et caractères
+          interdits compris.
+        </p>
+      </div>
+    </div>
+
+    <div class="voie">
+      <div class="voie-num">04</div>
+      <div class="voie-corps">
+        <h3>Ajouter une playlist et lancer</h3>
+        <p>Onglet <span class="touche">Playlists</span>, puis <span class="touche touche-ambre">Synchroniser</span>.</p>
+        <p>
+          Pour récupérer le lien : dans Spotify, clic droit sur la playlist,
+          <em>Partager</em>, <em>Copier le lien de la playlist</em>. Collez-le,
+          cliquez sur Ajouter. Les liens d’album et d’artiste marchent aussi.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="titre-section">
+    <h2>Combien de temps ça prend</h2>
+    <span class="label">À savoir avant de s’inquiéter</span>
+  </div>
+  <p>
+    Beaucoup plus longtemps qu’on ne l’imagine. Zotijean attend une trentaine de
+    secondes entre chaque morceau, volontairement : c’est ce qui évite les erreurs
+    de téléchargement et ce qui protège le mieux votre compte Spotify.
+  </p>
+  <div class="compteurs">
+    <div class="compteur"><div class="valeur">~30 s</div><span class="label">entre deux titres</span></div>
+    <div class="compteur"><div class="valeur">~2 h</div><span class="label">pour 200 titres</span></div>
+    <div class="compteur"><div class="valeur">~17 h</div><span class="label">pour 2 000 titres</span></div>
+    <div class="compteur"><div class="valeur">48 h</div><span class="label">entre deux vérifications</span></div>
+  </div>
+  <p>
+    Le premier rattrapage est donc long. Les suivants ne téléchargent que les
+    nouveautés et durent quelques minutes. Vous pouvez accélérer dans
+    <span class="touche">Planification</span>, mais lisez l’explication sous
+    chaque option : plus c’est rapide, plus le risque grimpe.
+  </p>
+  <p>
+    Vous pouvez fermer l’onglet du navigateur pendant une synchronisation, elle
+    continue. Ne fermez pas la fenêtre noire.
+  </p>
+</section>
+
+<section>
+  <div class="titre-section">
+    <h2>Les réglages, onglet par onglet</h2>
+    <span class="label">Ce que chacun décide</span>
+  </div>
+  <div class="onglets">
+    <div class="onglet">
+      <span class="label">Accueil</span>
+      <p>L’état en une ligne, les playlists, l’historique. C’est aussi d’ici qu’on lance une synchronisation à la main.</p>
+    </div>
+    <div class="onglet">
+      <span class="label">Playlists</span>
+      <p>Ajouter, retirer, ou mettre une playlist en pause sans la supprimer. Retirer une playlist ne supprime aucun fichier.</p>
+    </div>
+    <div class="onglet">
+      <span class="label">Qualité</span>
+      <p>Le niveau audio et le format des fichiers. Chaque format indique s’il ajoute une perte ou non.</p>
+    </div>
+    <div class="onglet">
+      <span class="label">Rangement</span>
+      <p>Le dossier de destination et la façon de classer, avec aperçu en direct.</p>
+    </div>
+    <div class="onglet">
+      <span class="label">Planification</span>
+      <p>La fréquence des vérifications, le rythme de téléchargement, et ce qu’il advient d’un titre retiré d’une playlist.</p>
+    </div>
+    <div class="onglet">
+      <span class="label">Diagnostic</span>
+      <p>L’état de l’installation. Le premier endroit où regarder quand quelque chose cloche.</p>
+    </div>
+    <div class="onglet">
+      <span class="label">Journal</span>
+      <p>Ce que fait l’app, en direct. Utile pour comprendre une lenteur ou une erreur.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="titre-section">
+    <h2>Deux vérités qu’il vaut mieux connaître</h2>
+    <span class="label">Sans détour</span>
+  </div>
+
+  <div class="encadre">
+    <span class="label">La qualité plafonne à 320 kb/s</span>
+    <p>
+      Spotify a lancé son offre sans perte en septembre 2025, et elle est
+      <strong>incluse dans votre abonnement Premium</strong>. Elle reste
+      inaccessible ici : ce flux est réservé aux applications officielles de
+      Spotify. Convertir ensuite en FLAC n’ajoute aucune perte, mais n’en
+      récupère aucune non plus — on fige un fichier compressé, on ne le répare pas.
+    </p>
+  </div>
+
+  <div class="encadre cue">
+    <span class="label">Le risque pour votre compte</span>
+    <p>
+      Télécharger depuis Spotify contrevient à ses conditions d’utilisation. Des
+      suspensions de comptes et des réinitialisations forcées de mot de passe
+      sont documentées. Le rythme prudent réduit ce risque sans l’annuler. En
+      droit français, la copie privée suppose une source licite depuis 2011.
+      C’est à vous d’apprécier.
+    </p>
+  </div>
+</section>
+
+<section>
+  <div class="titre-section">
+    <h2>Si ça ne marche pas</h2>
+    <span class="label">Les pannes courantes</span>
+  </div>
+  <div class="defilant">
+    <table>
+      <thead>
+        <tr><th scope="col">Ce que vous voyez</th><th scope="col">Ce qu’il faut faire</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>« Node.js est introuvable »</td>
+          <td>Installez-le depuis nodejs.org, version LTS, puis relancez le fichier. C’est le moteur : sans lui, rien ne démarre.</td>
+        </tr>
+        <tr>
+          <td>« zotify est introuvable »</td>
+          <td>Zotijean pilote votre zotify, il ne l’embarque pas. Tapez <kbd>zotify --version</kbd> dans le Terminal : si ça ne répond pas, réinstallez zotify avant de revenir.</td>
+        </tr>
+        <tr>
+          <td>« ffmpeg est introuvable »</td>
+          <td><kbd>brew install ffmpeg</kbd>, puis relancez le diagnostic. Ne synchronisez pas avant : des morceaux seraient détruits en silence.</td>
+        </tr>
+        <tr>
+          <td>Rien ne se télécharge, aucune erreur</td>
+          <td>Normal si tout est déjà là. Ouvrez le Journal : il indique combien de titres ont été examinés et ignorés.</td>
+        </tr>
+        <tr>
+          <td>La fenêtre s’ouvre puis se referme</td>
+          <td>Node.js manque ou est trop ancien. La fenêtre affiche la raison une seconde avant de disparaître — relancez et lisez la première ligne.</td>
+        </tr>
+        <tr>
+          <td>« Le port 8787 est déjà utilisé »</td>
+          <td>Zotijean tourne déjà. Ouvrez <kbd>http://127.0.0.1:8787</kbd> plutôt que de le relancer.</td>
+        </tr>
+        <tr>
+          <td>La page reste sur « Chargement… »</td>
+          <td>Le moteur s’est arrêté. Regardez la fenêtre noire : le message d’erreur y est.</td>
+        </tr>
+        <tr>
+          <td>Les accents s’affichent bizarrement dans les noms</td>
+          <td>Signalez-le. Zotijean normalise les accents à l’écriture ; un affichage cassé indique un cas non prévu.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p style="margin-top:1.4rem">
+    Pour tout le reste, l’onglet <span class="touche">Journal</span> montre en
+    direct ce que fait l’app, et le <span class="touche">Diagnostic</span> dit
+    ce qui manque.
+  </p>
+</section>
+
+<section>
+  <div class="titre-section">
+    <h2>Ce que Zotijean ne fera jamais</h2>
+    <span class="label">Par construction</span>
+  </div>
+  <p>
+    <strong>Supprimer un fichier sans que vous l’ayez demandé.</strong> Le réglage
+    par défaut conserve tout. Même en choisissant d’archiver ou de mettre à la
+    corbeille, rien n’est détruit : les fichiers sont déplacés, jamais effacés.
+  </p>
+  <p>
+    <strong>Réécrire un fichier déjà présent.</strong> Si vous avez analysé un
+    morceau dans Rekordbox ou Serato, vos points de repère et votre grille
+    rythmique vivent dans le fichier. Zotijean n’y touche pas.
+  </p>
+  <p>
+    <strong>Retirer plus de la moitié d’un dossier d’un coup.</strong> Un retrait
+    massif est le signe d’une erreur de lecture, pas d’une playlist vidée :
+    l’app s’arrête et vous prévient au lieu d’agir.
+  </p>
+</section>
+
+<footer>
+  Zotijean — compagnon de zotify. Interface et notice en français.
+  Le moteur tourne sur votre machine, rien ne sort de chez vous.
+</footer>
+
+</div>

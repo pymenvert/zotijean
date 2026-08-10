@@ -105,14 +105,17 @@ em { font-style: normal; }
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--erreur) 22%, transparent);
 }
 
-.rail-pied { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--bord); }
+.rail-pied { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--bord);
+             display: flex; flex-direction: column; gap: 2px; }
 .lien-discret {
   display: flex; align-items: center; gap: 9px; width: 100%;
   padding: 8px 10px; border: 0; border-radius: var(--rayon-s);
   background: transparent; color: var(--texte-3); font: inherit; font-size: 13px;
-  cursor: pointer; transition: color var(--transition), background var(--transition);
+  cursor: pointer; text-decoration: none;
+  transition: color var(--transition), background var(--transition);
 }
 .lien-discret:hover { color: var(--texte); background: var(--carte); }
+.lien-discret:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 .scene { padding: 26px 32px 60px; max-width: 940px; }
 
