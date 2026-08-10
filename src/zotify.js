@@ -85,7 +85,25 @@ export function construireArguments({ url, config, attente, capacités, modèle,
     arguments_.push(`--${nom}`, String(valeur));
   };
 
-  ajouter('dossierRacine', dossierRacine, 'le dossier de destination');
+  // LE DOSSIER DE DESTINATION EST BLOQUANT, pas « non appliqué ».
+  //
+  // Sans lui, zotify télécharge quand même — dans SON dossier par défaut, sur le
+  // disque de démarrage. L'inventaire ne voit alors rien apparaître, l'app
+  // conclut « aucune nouveauté », marque l'exécution réussie et attend 48 h.
+  // Toute la protection de volume monté est contournée, et l'utilisateur
+  // découvre des gigaoctets au mauvais endroit des semaines plus tard.
+  const nomRacine = optionSupportée('dossierRacine', déclarées);
+  if (!nomRacine) {
+    return {
+      arguments: null,
+      nonAppliqués,
+      bloquant:
+        'Votre version de zotify n’expose aucune option de dossier de destination ' +
+        '(--root-path, --output-path ou --download-path). Lancer le téléchargement ' +
+        'écrirait la musique ailleurs que dans le dossier choisi. Synchronisation annulée.',
+    };
+  }
+  arguments_.push(`--${nomRacine}`, String(dossierRacine));
   ajouter('modèleSortie', modèle, "le modèle d'organisation des dossiers");
   ajouter('qualité', VALEURS_QUALITÉ[config.qualité.niveau] ?? 'very_high', 'la qualité audio');
   ajouter('format', VALEURS_FORMAT[config.qualité.format] ?? 'copy', 'le format de fichier');
@@ -244,6 +262,16 @@ export function télécharger({
       processus = spawn(commande, arguments_, {
         env: environnement(),
         windowsHide: true,
+        // L'ENTRÉE STANDARD EST FERMÉE. Si zotify réclame un identifiant — ce
+        // qui arrive à la première authentification — un tube ouvert le fait
+        // attendre indéfiniment. Pire : son invite « Username: » ne se termine
+        // ni par un saut de ligne ni par un retour chariot, donc le découpeur la
+        // garde en tampon et l'interface n'affiche même pas la question. Le
+        // moteur resterait figé toute la nuit sur « Préparation… ».
+        // Avec « ignore », l'invite reçoit une fin de fichier, zotify sort en
+        // erreur, la promesse se résout et le verrou est rendu. Rien n'écrit
+        // jamais sur son entrée : aucun effet de bord.
+        stdio: ['ignore', 'pipe', 'pipe'],
       });
     } catch (erreur) {
       résoudre({
@@ -283,9 +311,16 @@ export function télécharger({
       // Laisser une chance à zotify de finir proprement le fichier en cours,
       // puis forcer. Un fichier à moitié écrit sera écarté par le seuil de
       // taille lors de la comparaison des inventaires.
+      //
+      // On teste la SORTIE du processus, pas `killed` : ce drapeau passe à vrai
+      // dès l'ENVOI du signal, donc `if (!processus.killed)` ne se déclenche
+      // jamais et le SIGKILL de secours ne partait pas. Trois secondes, pour
+      // rester sous les cinq que le serveur s'accorde pour s'éteindre.
       setTimeout(() => {
-        if (!processus.killed) processus.kill('SIGKILL');
-      }, 10000);
+        if (processus.exitCode === null && processus.signalCode === null) {
+          processus.kill('SIGKILL');
+        }
+      }, 3000);
     };
 
     signalArrêt?.addEventListener?.('abort', arrêter, { once: true });

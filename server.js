@@ -213,7 +213,20 @@ function lirePortDesArguments() {
 export function démarrer() {
   const c = config();
   const port = lirePortDesArguments() ?? c.général.port;
-  const serveur = http.createServer((requête, réponse) => traiter(requête, réponse, port));
+  // Filet général. `traiter` est asynchrone : une exception hors de ses blocs
+  // try — par exemple `decodeURIComponent` sur une URL contenant un « % » isolé —
+  // deviendrait un rejet non rattrapé, ce qui termine le processus Node. Le
+  // moteur s'arrêterait donc sur une simple requête malformée.
+  const serveur = http.createServer((requête, réponse) => {
+    Promise.resolve(traiter(requête, réponse, port)).catch((erreur) => {
+      journal.erreur('Erreur non rattrapée pendant le traitement d’une requête.',
+        erreur.stack || erreur.message);
+      if (!réponse.headersSent) {
+        réponse.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
+      }
+      réponse.end('Erreur interne.');
+    });
+  });
 
   serveur.on('error', (erreur) => {
     if (erreur.code === 'EADDRINUSE') {

@@ -162,11 +162,44 @@ test('construireArguments accepte des variantes de noms d’options', () => {
 test('construireArguments transmet les arguments supplémentaires de l’utilisateur', () => {
   const config = { ...CONFIG, zotify: { argumentsSupplémentaires: '--print-errors --lyrics' } };
   const { arguments: args } = construireArguments({
-    url: 'u', config, attente: 5, capacités: { options: ['help'] },
+    url: 'u', config, attente: 5, capacités: { options: ['help', 'root-path'] },
     modèle: '{song_name}', dossierRacine: '/M',
   });
   assert.ok(args.includes('--print-errors'));
   assert.ok(args.includes('--lyrics'));
+});
+
+test('sans option de dossier de destination, rien n’est lancé', () => {
+  // Ce cas ne doit SURTOUT pas être traité comme un réglage « non appliqué ».
+  // zotify téléchargerait quand même, dans son dossier par défaut, sur le disque
+  // de démarrage. L'inventaire ne verrait rien apparaître, l'app conclurait
+  // « aucune nouveauté », marquerait l'exécution réussie et attendrait 48 h —
+  // pendant que des gigaoctets s'accumulent au mauvais endroit.
+  const { arguments: args, bloquant } = construireArguments({
+    url: 'u',
+    config: CONFIG,
+    attente: 5,
+    capacités: { options: ['help', 'download-quality'] }, // pas de root-path
+    modèle: '{song_name}',
+    dossierRacine: '/Musique',
+  });
+
+  assert.equal(args, null, 'aucune commande ne doit être construite');
+  assert.ok(bloquant, 'le refus doit être explicite');
+  assert.match(bloquant, /dossier de destination/);
+  assert.match(bloquant, /annulée/);
+});
+
+test('les variantes du nom de l’option de destination sont acceptées', () => {
+  for (const nom of ['root-path', 'output-path', 'download-path']) {
+    const { arguments: args, bloquant } = construireArguments({
+      url: 'u', config: CONFIG, attente: 5, capacités: { options: ['help', nom] },
+      modèle: '{song_name}', dossierRacine: '/Musique',
+    });
+    assert.equal(bloquant, undefined, `${nom} aurait dû suffire`);
+    assert.ok(args.includes(`--${nom}`));
+    assert.ok(args.includes('/Musique'));
+  }
 });
 
 // ---------------------------------------------------------------------------

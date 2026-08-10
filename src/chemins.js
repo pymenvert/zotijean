@@ -73,12 +73,45 @@ export function écrireAtomique(chemin, contenu) {
   fs.renameSync(temporaire, chemin);
 }
 
-/** Lit un JSON, ou renvoie `secours` si le fichier est absent ou illisible. */
-export function lireJSON(chemin, secours = null) {
+/**
+ * Lit un JSON, ou renvoie `secours`.
+ *
+ * Distingue DEUX cas que confondait la version précédente : un fichier absent
+ * est normal au premier lancement, un fichier illisible est une anomalie. Les
+ * confondre revenait à repartir en silence sur une configuration vide, puis à
+ * écraser le fichier corrompu au premier réglage modifié — alors qu'il
+ * contenait la seule copie des URL de playlists.
+ *
+ * `surErreur` est un rappel plutôt qu'un appel direct au journal : celui-ci
+ * dépend de ce module, l'importer créerait un cycle.
+ */
+export function lireJSON(chemin, secours = null, surErreur = null) {
+  let brut;
   try {
-    return JSON.parse(fs.readFileSync(chemin, 'utf8'));
+    brut = fs.readFileSync(chemin, 'utf8');
   } catch {
+    return secours; // absent : cas normal, rien à signaler
+  }
+
+  try {
+    return JSON.parse(brut);
+  } catch (erreur) {
+    surErreur?.(erreur, brut);
     return secours;
+  }
+}
+
+/**
+ * Met un fichier de côté avant de risquer de l'écraser.
+ * Renvoie le chemin de la copie, ou null si elle n'a pas pu être faite.
+ */
+export function mettreÀLAbri(chemin, suffixe = 'corrompu') {
+  const abri = `${chemin}.${suffixe}-${new Date().toISOString().replace(/[:.]/g, '-')}`;
+  try {
+    fs.copyFileSync(chemin, abri);
+    return abri;
+  } catch {
+    return null;
   }
 }
 

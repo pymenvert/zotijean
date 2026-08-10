@@ -245,7 +245,7 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
         ? { ...cp, qualité: { ...cp.qualité, format: 'copie' } }
         : cp;
 
-      const { arguments: args, nonAppliqués } = construireArguments({
+      const { arguments: args, nonAppliqués, bloquant } = construireArguments({
         url: playlist.url,
         config: configPourZotify,
         attente,
@@ -253,6 +253,15 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
         modèle,
         dossierRacine: racine,
       });
+
+      // Un réglage bloquant arrête tout : renseigner `bilan.échec` empêche
+      // `marquerSuccès`, donc l'app ne repart pas pour 48 h en croyant avoir
+      // travaillé.
+      if (bloquant) {
+        bilan.échec = bloquant;
+        journal.erreur(bloquant);
+        break;
+      }
 
       for (const message of nonAppliqués) {
         if (!bilan.réglagesNonAppliqués.includes(message)) {
@@ -292,6 +301,7 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
         config: cp,
         playlist,
         racine,
+        capacités,
         nouveaux: (résultat.nouveaux ?? []).map((f) => f.chemin),
         signalArrêt: courante.contrôleur.signal,
         surProgrès: (progrès) => {
@@ -398,7 +408,8 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
  * concentrent les opérations qui touchent aux fichiers de l'utilisateur.
  */
 export async function finaliserPlaylist({
-  config: c, playlist, racine, nouveaux, signalArrêt = null, surProgrès = () => {},
+  config: c, playlist, racine, nouveaux, capacités = null,
+  signalArrêt = null, surProgrès = () => {},
 }) {
   const résultat = { nom: null, nbConvertis: 0, échecsConversion: [], listeLecture: null };
 
@@ -435,7 +446,26 @@ export async function finaliserPlaylist({
     // cher quand un rattrapage complet prend 17 heures. On ne touche QUE les
     // sources effectivement converties — jamais un fichier dont la conversion a
     // échoué, sinon un échec ferait perdre le téléchargement.
-    const politiqueSources = c.retrait?.sourcesAprèsConversion ?? 'conserver';
+    // GARDE-FOU DÉCISIF. La reprise incrémentale de zotify repose sur la
+    // présence du fichier QU'IL écrirait, c'est-à-dire l'Ogg — pas le FLAC
+    // converti. Retirer les Ogg ferait donc retélécharger toute la
+    // bibliothèque : 17 heures, et une exposition inutile à la limitation de
+    // débit de Spotify. On n'applique la politique que si zotify tient un
+    // journal de ce qu'il a déjà téléchargé, indépendant des fichiers présents.
+    let politiqueSources = c.retrait?.sourcesAprèsConversion ?? 'conserver';
+    const journalisePrécédents = (capacités?.options || []).some((o) =>
+      /previous|already|archive/i.test(o),
+    );
+
+    if (politiqueSources !== 'conserver' && !journalisePrécédents) {
+      résultat.sourcesNonTraitées =
+        'Les fichiers d’origine ont été conservés : votre version de zotify repère ' +
+        'les morceaux déjà pris en regardant les fichiers présents, pas en tenant un ' +
+        'journal. Les retirer ferait tout retélécharger à la prochaine synchronisation.';
+      journal.avertir(résultat.sourcesNonTraitées);
+      politiqueSources = 'conserver';
+    }
+
     if (politiqueSources !== 'conserver' && bilan.convertis.length) {
       résultat.sourcesTraitées = 0;
       for (const { source } of bilan.convertis) {

@@ -10,7 +10,7 @@ import {
   configParDéfaut, trouver, RYTHMES, QUALITÉS, FORMATS, SCHÉMAS,
   POLITIQUES_RETRAIT, SOURCES_APRÈS_CONVERSION,
 } from './options.js';
-import { fichierConfig, écrireAtomique, lireJSON } from './chemins.js';
+import { fichierConfig, écrireAtomique, lireJSON, mettreÀLAbri } from './chemins.js';
 import { journal } from './journal.js';
 
 let cache = null;
@@ -100,10 +100,30 @@ function assainir(config) {
   return config;
 }
 
+/** Signale qu'on est reparti sur les valeurs par défaut faute de pouvoir lire. */
+export let configIllisible = null;
+
 /** La configuration courante. Lue une fois puis gardée en mémoire. */
 export function config() {
   if (cache) return cache;
-  const chargé = lireJSON(fichierConfig(), {});
+
+  // Un fichier illisible ne doit jamais être écrasé en silence : il contient la
+  // seule copie des URL de playlists, et le premier réglage modifié suffirait à
+  // le remplacer. On en met une copie de côté AVANT toute écriture.
+  const chargé = lireJSON(fichierConfig(), {}, () => {
+    const abri = mettreÀLAbri(fichierConfig());
+    configIllisible = {
+      date: new Date().toISOString(),
+      copie: abri,
+      message: abri
+        ? `Le fichier de réglages était illisible. Zotijean est reparti sur les ` +
+          `réglages par défaut, et une copie de l’ancien a été mise de côté : ${abri}`
+        : 'Le fichier de réglages était illisible et n’a pas pu être sauvegardé. ' +
+          'Zotijean est reparti sur les réglages par défaut.',
+    };
+    journal.avertir(configIllisible.message);
+  });
+
   cache = assainir(fusionner(configParDéfaut(), chargé));
   return cache;
 }
