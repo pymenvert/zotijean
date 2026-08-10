@@ -224,7 +224,12 @@ test('convertir ne régénère jamais un fichier existant', async () => {
     fs.writeFileSync(source, 'x'.repeat(5_000_000));
     fs.writeFileSync(cible, 'DEJA ANALYSE PAR SERATO');
 
-    const résultat = await convertir({ source, format: 'flac' });
+    // On passe volontairement un ffmpeg inexistant : le refus de régénérer doit
+    // se décider AVANT toute dépendance externe. Sans cet ordre, une machine
+    // sans ffmpeg signalerait une erreur pour chaque morceau déjà converti.
+    const résultat = await convertir({
+      source, format: 'flac', ffmpeg: path.join(racine, 'ffmpeg-absent'),
+    });
 
     assert.equal(résultat.réussi, true);
     assert.ok(résultat.ignoré, 'le fichier existant aurait été régénéré');

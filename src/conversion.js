@@ -162,22 +162,16 @@ export async function convertir({ source, format, dossierSortie = null, ffmpeg =
   const profil = PROFILS[format];
   if (!profil) throw new Error(`Format de conversion inconnu : ${format}`);
 
-  const binaire = ffmpeg || trouverExécutable('ffmpeg');
-  if (!binaire) {
-    return {
-      réussi: false,
-      raison:
-        'ffmpeg est introuvable, la conversion est impossible. Le fichier d’origine ' +
-        'est conservé intact.',
-    };
-  }
-
   const base = path.basename(source, path.extname(source));
   const dossier = dossierSortie || path.dirname(source);
   assurerDossier(dossier);
 
   const destination = path.join(dossier, `${base}.${profil.extension}`);
 
+  // Les cas où il n'y a RIEN à faire se traitent avant toute autre chose, et
+  // notamment avant de réclamer ffmpeg. Sans cet ordre, une bibliothèque déjà
+  // convertie remonterait une erreur par morceau sur une machine où ffmpeg
+  // manque — alors que tout est en place et qu'aucun travail n'est nécessaire.
   if (path.resolve(destination) === path.resolve(source)) {
     return { réussi: true, destination: source, ignoré: 'source et cible identiques' };
   }
@@ -186,6 +180,16 @@ export async function convertir({ source, format, dossierSortie = null, ffmpeg =
     // logiciel DJ, il porte des points de repère et une grille rythmique qui
     // vivent DANS le fichier. Les écraser détruirait des heures de préparation.
     return { réussi: true, destination, ignoré: 'la cible existe déjà' };
+  }
+
+  const binaire = ffmpeg || trouverExécutable('ffmpeg');
+  if (!binaire) {
+    return {
+      réussi: false,
+      raison:
+        'ffmpeg est introuvable, la conversion est impossible. Le fichier d’origine ' +
+        'est conservé intact.',
+    };
   }
 
   const temporaire = path.join(dossier, `.${base}.${process.pid}.tmp.${profil.extension}`);
