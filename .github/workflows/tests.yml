@@ -52,8 +52,27 @@ jobs:
           done
           echo "Tous les modules se parsent."
 
+      # Les journaux d'exécution de GitHub exigent une connexion, même sur un
+      # dépôt public. Les annotations, elles, sont lisibles par tout le monde et
+      # par l'API. On y recopie donc le détail des échecs : sans ça, une CI rouge
+      # est indiagnosticable depuis un poste qui n'est pas connecté à GitHub.
       - name: Lancer les tests
-        run: node --test
+        shell: bash
+        run: |
+          if node --test --test-reporter=tap > resultat.tap 2>&1; then
+            tail -12 resultat.tap
+            exit 0
+          fi
+
+          echo "--- Rapport complet ---"
+          cat resultat.tap
+
+          resume=$(grep -E "^not ok" resultat.tap | head -15 | sed 's/^/• /')
+          detail=$(grep -A 12 -m 1 "^not ok" resultat.tap)
+          message=$(printf '%s\n\nPremier échec en détail :\n%s' "$resume" "$detail" \
+                    | sed 's/%/%25/g; s/\r/%0D/g' | awk '{printf "%s%%0A", $0}')
+          echo "::error title=Tests en échec sur ${{ matrix.os }}::${message}"
+          exit 1
 
   demarrage:
     name: Démarrage réel — ${{ matrix.os }}
