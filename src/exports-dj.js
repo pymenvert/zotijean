@@ -326,17 +326,33 @@ export async function exporterDepuisConfig(c, { surProgrès = () => {} } = {}) {
   const { cheminRelatif } = await import('./organisation.js');
   const { trouver, FORMATS } = await import('./options.js');
 
+  const { modèleActif } = await import('./organisation.js');
+  const { inventorier } = await import('./zotify.js');
+
   const actives = (c.playlists || []).filter((p) => p.actif);
   const playlists = [];
   let examinés = 0;
+
+  const avecMétadonnéesDe = async (fichiers, nom) => {
+    const résultat = [];
+    for (const fichier of fichiers) {
+      surProgrès({ nom, examinés: ++examinés, fichier: path.basename(fichier) });
+      résultat.push({ chemin: fichier, métadonnées: await lireMétadonnées(fichier) });
+    }
+    return résultat;
+  };
 
   for (const playlist of actives) {
     const cp = configPourPlaylist(c, playlist);
     const format = trouver(FORMATS, cp.qualité.format);
     const nom = playlist.nom || playlist.url.split('/').pop();
 
-    // On reconstitue le dossier de la playlist en rendant le modèle avec son
-    // nom : c'est exactement ce qu'a fait le téléchargement.
+    // Un rangement par artiste, par genre ou par année ne crée AUCUN dossier de
+    // playlist : les morceaux d'une même playlist sont dispersés. Dans ce cas on
+    // ne peut pas reconstituer la playlist à partir du disque, et prétendre le
+    // contraire produirait des crates vides.
+    if (!modèleActif(cp.organisation).includes('{playlist}')) continue;
+
     const exemple = cheminRelatif(
       cp.organisation,
       { playlist: nom, numéro: 1, artiste: 'x', titre: 'y' },
@@ -347,13 +363,25 @@ export async function exporterDepuisConfig(c, { surProgrès = () => {} } = {}) {
 
     if (!fichiers.length) continue;
 
-    const avecMétadonnées = [];
-    for (const fichier of fichiers) {
-      surProgrès({ nom, examinés: ++examinés, fichier: path.basename(fichier) });
-      avecMétadonnées.push({ chemin: fichier, métadonnées: await lireMétadonnées(fichier) });
-    }
+    playlists.push({ nom, dossier, fichiers: await avecMétadonnéesDe(fichiers, nom) });
+  }
 
-    playlists.push({ nom, dossier, fichiers: avecMétadonnées });
+  // Aucune playlist reconstituable : le rangement choisi ne les matérialise pas
+  // en dossiers. Plutôt que de ne rien exporter, on envoie toute la
+  // bibliothèque en une seule liste — c'est ce qui rend service, et le nom dit
+  // clairement ce que c'est.
+  if (playlists.length === 0 && actives.length > 0) {
+    const tous = [...inventorier(c.général.dossierMusique).values()]
+      .map((f) => f.chemin)
+      .sort((a, b) => a.localeCompare(b, 'fr', { numeric: true }));
+
+    if (tous.length) {
+      playlists.push({
+        nom: 'Bibliothèque Zotijean',
+        dossier: c.général.dossierMusique,
+        fichiers: await avecMétadonnéesDe(tous, 'Bibliothèque Zotijean'),
+      });
+    }
   }
 
   if (!playlists.length) {
