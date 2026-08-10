@@ -13,6 +13,7 @@ import { spawn } from 'node:child_process';
 import { config } from './src/config.js';
 import { journal } from './src/journal.js';
 import { routes, ErreurRequête } from './src/api.js';
+import { refuser, ENTÊTES_SÉCURITÉ } from './src/securite.js';
 import { diagnostiquer } from './src/diagnostic.js';
 import * as synchro from './src/synchronisation.js';
 import * as planificateur from './src/planificateur.js';
@@ -37,6 +38,7 @@ const TYPES_MIME = {
 function répondreJSON(réponse, données, statut = 200) {
   const corps = JSON.stringify(données ?? null);
   réponse.writeHead(statut, {
+    ...ENTÊTES_SÉCURITÉ,
     'Content-Type': 'application/json; charset=utf-8',
     'Content-Length': Buffer.byteLength(corps),
     'Cache-Control': 'no-store',
@@ -89,6 +91,7 @@ function servirStatique(chemin, réponse) {
       return;
     }
     réponse.writeHead(200, {
+      ...ENTÊTES_SÉCURITÉ,
       'Content-Type': TYPES_MIME[path.extname(complet).toLowerCase()] || 'application/octet-stream',
       'Cache-Control': 'no-cache',
     });
@@ -145,7 +148,22 @@ function servirÉvénements(requête, réponse) {
 // Serveur
 // ---------------------------------------------------------------------------
 
-async function traiter(requête, réponse) {
+async function traiter(requête, réponse, port) {
+  // Barrage avant toute autre chose : réattachement DNS et requêtes croisées.
+  // Voir src/securite.js pour le détail des deux attaques visées.
+  const refus = refuser(requête, port);
+  if (refus) {
+    journal.avertir(`Requête refusée par le contrôle d’origine : ${refus}`, {
+      méthode: requête.method,
+      chemin: requête.url,
+    });
+    return répondreJSON(
+      réponse,
+      { erreur: 'Requête refusée : elle ne provient pas de l’interface locale.' },
+      403,
+    );
+  }
+
   const url = new URL(requête.url, 'http://127.0.0.1');
   const chemin = url.pathname;
 
@@ -195,7 +213,7 @@ function lirePortDesArguments() {
 export function démarrer() {
   const c = config();
   const port = lirePortDesArguments() ?? c.général.port;
-  const serveur = http.createServer(traiter);
+  const serveur = http.createServer((requête, réponse) => traiter(requête, réponse, port));
 
   serveur.on('error', (erreur) => {
     if (erreur.code === 'EADDRINUSE') {

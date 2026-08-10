@@ -41,7 +41,26 @@ function assurerFlux() {
 
   if (fluxFichier) fluxFichier.end();
   const dossier = assurerDossier(dossierJournaux());
-  fluxFichier = fs.createWriteStream(path.join(dossier, `${jour}.log`), { flags: 'a' });
+  const flux = fs.createWriteStream(path.join(dossier, `${jour}.log`), { flags: 'a' });
+
+  // INDISPENSABLE. `createWriteStream` ouvre le fichier de façon asynchrone :
+  // une erreur d'ouverture (disque retiré, dossier supprimé, droits refusés)
+  // arrive plus tard sous forme d'événement « error ». Un événement « error »
+  // sans écouteur sur un flux termine le processus Node — l'app entière
+  // s'arrêterait parce qu'elle n'a pas pu écrire une ligne de journal.
+  // On désarme le flux et on continue en mémoire.
+  flux.on('error', (erreur) => {
+    if (fluxFichier === flux) {
+      fluxFichier = null;
+      jourDuFlux = null;
+    }
+    process.stderr.write(
+      `Journalisation sur disque désactivée (${erreur.code || erreur.message}). ` +
+        'L’application continue de fonctionner normalement.\n',
+    );
+  });
+
+  fluxFichier = flux;
   jourDuFlux = jour;
   purgerAnciens(dossier);
   return fluxFichier;
@@ -84,7 +103,7 @@ function écrire(niveau, message, détails) {
   const ligne = `${horodatage(new Date())} [${niveau}] ${message}${suffixe}\n`;
 
   try {
-    assurerFlux().write(ligne);
+    assurerFlux()?.write(ligne);
   } catch {
     // Si le disque refuse l'écriture, on continue en mémoire plutôt que de
     // faire tomber l'app : perdre le journal est moins grave que perdre la sync.

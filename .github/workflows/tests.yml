@@ -1,0 +1,148 @@
+name: Tests
+
+# Le développement se fait sur Windows alors que la cible est macOS. Cette CI
+# est le seul endroit où le code s'exécute réellement sur un Mac avant qu'il
+# n'arrive chez l'utilisateur : elle attrape les différences de séparateur de
+# chemin, de normalisation Unicode et de comportement du système de fichiers que
+# le poste de développement ne peut pas révéler.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  tests:
+    name: Tests — ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # Aucune dépendance npm : il n'y a rien à installer, donc rien à mettre
+      # en cache. Si un `npm install` devient nécessaire un jour, c'est que le
+      # principe « zéro dépendance » a été abandonné — le vérifier explicitement.
+      - name: Vérifier l'absence de dépendances
+        shell: bash
+        run: |
+          if [ -d node_modules ]; then
+            echo "node_modules ne doit pas être versionné." && exit 1
+          fi
+          node -e "
+            const p = require('./package.json');
+            const n = Object.keys(p.dependencies||{}).length + Object.keys(p.devDependencies||{}).length;
+            if (n > 0) { console.error('Dépendances introuvables dans le principe du projet :', n); process.exit(1); }
+            console.log('Zéro dépendance : conforme.');
+          "
+
+      - name: Vérifier la syntaxe de chaque module
+        shell: bash
+        run: |
+          for fichier in server.js src/*.js; do
+            node --check "$fichier" || exit 1
+          done
+          echo "Tous les modules se parsent."
+
+      - name: Lancer les tests
+        run: node --test
+
+  demarrage:
+    name: Démarrage réel — ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # Les tests unitaires ne lancent jamais le serveur. Ce travail vérifie que
+      # l'app démarre vraiment, sert son interface et répond à son API — c'est ce
+      # qui attrape un import cassé ou un chemin qui n'existe que sur Windows.
+      - name: Démarrer le serveur et interroger l'API
+        shell: bash
+        env:
+          ZOTIJEAN_DONNEES: ${{ runner.temp }}/zotijean
+        run: |
+          node server.js --port 8799 --sans-navigateur &
+          PID=$!
+
+          for tentative in $(seq 1 30); do
+            if curl -sf -o /dev/null "http://127.0.0.1:8799/api/tableau-de-bord"; then
+              break
+            fi
+            sleep 1
+          done
+
+          echo "--- L'interface est servie ---"
+          curl -sf "http://127.0.0.1:8799/" | grep -q "Zotijean" || { echo "Interface absente"; exit 1; }
+
+          echo "--- L'API répond ---"
+          curl -sf "http://127.0.0.1:8799/api/catalogue" | node -e "
+            let d=''; process.stdin.on('data',c=>d+=c).on('end',()=>{
+              const c = JSON.parse(d);
+              if (!c.schémas?.length) { console.error('Catalogue vide'); process.exit(1); }
+              // Chaque option doit porter son explication : c'est une règle du
+              // projet, pas un détail cosmétique.
+              for (const groupe of ['schémas','formats','qualités','rythmes','politiquesRetrait']) {
+                for (const option of c[groupe]) {
+                  if (groupe !== 'intervalles' && !option.explication) {
+                    console.error('Option sans explication :', groupe, option.id); process.exit(1);
+                  }
+                }
+              }
+              console.log('Catalogue conforme :', c.schémas.length, 'schémas de rangement.');
+            });
+          "
+
+          echo "--- Une requête croisée est refusée ---"
+          code=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+            -H "Origin: https://site-malveillant.example" \
+            "http://127.0.0.1:8799/api/synchroniser")
+          if [ "$code" != "403" ]; then
+            echo "Attendu 403, obtenu $code — la protection contre les requêtes croisées ne fonctionne pas."
+            exit 1
+          fi
+
+          echo "--- Un faux en-tête Host est refusé ---"
+          code=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Host: evil.example" \
+            "http://127.0.0.1:8799/api/config")
+          if [ "$code" != "403" ]; then
+            echo "Attendu 403, obtenu $code — la protection contre le réattachement DNS ne fonctionne pas."
+            exit 1
+          fi
+
+          kill $PID 2>/dev/null || true
+          echo "Démarrage vérifié."
+
+      - name: Vérifier que le lanceur macOS est exécutable et en LF
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          # Un script en CRLF échoue avec « bad interpreter: /bin/bash^M » et le
+          # lanceur ne démarre tout simplement pas. Ce contrôle est la seule
+          # façon de s'en apercevoir depuis un poste de développement Windows.
+          if grep -q $'\r' "Zotijean - Mac.command"; then
+            echo "Le lanceur contient des retours chariot : il ne démarrera pas sur macOS."
+            exit 1
+          fi
+          if [ ! -x "Zotijean - Mac.command" ]; then
+            echo "Le lanceur n'est pas exécutable : le double-clic ne fonctionnera pas."
+            exit 1
+          fi
+          bash -n "Zotijean - Mac.command"
+          echo "Lanceur macOS conforme."

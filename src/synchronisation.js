@@ -18,12 +18,16 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { config, attenteEffective } from './config.js';
+import { config, attenteEffective, modifier as modifierConfig } from './config.js';
 import { fichierVerrou, assurerDossier, dossierDonnées, volumeMonté } from './chemins.js';
 import { journal } from './journal.js';
 import { diagnostiquer, GRAVITÉ } from './diagnostic.js';
 import { construireArguments, télécharger } from './zotify.js';
 import { modèleActif } from './organisation.js';
+import { nécessiteConversion, convertirLot, PROFILS } from './conversion.js';
+import {
+  écrireListeLecture, listerAudio, dossierCommun, déduireNomPlaylist,
+} from './bibliotheque.js';
 import * as étatModule from './etat.js';
 
 // ---------------------------------------------------------------------------
@@ -170,6 +174,7 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
     début: début.toISOString(),
     playlists: [],
     nbFichiers: 0,
+    nbConvertis: 0,
     nbErreurs: 0,
     interrompu: false,
     réglagesNonAppliqués: [],
@@ -221,9 +226,17 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
         total: playlists.length,
       });
 
+      // On demande TOUJOURS le fichier d'origine à zotify, et on convertit
+      // nous-mêmes ensuite. Sa commande ffmpeg ne reporte ni les métadonnées, ni
+      // la pochette, et ne contrôle pas le dither : elle produit des fichiers
+      // lisibles mais nus. Voir src/conversion.js.
+      const configPourZotify = nécessiteConversion(c.qualité.format)
+        ? { ...c, qualité: { ...c.qualité, format: 'copie' } }
+        : c;
+
       const { arguments: args, nonAppliqués } = construireArguments({
         url: playlist.url,
-        config: c,
+        config: configPourZotify,
         attente,
         capacités,
         modèle,
@@ -258,15 +271,42 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
       bilan.nbErreurs += résultat.erreurs?.length ?? 0;
       if (résultat.interrompu) bilan.interrompu = true;
 
+      const aprèsTéléchargement = await finaliserPlaylist({
+        config: c,
+        playlist,
+        racine,
+        nouveaux: (résultat.nouveaux ?? []).map((f) => f.chemin),
+        signalArrêt: courante.contrôleur.signal,
+        surProgrès: (progrès) => {
+          courante.dernièreLigne =
+            `Conversion ${progrès.index}/${progrès.total} — ${progrès.nom}`;
+          diffuser({ type: 'ligne', texte: courante.dernièreLigne, playlist: courante.playlistActuelle });
+        },
+      });
+
+      bilan.nbConvertis += aprèsTéléchargement.nbConvertis;
+      bilan.nbErreurs += aprèsTéléchargement.échecsConversion.length;
+
       bilan.playlists.push({
         id: playlist.id,
-        nom: courante.playlistActuelle,
+        nom: aprèsTéléchargement.nom || courante.playlistActuelle,
         nbFichiers: nbNouveaux,
+        nbConvertis: aprèsTéléchargement.nbConvertis,
         nbSuspects: résultat.suspects?.length ?? 0,
         nbErreurs: résultat.erreurs?.length ?? 0,
         duréeMs: résultat.duréeMs,
         échec: résultat.lancé ? null : résultat.erreur,
       });
+
+      // Le nom déduit du dossier créé est le seul vrai nom de playlist dont on
+      // dispose sans l'API Web de Spotify : on le mémorise pour l'afficher à la
+      // place du fragment d'URL.
+      if (aprèsTéléchargement.nom && !playlist.nom) {
+        const àJour = config().playlists.map((p) =>
+          p.id === playlist.id ? { ...p, nom: aprèsTéléchargement.nom } : p,
+        );
+        modifierConfig({ playlists: àJour });
+      }
 
       const infos = étatModule.infosPlaylist(playlist.id) || {};
       étatModule.majPlaylist(playlist.id, {
@@ -309,6 +349,73 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
     courante = null;
     rendreVerrou();
   }
+}
+
+/**
+ * Travail d'après-téléchargement pour une playlist : conversion de format,
+ * liste de lecture, et déduction du vrai nom.
+ *
+ * Isolée pour être testable sans lancer zotify, et parce que c'est ici que se
+ * concentrent les opérations qui touchent aux fichiers de l'utilisateur.
+ */
+export async function finaliserPlaylist({
+  config: c, playlist, racine, nouveaux, signalArrêt = null, surProgrès = () => {},
+}) {
+  const résultat = { nom: null, nbConvertis: 0, échecsConversion: [], listeLecture: null };
+
+  if (!nouveaux.length) return résultat;
+
+  résultat.nom = déduireNomPlaylist(nouveaux, racine);
+
+  // --- Conversion ------------------------------------------------------
+  let fichiersFinaux = nouveaux;
+
+  if (nécessiteConversion(c.qualité.format)) {
+    const bilan = await convertirLot({
+      fichiers: nouveaux,
+      format: c.qualité.format,
+      surProgrès,
+      signalArrêt,
+    });
+
+    résultat.nbConvertis = bilan.convertis.length;
+    résultat.échecsConversion = bilan.échecs;
+
+    if (bilan.échecs.length) {
+      journal.avertir(
+        `${bilan.échecs.length} conversion(s) ont échoué. Les fichiers d'origine sont ` +
+          'conservés intacts : rien n’est perdu.',
+      );
+    }
+
+    // Les sources restent sur disque : c'est volontaire. Un Ogg d'origine permet
+    // de re-dériver n'importe quelle cible plus tard sans retélécharger, ce qui
+    // vaut cher quand un rattrapage complet prend 17 heures.
+    fichiersFinaux = bilan.convertis.map((c2) => c2.destination);
+    if (fichiersFinaux.length === 0) fichiersFinaux = nouveaux;
+  }
+
+  // --- Liste de lecture ------------------------------------------------
+  if (c.organisation.écrireM3U) {
+    const dossier = dossierCommun(fichiersFinaux);
+    // On n'écrit une liste que si tous les fichiers partagent un dossier :
+    // avec un rangement par artiste ou par genre, une liste par playlist n'aurait
+    // pas de dossier évident où atterrir.
+    if (dossier) {
+      const nom = résultat.nom || playlist.nom || 'Playlist';
+      try {
+        résultat.listeLecture = écrireListeLecture({
+          destination: path.join(dossier, `${nom}.m3u8`),
+          fichiers: listerAudio(dossier),
+          titre: nom,
+        });
+      } catch (erreur) {
+        journal.avertir('La liste de lecture n’a pas pu être écrite.', erreur.message);
+      }
+    }
+  }
+
+  return résultat;
 }
 
 /**

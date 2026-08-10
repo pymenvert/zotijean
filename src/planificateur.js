@@ -132,7 +132,9 @@ export function évaluer(config, contexte = {}, maintenant = new Date()) {
 
 /** « il y a 3 heures », « il y a 2 jours » — jamais un nombre de secondes brut. */
 export function duréeEnFrançais(millisecondes) {
-  const minutes = Math.round(Math.abs(millisecondes) / 60000);
+  // Troncature et non arrondi : avec `Math.round`, 30 secondes deviendraient
+  // « 1 minute », ce qui laisse croire à une précision qu'on n'a pas.
+  const minutes = Math.floor(Math.abs(millisecondes) / 60000);
   if (minutes < 1) return 'moins d’une minute';
   if (minutes < 60) return `${minutes} minute${minutes > 1 ? 's' : ''}`;
 

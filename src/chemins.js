@@ -10,8 +10,16 @@ import fs from 'node:fs';
 
 const NOM_APP = 'Zotijean';
 
-/** Dossier où vivent la configuration, l'état et les journaux. */
+/**
+ * Dossier où vivent la configuration, l'état et les journaux.
+ *
+ * La variable d'environnement ZOTIJEAN_DONNEES a la priorité. Elle sert à deux
+ * choses : isoler chaque test dans un dossier temporaire, et permettre une
+ * installation portable où tout tient dans un seul dossier qu'on déplace.
+ */
 export function dossierDonnées() {
+  if (process.env.ZOTIJEAN_DONNEES) return path.resolve(process.env.ZOTIJEAN_DONNEES);
+
   const maison = os.homedir();
   switch (process.platform) {
     case 'darwin':

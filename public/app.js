@@ -13,9 +13,15 @@ const état = {
 // ---------------------------------------------------------------- Réseau
 
 async function appeler(méthode, chemin, corps) {
+  // L'en-tête X-Zotijean est notre marqueur d'origine locale : un site tiers ne
+  // peut pas le poser sans déclencher un contrôle préalable que le serveur ne
+  // valide jamais. Voir src/securite.js.
   const réponse = await fetch(chemin, {
     method: méthode,
-    headers: corps ? { 'Content-Type': 'application/json' } : undefined,
+    headers: {
+      'X-Zotijean': 'local',
+      ...(corps ? { 'Content-Type': 'application/json' } : {}),
+    },
     body: corps ? JSON.stringify(corps) : undefined,
   });
   const données = await réponse.json().catch(() => ({}));
