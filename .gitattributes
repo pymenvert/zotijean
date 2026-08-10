@@ -1,0 +1,20 @@
+# Le développement se fait sur Windows, la cible est macOS. Sans cette
+# normalisation, Git convertit les fichiers en CRLF au moment du checkout, et
+# un script shell en CRLF échoue sur macOS avec « bad interpreter: /bin/bash^M ».
+# Le lanceur ne démarrerait tout simplement pas.
+
+* text=auto eol=lf
+
+# Les scripts de lancement macOS DOIVENT rester en LF.
+*.command   text eol=lf
+*.sh        text eol=lf
+
+# Les fichiers de commandes Windows, eux, veulent des CRLF.
+*.bat       text eol=crlf
+*.cmd       text eol=crlf
+
+# Binaires : ne jamais toucher.
+*.png       binary
+*.jpg       binary
+*.ico       binary
+*.pdf       binary
