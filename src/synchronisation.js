@@ -25,6 +25,7 @@ import { diagnostiquer, GRAVITÉ } from './diagnostic.js';
 import { construireArguments, télécharger } from './zotify.js';
 import { modèleActif } from './organisation.js';
 import { nécessiteConversion, convertirLot, PROFILS } from './conversion.js';
+import { exporterDepuisConfig } from './exports-dj.js';
 import {
   écrireListeLecture, listerAudio, dossierCommun, déduireNomPlaylist,
 } from './bibliotheque.js';
@@ -333,6 +334,28 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
         nom: courante.playlistActuelle,
         nbFichiers: nbNouveaux,
       });
+    }
+
+    // --- Exports vers les logiciels DJ -----------------------------------
+    // Après la boucle, et seulement si des fichiers sont apparus : régénérer les
+    // exports quand rien n'a changé ferait relire toute la bibliothèque pour
+    // produire un fichier identique.
+    if (c.exportsDJ?.automatique && bilan.nbFichiers > 0 && !bilan.interrompu) {
+      diffuser({ type: 'ligne', texte: 'Mise à jour des exports DJ…' });
+      try {
+        const exports = await exporterDepuisConfig(c);
+        bilan.exportsDJ = {
+          rekordbox: exports.rekordbox,
+          serato: exports.serato,
+          avertissements: exports.avertissements,
+        };
+        for (const avertissement of exports.avertissements || []) {
+          journal.avertir(avertissement);
+        }
+      } catch (erreur) {
+        journal.avertir('Les exports DJ ont échoué.', erreur.message);
+        bilan.exportsDJ = { avertissements: [erreur.message] };
+      }
     }
 
     bilan.fin = new Date().toISOString();

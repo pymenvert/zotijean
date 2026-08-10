@@ -262,6 +262,44 @@
         <div id="choix-intervalle" class="choix compact"></div>
         <div class="note" id="note-planification"></div>
       </div>
+
+      <div class="carte">
+        <h2>Quand ne pas télécharger</h2>
+        <label class="bascule">
+          <input type="checkbox" id="bascule-heures-calmes">
+          <span class="curseur"></span>
+          <span class="bascule-texte">
+            <strong>Respecter des heures calmes</strong>
+            <em>Aucun téléchargement pendant la plage choisie. La vérification reprend juste après.</em>
+          </span>
+        </label>
+        <div class="surcharge-ligne" id="plage-heures-calmes" hidden>
+          <label for="heure-debut">De</label>
+          <input type="text" id="heure-debut" placeholder="23:00" style="max-width:90px">
+          <label for="heure-fin" style="flex:0 0 auto">à</label>
+          <input type="text" id="heure-fin" placeholder="08:00" style="max-width:90px">
+        </div>
+
+        <label class="bascule">
+          <input type="checkbox" id="bascule-secteur">
+          <span class="curseur"></span>
+          <span class="bascule-texte">
+            <strong>Seulement branché sur secteur</strong>
+            <em>Un rattrapage de plusieurs heures viderait la batterie d’un portable.</em>
+          </span>
+        </label>
+
+        <label class="bascule">
+          <input type="checkbox" id="bascule-wifi">
+          <span class="curseur"></span>
+          <span class="bascule-texte">
+            <strong>Seulement en Wi-Fi ou Ethernet</strong>
+            <em>Évite de consommer un forfait mobile en partage de connexion.</em>
+          </span>
+        </label>
+
+        <div class="note" id="note-conditions"></div>
+      </div>
       <div class="carte">
         <h2>Rythme de téléchargement</h2>
         <div id="choix-rythme" class="choix"></div>

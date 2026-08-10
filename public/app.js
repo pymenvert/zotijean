@@ -501,6 +501,20 @@ function rendrePlanification() {
       },
     })));
 
+  const planif = état.config.planification;
+  $('#bascule-heures-calmes').checked = !!planif.heuresCalmes?.actif;
+  $('#plage-heures-calmes').hidden = !planif.heuresCalmes?.actif;
+  $('#heure-debut').value = planif.heuresCalmes?.début || '23:00';
+  $('#heure-fin').value = planif.heuresCalmes?.fin || '08:00';
+  $('#bascule-secteur').checked = !!planif.uniquementSurSecteur;
+  $('#bascule-wifi').checked = !!planif.uniquementEnWifi;
+
+  $('#note-conditions').textContent =
+    'Une condition non remplie reporte la vérification, elle ne la saute pas : ' +
+    'dès que la condition redevient vraie, le téléchargement part. L’état du secteur ' +
+    'et du réseau est lu par la coquille macOS ; lancée seule depuis le Terminal, ' +
+    'l’app considère les deux comme disponibles.';
+
   remplir($('#choix-retrait'), politiquesRetrait.map((p) =>
     fabriquerOption({
       ...p,
@@ -693,6 +707,54 @@ $('#btn-export-dj').addEventListener('click', async () => {
 
 $('#bascule-export-auto').addEventListener('change', async (événement) => {
   await enregistrerConfig({ exportsDJ: { automatique: événement.target.checked } });
+});
+
+$('#bascule-heures-calmes').addEventListener('change', async (événement) => {
+  const actif = événement.target.checked;
+  $('#plage-heures-calmes').hidden = !actif;
+  await enregistrerConfig({
+    planification: {
+      ...état.config.planification,
+      heuresCalmes: { ...état.config.planification.heuresCalmes, actif },
+    },
+  });
+});
+
+/** « 23:00 », « 23h », « 9 » — on accepte ce que les gens tapent vraiment. */
+function normaliserHeure(saisie) {
+  const texte = String(saisie).trim().replace(/\s/g, '').replace(/h/i, ':');
+  const correspondance = texte.match(/^(\d{1,2})(?::(\d{1,2}))?:?$/);
+  if (!correspondance) return null;
+  const heures = Number(correspondance[1]);
+  const minutes = Number(correspondance[2] || 0);
+  if (heures > 23 || minutes > 59) return null;
+  return `${String(heures).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
+for (const [champ, clé] of [['#heure-debut', 'début'], ['#heure-fin', 'fin']]) {
+  $(champ).addEventListener('change', async (événement) => {
+    const normalisée = normaliserHeure(événement.target.value);
+    if (!normalisée) {
+      noter('Heure non comprise. Écrivez par exemple 23:00 ou 8h30.', 'erreur');
+      événement.target.value = état.config.planification.heuresCalmes[clé];
+      return;
+    }
+    événement.target.value = normalisée;
+    await enregistrerConfig({
+      planification: {
+        ...état.config.planification,
+        heuresCalmes: { ...état.config.planification.heuresCalmes, [clé]: normalisée },
+      },
+    });
+  });
+}
+
+$('#bascule-secteur').addEventListener('change', async (événement) => {
+  await enregistrerConfig({ planification: { uniquementSurSecteur: événement.target.checked } });
+});
+
+$('#bascule-wifi').addEventListener('change', async (événement) => {
+  await enregistrerConfig({ planification: { uniquementEnWifi: événement.target.checked } });
 });
 
 $('#btn-ouvrir-dossier').addEventListener('click', async () => {
