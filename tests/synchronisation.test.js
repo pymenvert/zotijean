@@ -52,10 +52,29 @@ function fabriquerLanceur(dossier) {
   return chemin;
 }
 
+/**
+ * Un ffmpeg factice, posé dans le PATH le temps des tests.
+ *
+ * Le diagnostic refuse — à raison — de synchroniser sans ffmpeg : son absence
+ * fait détruire des morceaux en silence. Mais ces tests utilisent le format
+ * « copie », donc ils ne convertissent rien : ils n'ont pas à dépendre de la
+ * présence réelle de ffmpeg sur la machine, qui manque notamment sur les
+ * serveurs macOS d'intégration continue. On satisfait donc la vérification sans
+ * prétendre tester la conversion, qui a ses propres tests.
+ */
+function poserFfmpegFactice(dossier) {
+  const chemin = path.join(dossier, 'ffmpeg');
+  fs.writeFileSync(chemin, '#!/bin/sh\necho "ffmpeg version 7.1 (factice)"\nexit 0\n');
+  fs.chmodSync(chemin, 0o755);
+  process.env.PATH = `${dossier}${path.delimiter}${process.env.PATH}`;
+  return chemin;
+}
+
 function préparer(surcharges = {}) {
   const musique = fs.mkdtempSync(path.join(os.tmpdir(), 'zotijean-musique-'));
   const outils = fs.mkdtempSync(path.join(os.tmpdir(), 'zotijean-outils-'));
   const lanceur = fabriquerLanceur(outils);
+  poserFfmpegFactice(outils);
 
   recharger();
   enregistrer({
