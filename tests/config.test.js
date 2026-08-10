@@ -15,7 +15,7 @@ import path from 'node:path';
 const DOSSIER = fs.mkdtempSync(path.join(os.tmpdir(), 'zotijean-config-'));
 process.env.ZOTIJEAN_DONNEES = DOSSIER;
 
-const { config, enregistrer, modifier, recharger, attenteEffective } =
+const { config, enregistrer, modifier, recharger, attenteEffective, configPourPlaylist } =
   await import('../src/config.js');
 const { fichierConfig } = await import('../src/chemins.js');
 const { analyserLienSpotify } = await import('../src/api.js');
@@ -188,6 +188,87 @@ test('le rythme personnalisé utilise la valeur brute', () => {
     rythme: { préréglage: 'personnalise', attenteEntreTitres: 17 },
   }));
   assert.equal(attenteEffective(c), 17);
+});
+
+// ---------------------------------------------------------------------------
+// Surcharges par playlist
+// ---------------------------------------------------------------------------
+
+test('sans surcharge, la configuration générale est renvoyée telle quelle', () => {
+  const c = recharger();
+  const playlist = { id: '1', url: 'u', remplacements: {} };
+  // Identité stricte : pas de copie inutile, donc pas de divergence possible.
+  assert.equal(configPourPlaylist(c, playlist), c);
+  assert.equal(configPourPlaylist(c, { id: '1', url: 'u' }), c);
+});
+
+test('une surcharge ne modifie que le champ concerné', () => {
+  const c = recharger();
+  const fusionnée = configPourPlaylist(c, {
+    id: '1', url: 'u', remplacements: { format: 'flac' },
+  });
+
+  assert.equal(fusionnée.qualité.format, 'flac');
+  assert.equal(fusionnée.qualité.niveau, c.qualité.niveau, 'la qualité a bougé');
+  assert.equal(fusionnée.organisation.schéma, c.organisation.schéma);
+  assert.equal(fusionnée.général.dossierMusique, c.général.dossierMusique);
+});
+
+test('la surcharge ne contamine jamais la configuration générale', () => {
+  // Le piège classique : une fusion superficielle partage les sous-objets, et
+  // régler une playlist en FLAC ferait passer TOUTE la bibliothèque en FLAC.
+  const c = recharger();
+  const formatInitial = c.qualité.format;
+  configPourPlaylist(c, { id: '1', url: 'u', remplacements: { format: 'aiff' } });
+  assert.equal(c.qualité.format, formatInitial, 'la configuration générale a été modifiée');
+});
+
+test('plusieurs surcharges se cumulent', () => {
+  const c = recharger();
+  const fusionnée = configPourPlaylist(c, {
+    id: '1', url: 'u',
+    remplacements: { format: 'flac', niveau: 'elevee', schéma: 'plat' },
+  });
+  assert.equal(fusionnée.qualité.format, 'flac');
+  assert.equal(fusionnée.qualité.niveau, 'elevee');
+  assert.equal(fusionnée.organisation.schéma, 'plat');
+});
+
+test('une surcharge invalide est ignorée plutôt que d’être appliquée', () => {
+  const c = recharger();
+  const fusionnée = configPourPlaylist(c, {
+    id: '1', url: 'u', remplacements: { format: 'wma', niveau: 'ultra' },
+  });
+  assert.equal(fusionnée.qualité.format, c.qualité.format);
+  assert.equal(fusionnée.qualité.niveau, c.qualité.niveau);
+});
+
+test('un schéma personnalisé sans modèle ne remplace pas le schéma général', () => {
+  // Sinon tous les fichiers de cette playlist porteraient le même nom et
+  // s'écraseraient les uns les autres.
+  const c = recharger();
+  const fusionnée = configPourPlaylist(c, {
+    id: '1', url: 'u', remplacements: { schéma: 'personnalise', modèlePersonnalisé: '  ' },
+  });
+  assert.equal(fusionnée.organisation.schéma, c.organisation.schéma);
+});
+
+test('un schéma personnalisé avec modèle est bien appliqué', () => {
+  const c = recharger();
+  const fusionnée = configPourPlaylist(c, {
+    id: '1', url: 'u',
+    remplacements: { schéma: 'personnalise', modèlePersonnalisé: '{genre}/{titre}' },
+  });
+  assert.equal(fusionnée.organisation.schéma, 'personnalise');
+  assert.equal(fusionnée.organisation.modèlePersonnalisé, '{genre}/{titre}');
+});
+
+test('le dossier peut être surchargé par playlist', () => {
+  const c = recharger();
+  const fusionnée = configPourPlaylist(c, {
+    id: '1', url: 'u', remplacements: { dossierMusique: '/Volumes/DJ-SSD/Sets' },
+  });
+  assert.equal(fusionnée.général.dossierMusique, '/Volumes/DJ-SSD/Sets');
 });
 
 // ---------------------------------------------------------------------------
