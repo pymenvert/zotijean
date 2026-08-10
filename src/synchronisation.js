@@ -178,6 +178,9 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
     nbErreurs: 0,
     interrompu: false,
     réglagesNonAppliqués: [],
+    // Conservées brutes pour que l'historique puisse les regrouper et les
+    // traduire plus tard, sans figer la formulation au moment de l'exécution.
+    lignesErreur: [],
   };
 
   try {
@@ -193,8 +196,6 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
     }
 
     const capacités = rapport.contrôles.find((x) => x.id === 'zotify');
-    const racine = c.général.dossierMusique;
-    const modèle = modèleZotify(c);
     const attente = attenteEffective(c);
 
     const playlists = (c.playlists || []).filter(
@@ -208,6 +209,12 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
         bilan.interrompu = true;
         break;
       }
+
+      // Réglages effectifs de CETTE playlist : elle peut surcharger le dossier,
+      // la qualité, le format et le schéma de rangement.
+      const cp = configPourPlaylist(c, playlist);
+      const racine = cp.général.dossierMusique;
+      const modèle = modèleZotify(cp);
 
       // Le disque peut être débranché en cours d'exécution.
       if (!volumeMonté(racine)) {
@@ -230,9 +237,9 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
       // nous-mêmes ensuite. Sa commande ffmpeg ne reporte ni les métadonnées, ni
       // la pochette, et ne contrôle pas le dither : elle produit des fichiers
       // lisibles mais nus. Voir src/conversion.js.
-      const configPourZotify = nécessiteConversion(c.qualité.format)
-        ? { ...c, qualité: { ...c.qualité, format: 'copie' } }
-        : c;
+      const configPourZotify = nécessiteConversion(cp.qualité.format)
+        ? { ...cp, qualité: { ...cp.qualité, format: 'copie' } }
+        : cp;
 
       const { arguments: args, nonAppliqués } = construireArguments({
         url: playlist.url,
@@ -271,8 +278,14 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
       bilan.nbErreurs += résultat.erreurs?.length ?? 0;
       if (résultat.interrompu) bilan.interrompu = true;
 
+      for (const erreur of résultat.erreurs ?? []) {
+        // Plafonné : une playlist qui échoue en boucle ne doit pas faire enfler
+        // le fichier d'état jusqu'à le rendre illisible.
+        if (bilan.lignesErreur.length < 200) bilan.lignesErreur.push(erreur.texte);
+      }
+
       const aprèsTéléchargement = await finaliserPlaylist({
-        config: c,
+        config: cp,
         playlist,
         racine,
         nouveaux: (résultat.nouveaux ?? []).map((f) => f.chemin),

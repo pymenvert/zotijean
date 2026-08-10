@@ -310,6 +310,37 @@ export const NOTE_PLANIFICATION =
   "se fige pendant la veille et dériverait de plusieurs heures par semaine.";
 
 // ---------------------------------------------------------------------------
+// Exports vers les logiciels DJ
+// ---------------------------------------------------------------------------
+
+export const EXPORTS_DJ = [
+  {
+    id: 'rekordbox',
+    libellé: 'Rekordbox',
+    explication:
+      "Écrit un fichier « rekordbox.xml » que vous importez une fois : Préférences > " +
+      "Avancé > Base de données > rekordbox xml > Ajouter une bibliothèque. Vos playlists " +
+      "Spotify y apparaissent, prêtes à glisser dans votre collection. Bonus : le fichier " +
+      "transporte la tonalité, le label et le remixeur, que Rekordbox ne lirait jamais " +
+      "depuis les fichiers eux-mêmes.",
+  },
+  {
+    id: 'serato',
+    libellé: 'Serato DJ',
+    explication:
+      "Écrit directement les crates, une par playlist. Attention : Serato doit être " +
+      "complètement fermé pendant l'écriture, sinon il réécrit ses propres fichiers en " +
+      "quittant et efface tout. Zotijean vérifie et refuse d'écrire s'il tourne.",
+  },
+];
+
+export const NOTE_EXPORTS_DJ =
+  "Ni Rekordbox ni Serato n'ont de dossier surveillé : rien n'apparaît tout seul dans " +
+  "leur bibliothèque, il faut importer une fois. Et sachez que Rekordbox ignore " +
+  "totalement le tempo écrit dans les fichiers — il impose toujours sa propre analyse. " +
+  "La tonalité, elle, passe bien.";
+
+// ---------------------------------------------------------------------------
 // Valeurs par défaut de la configuration
 // ---------------------------------------------------------------------------
 
@@ -350,6 +381,11 @@ export function configParDéfaut() {
     retrait: {
       politique: 'conserver',
     },
+    exportsDJ: {
+      rekordbox: false,
+      serato: false,
+      automatique: false,
+    },
     gardes: {
       espaceMinimumGo: 2,
       margeParTitreMo: 12,
@@ -375,5 +411,7 @@ export function catalogueComplet() {
     rythmes: RYTHMES,
     intervalles: INTERVALLES,
     notePlanification: NOTE_PLANIFICATION,
+    exportsDJ: EXPORTS_DJ,
+    noteExportsDJ: NOTE_EXPORTS_DJ,
   };
 }

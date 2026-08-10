@@ -13,6 +13,9 @@ import { journal } from './journal.js';
 import * as synchro from './synchronisation.js';
 import * as étatModule from './etat.js';
 import { évaluer, prochaineÉchéance, formaterÉchéance, duréeEnFrançais } from './planificateur.js';
+import { simuler } from './simulation.js';
+import { exporterDepuisConfig } from './exports-dj.js';
+import { synthétiser } from './erreurs.js';
 
 const NOMS_VARIABLES = VARIABLES.map((v) => v.nom);
 
@@ -229,6 +232,16 @@ export const routes = {
 
   'GET /api/diagnostic': async () => diagnostiquer(config()),
 
+  'GET /api/simulation': async () => simuler(),
+
+  'POST /api/export-dj': async () => {
+    const résultat = await exporterDepuisConfig(config());
+    if (!résultat.rekordbox && !résultat.serato && résultat.avertissements.length) {
+      throw new ErreurRequête(résultat.avertissements.join(' '));
+    }
+    return résultat;
+  },
+
   'POST /api/synchroniser': async (corps) => {
     const résultat = await synchro.synchroniser('manuelle', {
       playlistsCiblées: corps?.playlists ?? null,
@@ -240,7 +253,15 @@ export const routes = {
 
   'GET /api/journal': () => ({ entrées: journal.récent(300) }),
 
-  'GET /api/historique': () => ({ exécutions: étatModule.état().exécutions.slice(0, 20) }),
+  'GET /api/historique': () => ({
+    exécutions: étatModule.état().exécutions.slice(0, 20).map((e) => ({
+      ...e,
+      // Les lignes techniques de zotify sont regroupées et traduites : « 47
+      // erreurs » n'aide personne, « 47 fois : Spotify a refusé de livrer un
+      // morceau — passez le rythme sur Prudent » donne une action.
+      diagnostics: synthétiser(e.lignesErreur || []),
+    })),
+  }),
 
   'POST /api/ouvrir-dossier': () => {
     synchro.ouvrirDossierMusique();

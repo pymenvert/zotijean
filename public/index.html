@@ -53,6 +53,16 @@
     <symbol id="i-ouvrir" viewBox="0 0 24 24">
       <path d="M15 3h6v6M21 3l-9 9M10 5H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5"/>
     </symbol>
+    <symbol id="i-loupe" viewBox="0 0 24 24">
+      <circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>
+    </symbol>
+    <symbol id="i-platine" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/><path d="M17 7l-3 3"/>
+    </symbol>
+    <symbol id="i-reglage" viewBox="0 0 24 24">
+      <path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>
+    </symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
   </defs>
 </svg>
 
@@ -110,6 +120,9 @@
         <p id="heros-detail"></p>
       </div>
       <div class="heros-actions">
+        <button class="bouton" id="btn-simuler" title="Voir ce qui se passerait, sans rien télécharger">
+          <svg class="ic"><use href="#i-loupe"/></svg><span>Simuler</span>
+        </button>
         <button class="bouton primaire" id="btn-synchro" title="Vérifier les playlists et télécharger les nouveaux titres maintenant">
           <svg class="ic"><use href="#i-sync"/></svg><span>Synchroniser</span>
         </button>
@@ -126,6 +139,14 @@
 
     <!-- ACCUEIL -->
     <section class="vue active" data-vue="accueil">
+      <div class="carte carte-simulation" id="carte-simulation" hidden>
+        <div class="entete-carte">
+          <h2>Simulation — rien n’a été téléchargé</h2>
+          <button class="icone-bouton" id="btn-fermer-simulation" title="Fermer la simulation">✕</button>
+        </div>
+        <div id="contenu-simulation"></div>
+      </div>
+
       <div class="grille-cartes" id="cartes-resume"></div>
       <div class="carte">
         <h2>Playlists surveillées</h2>
@@ -204,6 +225,26 @@
           <div id="apercu-lignes"></div>
         </div>
       </div>
+
+      <div class="carte">
+        <div class="entete-carte">
+          <h2>Envoyer vers votre logiciel DJ</h2>
+          <button class="bouton" id="btn-export-dj" title="Générer les fichiers d’import maintenant">
+            <svg class="ic"><use href="#i-platine"/></svg><span>Exporter</span>
+          </button>
+        </div>
+        <div id="choix-exports-dj" class="choix"></div>
+        <label class="bascule">
+          <input type="checkbox" id="bascule-export-auto">
+          <span class="curseur"></span>
+          <span class="bascule-texte">
+            <strong>Exporter après chaque synchronisation</strong>
+            <em>Les fichiers d’import sont régénérés automatiquement. Il reste à les importer une fois dans votre logiciel.</em>
+          </span>
+        </label>
+        <div class="note" id="note-exports-dj"></div>
+        <div id="resultat-export-dj"></div>
+      </div>
     </section>
 
     <!-- PLANIFICATION -->
@@ -258,6 +299,26 @@
     </section>
 
   </main>
+</div>
+
+<!-- Premier lancement : affiché une seule fois, tant qu'il n'est pas terminé. -->
+<div class="accueil-premier" id="onboarding" hidden>
+  <div class="onb-fenetre" role="dialog" aria-modal="true" aria-labelledby="onb-titre">
+    <div class="onb-progres"><span id="onb-jauge"></span></div>
+
+    <div class="onb-corps">
+      <span class="label" id="onb-etape">Étape 1 sur 5</span>
+      <h2 id="onb-titre">Bienvenue</h2>
+      <div id="onb-contenu"></div>
+    </div>
+
+    <div class="onb-pied">
+      <button class="bouton" id="onb-retour">Retour</button>
+      <div class="onb-espace"></div>
+      <button class="lien-discret onb-passer" id="onb-passer">Passer la configuration</button>
+      <button class="bouton primaire" id="onb-suivant">Continuer</button>
+    </div>
+  </div>
 </div>
 
 <div class="notes" id="notes" aria-live="polite"></div>

@@ -120,6 +120,54 @@ export function recharger() {
 }
 
 /**
+ * Réglages effectifs pour une playlist donnée.
+ *
+ * Chaque playlist peut surcharger le dossier, la qualité, le format et le
+ * schéma de rangement. Tout ce qui n'est pas surchargé retombe sur les réglages
+ * généraux — c'est ce qui permet d'avoir une bibliothèque cohérente par défaut
+ * tout en sortant une playlist du lot (par exemple en FLAC pour Rekordbox alors
+ * que le reste reste en Ogg).
+ *
+ * Renvoie une configuration complète, de la même forme que la globale, pour que
+ * tout le code en aval n'ait jamais à savoir si une surcharge existe.
+ */
+export function configPourPlaylist(c, playlist) {
+  const r = playlist?.remplacements;
+  if (!r || Object.keys(r).length === 0) return c;
+
+  const fusionnée = {
+    ...c,
+    général: { ...c.général },
+    qualité: { ...c.qualité },
+    organisation: { ...c.organisation },
+  };
+
+  if (r.dossierMusique) fusionnée.général.dossierMusique = r.dossierMusique;
+  if (r.niveau && trouver(QUALITÉS, r.niveau)) fusionnée.qualité.niveau = r.niveau;
+  if (r.format && trouver(FORMATS, r.format)) fusionnée.qualité.format = r.format;
+
+  if (r.schéma && trouver(SCHÉMAS, r.schéma)) {
+    fusionnée.organisation.schéma = r.schéma;
+    // Un schéma personnalisé sans modèle produirait des fichiers homonymes :
+    // on refuse la surcharge plutôt que d'écraser des morceaux.
+    if (r.schéma === 'personnalise') {
+      if (String(r.modèlePersonnalisé || '').trim()) {
+        fusionnée.organisation.modèlePersonnalisé = r.modèlePersonnalisé;
+      } else {
+        fusionnée.organisation.schéma = c.organisation.schéma;
+      }
+    }
+  }
+
+  return fusionnée;
+}
+
+/** Les surcharges possibles, telles que l'interface les présente. */
+export const CHAMPS_SURCHARGEABLES = [
+  'dossierMusique', 'niveau', 'format', 'schéma', 'modèlePersonnalisé',
+];
+
+/**
  * L'attente réellement appliquée entre deux titres, en secondes.
  * Le préréglage prime, sauf s'il vaut « personnalise ».
  */

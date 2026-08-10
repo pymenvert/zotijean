@@ -194,6 +194,12 @@ function fabriquerLignePlaylist(playlist, avecActions) {
       rafraîchirTableau();
     });
 
+    const déplier = document.createElement('button');
+    déplier.className = 'icone-bouton';
+    déplier.title = 'Réglages propres à cette playlist';
+    déplier.innerHTML = '<svg class="ic chevron"><use href="#i-chevron"/></svg>';
+    déplier.addEventListener('click', () => ligne.classList.toggle('deplie'));
+
     const supprimer = document.createElement('button');
     supprimer.className = 'icone-bouton';
     supprimer.title = 'Retirer de la surveillance (les fichiers déjà téléchargés sont conservés)';
@@ -205,7 +211,8 @@ function fabriquerLignePlaylist(playlist, avecActions) {
       rafraîchirTableau();
     });
 
-    actions.append(bascule, supprimer);
+    actions.append(bascule, déplier, supprimer);
+    ligne.append(fabriquerSurcharges(playlist));
   } else {
     const pastille = document.createElement('span');
     pastille.className = 'tuile-libelle';
@@ -215,6 +222,63 @@ function fabriquerLignePlaylist(playlist, avecActions) {
 
   ligne.append(actions);
   return ligne;
+}
+
+/**
+ * Panneau de réglages propres à une playlist.
+ * Chaque champ vide signifie « comme le réglage général » : c'est ce qui permet
+ * de ne sortir du lot qu'une seule playlist sans dupliquer toute la config.
+ */
+function fabriquerSurcharges(playlist) {
+  const panneau = document.createElement('div');
+  panneau.className = 'playlist-surcharges';
+  const r = playlist.remplacements || {};
+
+  const optionsDe = (liste, choisi) =>
+    `<option value="">Comme le réglage général</option>` +
+    liste.map((o) => `<option value="${o.id}" ${o.id === choisi ? 'selected' : ''}>${échapper(o.libellé)}</option>`).join('');
+
+  panneau.innerHTML = `
+    <div class="surcharge-ligne">
+      <label>Dossier</label>
+      <input type="text" data-champ="dossierMusique" value="${échapper(r.dossierMusique || '')}"
+             placeholder="Comme le réglage général" spellcheck="false">
+    </div>
+    <div class="surcharge-ligne">
+      <label>Qualité</label>
+      <select data-champ="niveau">${optionsDe(état.catalogue.qualités, r.niveau)}</select>
+    </div>
+    <div class="surcharge-ligne">
+      <label>Format</label>
+      <select data-champ="format">${optionsDe(état.catalogue.formats, r.format)}</select>
+    </div>
+    <div class="surcharge-ligne">
+      <label>Rangement</label>
+      <select data-champ="schéma">${optionsDe(
+        état.catalogue.schémas.filter((s) => s.id !== 'personnalise'), r.schéma,
+      )}</select>
+    </div>
+    <p class="aide">Laissez « comme le réglage général » pour suivre les réglages
+    communs. Utile pour sortir une seule playlist du lot — par exemple en FLAC
+    pour Rekordbox alors que le reste reste en Ogg.</p>`;
+
+  const enregistrer = async () => {
+    const remplacements = {};
+    for (const champ of $$('[data-champ]', panneau)) {
+      const valeur = champ.value.trim();
+      if (valeur) remplacements[champ.dataset.champ] = valeur;
+    }
+    await appeler('PATCH', '/api/playlists', { id: playlist.id, modifications: { remplacements } });
+    état.config = await appeler('GET', '/api/config');
+    noter('Réglages de la playlist enregistrés.', 'succes');
+    rafraîchirTableau();
+  };
+
+  for (const champ of $$('[data-champ]', panneau)) {
+    champ.addEventListener('change', enregistrer);
+  }
+
+  return panneau;
 }
 
 function nomDepuisURL(url) {
@@ -581,6 +645,56 @@ $('#btn-arreter').addEventListener('click', async () => {
 
 $('#btn-diagnostic').addEventListener('click', chargerDiagnostic);
 
+$('#btn-simuler').addEventListener('click', async () => {
+  const bouton = $('#btn-simuler');
+  bouton.disabled = true;
+  try {
+    activerVue('accueil');
+    rendreSimulation(await appeler('GET', '/api/simulation'));
+  } catch (erreur) {
+    noter(erreur.message, 'erreur');
+  } finally {
+    bouton.disabled = false;
+  }
+});
+
+$('#btn-fermer-simulation').addEventListener('click', () => {
+  $('#carte-simulation').hidden = true;
+});
+
+$('#btn-export-dj').addEventListener('click', async () => {
+  const bouton = $('#btn-export-dj');
+  bouton.disabled = true;
+  const zone = $('#resultat-export-dj');
+  zone.innerHTML = '<p class="aide">Lecture des fichiers en cours…</p>';
+  try {
+    const résultat = await appeler('POST', '/api/export-dj');
+    const lignes = [];
+    if (résultat.rekordbox) {
+      lignes.push(`<p class="aide"><strong>Rekordbox</strong> — ${résultat.rekordbox.nbTitres} titre(s) dans ${résultat.rekordbox.nbPlaylists} playlist(s).<br>
+        Fichier : <code>${échapper(résultat.rekordbox.destination)}</code><br>
+        Dans Rekordbox : Préférences → Avancé → Base de données → rekordbox xml → Ajouter une bibliothèque.</p>`);
+    }
+    if (résultat.serato) {
+      lignes.push(`<p class="aide"><strong>Serato</strong> — ${résultat.serato.nbCrates} crate(s) écrite(s) à la racine de ${échapper(résultat.serato.racineDisque)}.<br>
+        Relancez Serato pour les voir apparaître.</p>`);
+    }
+    for (const avertissement of résultat.avertissements || []) {
+      lignes.push(`<p class="erreur-champ">${échapper(avertissement)}</p>`);
+    }
+    zone.innerHTML = lignes.join('') || '<p class="aide">Rien à exporter.</p>';
+    noter('Export terminé.', 'succes');
+  } catch (erreur) {
+    zone.innerHTML = `<p class="erreur-champ">${échapper(erreur.message)}</p>`;
+  } finally {
+    bouton.disabled = false;
+  }
+});
+
+$('#bascule-export-auto').addEventListener('change', async (événement) => {
+  await enregistrerConfig({ exportsDJ: { automatique: événement.target.checked } });
+});
+
 $('#btn-ouvrir-dossier').addEventListener('click', async () => {
   await appeler('POST', '/api/ouvrir-dossier');
 });
@@ -618,6 +732,295 @@ $('#btn-enregistrer-dossier').addEventListener('click', async () => {
   chargerDiagnostic();
 });
 
+// ---------------------------------------------------------------- Simulation
+
+function rendreSimulation(simu) {
+  const conteneur = $('#contenu-simulation');
+  const blocs = [];
+
+  const bloc = (titre, éléments) => {
+    const d = document.createElement('div');
+    d.className = 'simu-bloc';
+    const t = document.createElement('div');
+    t.className = 'simu-titre';
+    t.textContent = titre;
+    d.append(t, ...éléments);
+    return d;
+  };
+
+  const paragraphe = (texte, classe = 'aide') => {
+    const p = document.createElement('p');
+    p.className = classe;
+    p.textContent = texte;
+    return p;
+  };
+
+  if (simu.bloquants.length) {
+    blocs.push(bloc('À régler avant de pouvoir synchroniser',
+      simu.bloquants.map((b) => paragraphe(`${b.titre} — ${b.message}`, 'erreur-champ'))));
+  }
+
+  blocs.push(bloc('Destination', [
+    paragraphe(simu.destination.racine),
+    paragraphe(
+      simu.destination.espaceLibreLisible
+        ? `${simu.destination.espaceLibreLisible} disponibles · ${simu.bibliothèque.nbFichiers} fichier(s) déjà présents (${simu.bibliothèque.lisible})`
+        : `${simu.bibliothèque.nbFichiers} fichier(s) déjà présents`,
+    ),
+  ]));
+
+  if (simu.playlists.length) {
+    blocs.push(bloc(
+      `Ce qui serait téléchargé — ${simu.playlists.length} playlist(s)`,
+      simu.playlists.map((p) => {
+        const ligne = document.createElement('div');
+        ligne.className = 'simu-playlist';
+        const morceaux = p.cheminComplet.split(/[\\/]/);
+        const fichier = morceaux.pop();
+        ligne.innerHTML = `
+          <span class="simu-playlist-nom">${échapper(p.nom)}</span>
+          ${p.surchargée ? '<span class="etiquette-surcharge">réglages propres</span>' : ''}
+          <span class="simu-chemin">${échapper(morceaux.join('/'))}/<b>${échapper(fichier)}</b></span>
+          <span class="tuile-libelle">${échapper(p.format)}${
+            p.nomConnu ? ` · ${p.fichiersDéjàPrésents} déjà là` : ' · nom découvert à la 1ʳᵉ synchro'
+          }</span>`;
+        return ligne;
+      }),
+    ));
+  } else {
+    blocs.push(bloc('Playlists', [paragraphe('Aucune playlist active à synchroniser.')]));
+  }
+
+  const tableau = document.createElement('table');
+  tableau.className = 'simu-reperes';
+  tableau.innerHTML = `
+    <thead><tr><th>Si…</th><th>Durée</th><th>Espace</th><th>Tient sur le disque</th></tr></thead>
+    <tbody>${simu.rythme.repères.map((r) => `
+      <tr>
+        <td>${r.titres} titres</td>
+        <td>${échapper(r.durée)}</td>
+        <td>${échapper(r.espace)}</td>
+        <td class="${r.tientSurLeDisque === false ? 'simu-non' : 'simu-oui'}">${
+          r.tientSurLeDisque === null ? '—' : r.tientSurLeDisque ? 'oui' : 'non'
+        }</td>
+      </tr>`).join('')}</tbody>`;
+
+  blocs.push(bloc(
+    `Repères — ${simu.rythme.attenteSecondes} s d’attente entre chaque titre`,
+    [tableau, paragraphe(simu.incertitude)],
+  ));
+
+  remplir(conteneur, blocs);
+  $('#carte-simulation').hidden = false;
+  $('#carte-simulation').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+// -------------------------------------------------------------- Exports DJ
+
+function rendreExportsDJ() {
+  const { exportsDJ, noteExportsDJ } = état.catalogue;
+  const actuel = état.config.exportsDJ || {};
+
+  remplir($('#choix-exports-dj'), exportsDJ.map((e) => {
+    const étiquette = document.createElement('label');
+    étiquette.className = `option${actuel[e.id] ? ' choisi' : ''}`;
+    étiquette.innerHTML = `
+      <input type="checkbox" ${actuel[e.id] ? 'checked' : ''}>
+      <span class="puce" style="border-radius:5px"></span>
+      <span class="option-corps">
+        <span class="option-titre">${échapper(e.libellé)}</span>
+        <span class="option-explication">${échapper(e.explication)}</span>
+      </span>`;
+    étiquette.addEventListener('click', async (événement) => {
+      événement.preventDefault();
+      await enregistrerConfig({ exportsDJ: { [e.id]: !actuel[e.id] } });
+      rendreExportsDJ();
+    });
+    return étiquette;
+  }));
+
+  $('#bascule-export-auto').checked = !!actuel.automatique;
+  $('#note-exports-dj').textContent = noteExportsDJ;
+}
+
+// ------------------------------------------------------------ Premier lancement
+
+const ÉTAPES_ONBOARDING = [
+  {
+    titre: 'Bienvenue',
+    rendre: () => `
+      <p>Zotijean surveille vos playlists Spotify et télécharge tout seul les
+      nouveaux morceaux, rangés comme vous le décidez.</p>
+      <p>Il ne télécharge rien lui-même : il pilote <strong>votre installation de
+      zotify</strong>, celle que vous utilisez déjà. Rien à réinstaller, rien à
+      reconnecter.</p>
+      <p>Cette configuration prend deux minutes. Vous pourrez tout changer ensuite.</p>`,
+  },
+  {
+    titre: 'Vérification de votre installation',
+    avantAffichage: async () => {
+      état.diagnostic = await appeler('GET', '/api/diagnostic');
+    },
+    rendre: () => {
+      const icônes = { ok: '#i-ok', avertissement: '#i-alerte', bloquant: '#i-alerte' };
+      const contrôles = (état.diagnostic?.contrôles || []).map((c) => `
+        <div class="onb-controle" data-gravite="${c.gravité}">
+          <svg class="ic"><use href="${icônes[c.gravité]}"/></svg>
+          <div class="onb-controle-corps">
+            <div>${échapper(c.titre)}</div>
+            <p>${échapper(c.message)}</p>
+          </div>
+        </div>`).join('');
+      const prêt = état.diagnostic?.prêt;
+      return `
+        <p>${prêt
+          ? 'Tout est en place. Vous pouvez continuer.'
+          : 'Il manque quelque chose. Vous pouvez continuer la configuration, mais la synchronisation ne démarrera pas tant que ce n’est pas réglé.'}</p>
+        <div class="onb-liste">${contrôles}</div>`;
+    },
+  },
+  {
+    titre: 'Où ranger la musique',
+    rendre: () => `
+      <p>Choisissez le dossier de destination et la façon de classer les fichiers.
+      L’aperçu vous montrera le résultat réel.</p>
+      <div class="surcharge-ligne">
+        <label for="onb-dossier">Dossier</label>
+        <input type="text" id="onb-dossier" value="${échapper(état.config.général.dossierMusique)}">
+      </div>
+      <div class="surcharge-ligne">
+        <label for="onb-schema">Rangement</label>
+        <select id="onb-schema">${état.catalogue.schémas
+          .filter((s) => s.id !== 'personnalise')
+          .map((s) => `<option value="${s.id}" ${s.id === état.config.organisation.schéma ? 'selected' : ''}>${échapper(s.libellé)}</option>`)
+          .join('')}</select>
+      </div>
+      <p class="aide" id="onb-apercu">…</p>
+      <p class="aide">Évitez le Bureau, Documents et Téléchargements : macOS y demande
+      une autorisation à chaque écriture.</p>`,
+    aprèsAffichage: () => {
+      const rafraîchir = async () => {
+        const schéma = $('#onb-schema').value;
+        const résultat = await appeler('POST', '/api/apercu', {
+          organisation: { ...état.config.organisation, schéma },
+          format: état.config.qualité.format,
+        });
+        const principale = résultat.lignes?.find((l) => l.principal);
+        $('#onb-apercu').textContent = principale
+          ? `Exemple : ${$('#onb-dossier').value}/${principale.chemin}`
+          : '';
+      };
+      $('#onb-schema').addEventListener('change', rafraîchir);
+      $('#onb-dossier').addEventListener('input', rafraîchir);
+      rafraîchir();
+    },
+    valider: async () => {
+      await enregistrerConfig({
+        général: { dossierMusique: $('#onb-dossier').value.trim() },
+        organisation: { schéma: $('#onb-schema').value },
+      });
+    },
+  },
+  {
+    titre: 'Ce qu’il faut savoir',
+    rendre: () => `
+      <div class="onb-avertissement">
+        <p><strong>La qualité plafonne à 320 kb/s.</strong> Spotify a lancé son offre
+        sans perte en septembre 2025, incluse dans votre abonnement Premium — mais ce
+        flux est réservé à ses applications officielles. Convertir ensuite en FLAC
+        n’ajoute aucune perte, mais n’en récupère aucune non plus.</p>
+      </div>
+      <div class="onb-avertissement">
+        <p><strong>Télécharger depuis Spotify contrevient à ses conditions.</strong>
+        Des suspensions de comptes et des réinitialisations forcées de mot de passe
+        sont documentées. Le rythme prudent, réglé par défaut, réduit ce risque sans
+        l’annuler.</p>
+      </div>
+      <p>Comptez environ <strong>17 heures pour 2 000 titres</strong> : Zotijean attend
+      une trentaine de secondes entre chaque morceau, volontairement. Les
+      synchronisations suivantes ne prennent que quelques minutes.</p>`,
+  },
+  {
+    titre: 'Votre première playlist',
+    rendre: () => `
+      <p>Dans Spotify : clic droit sur une playlist, <strong>Partager</strong>, puis
+      <strong>Copier le lien de la playlist</strong>. Les liens d’album et d’artiste
+      fonctionnent aussi.</p>
+      <div class="surcharge-ligne">
+        <label for="onb-url">Lien</label>
+        <input type="text" id="onb-url" placeholder="https://open.spotify.com/playlist/…" spellcheck="false">
+      </div>
+      <p class="erreur-champ" id="onb-erreur" hidden></p>
+      <p class="aide">Vous pourrez en ajouter autant que vous voulez ensuite.</p>`,
+    valider: async () => {
+      const url = $('#onb-url').value.trim();
+      if (!url) return true; // on n'oblige personne
+      try {
+        await appeler('POST', '/api/playlists', { url });
+        return true;
+      } catch (erreur) {
+        const champ = $('#onb-erreur');
+        champ.textContent = erreur.message;
+        champ.hidden = false;
+        return false;
+      }
+    },
+  },
+];
+
+let étapeCourante = 0;
+
+async function afficherÉtape(index) {
+  étapeCourante = Math.max(0, Math.min(index, ÉTAPES_ONBOARDING.length - 1));
+  const étape = ÉTAPES_ONBOARDING[étapeCourante];
+
+  $('#onb-etape').textContent = `Étape ${étapeCourante + 1} sur ${ÉTAPES_ONBOARDING.length}`;
+  $('#onb-titre').textContent = étape.titre;
+  $('#onb-jauge').style.width = `${((étapeCourante + 1) / ÉTAPES_ONBOARDING.length) * 100}%`;
+  $('#onb-retour').disabled = étapeCourante === 0;
+  $('#onb-suivant').querySelector('span')?.remove();
+  $('#onb-suivant').textContent =
+    étapeCourante === ÉTAPES_ONBOARDING.length - 1 ? 'Terminer' : 'Continuer';
+
+  $('#onb-contenu').innerHTML = '<p class="aide">Un instant…</p>';
+  if (étape.avantAffichage) await étape.avantAffichage();
+  $('#onb-contenu').innerHTML = étape.rendre();
+  étape.aprèsAffichage?.();
+}
+
+async function terminerOnboarding() {
+  localStorage.setItem('zotijean.premierLancementFait', '1');
+  $('#onboarding').hidden = true;
+  état.config = await appeler('GET', '/api/config');
+  await rafraîchirTableau();
+  rendreQualité();
+  rendreRangement();
+  rendrePlanification();
+  rendreExportsDJ();
+}
+
+$('#onb-suivant').addEventListener('click', async () => {
+  const étape = ÉTAPES_ONBOARDING[étapeCourante];
+  const bouton = $('#onb-suivant');
+  bouton.disabled = true;
+  try {
+    if (étape.valider && (await étape.valider()) === false) return;
+    if (étapeCourante === ÉTAPES_ONBOARDING.length - 1) {
+      await terminerOnboarding();
+      noter('Configuration terminée. Cliquez sur Synchroniser quand vous voulez.', 'succes');
+    } else {
+      await afficherÉtape(étapeCourante + 1);
+    }
+  } catch (erreur) {
+    noter(erreur.message, 'erreur');
+  } finally {
+    bouton.disabled = false;
+  }
+});
+
+$('#onb-retour').addEventListener('click', () => afficherÉtape(étapeCourante - 1));
+$('#onb-passer').addEventListener('click', terminerOnboarding);
+
 // ------------------------------------------------------------------ Démarrage
 
 async function démarrer() {
@@ -631,9 +1034,18 @@ async function démarrer() {
     rendreQualité();
     rendreRangement();
     rendrePlanification();
+    rendreExportsDJ();
     await chargerJournal();
     écouterÉvénements();
     chargerDiagnostic();
+
+    // Le premier lancement ne s'affiche qu'une fois, et jamais si des playlists
+    // existent déjà : quelqu'un qui a déjà configuré l'app n'a rien à y faire.
+    const déjàFait = localStorage.getItem('zotijean.premierLancementFait');
+    if (!déjàFait && état.config.playlists.length === 0) {
+      $('#onboarding').hidden = false;
+      afficherÉtape(0);
+    }
 
     const vue = location.hash.slice(1);
     if (vue && $(`.onglet[data-vue="${vue}"]`)) activerVue(vue);
