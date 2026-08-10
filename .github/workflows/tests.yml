@@ -160,6 +160,41 @@ jobs:
           kill $PID 2>/dev/null || true
           echo "Démarrage vérifié."
 
+      - name: Compiler la coquille de barre des menus
+        if: runner.os == 'macOS'
+        run: |
+          # Le développement se fait sur Windows : ce travail est le SEUL endroit
+          # où le code Swift est réellement compilé. Sans lui, une erreur d'API
+          # ne serait découverte que sur le Mac de l'utilisateur.
+          cd macos
+          swift build -c release
+          echo "Coquille macOS compilée."
+
+      - name: Assembler et vérifier le paquet .app
+        if: runner.os == 'macOS'
+        run: |
+          cd macos
+          chmod +x construire.sh
+          ./construire.sh
+          APP="build/Zotijean.app"
+          test -x "$APP/Contents/MacOS/Zotijean"       || { echo "Binaire absent"; exit 1; }
+          test -f "$APP/Contents/Info.plist"           || { echo "Info.plist absent"; exit 1; }
+          test -f "$APP/Contents/Resources/moteur/server.js" || { echo "Moteur absent du paquet"; exit 1; }
+          test -f "$APP/Contents/Resources/moteur/public/index.html" || { echo "Interface absente"; exit 1; }
+          # LSUIElement décide que l'app vit dans la barre des menus : sans lui,
+          # elle apparaîtrait dans le Dock avec une fenêtre vide.
+          /usr/libexec/PlistBuddy -c "Print :LSUIElement" "$APP/Contents/Info.plist" | grep -q true \
+            || { echo "LSUIElement manquant"; exit 1; }
+          echo "Paquet .app conforme."
+
+      - name: Publier l'application
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Zotijean-app-macos
+          path: macos/build/Zotijean.app
+          if-no-files-found: error
+
       - name: Vérifier que le lanceur macOS est exécutable et en LF
         if: runner.os == 'macOS'
         shell: bash

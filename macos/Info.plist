@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key>
+  <string>Zotijean</string>
+  <key>CFBundleDisplayName</key>
+  <string>Zotijean</string>
+  <key>CFBundleIdentifier</key>
+  <string>fr.zotijean.app</string>
+  <key>CFBundleExecutable</key>
+  <string>Zotijean</string>
+  <key>CFBundleVersion</key>
+  <string>1</string>
+  <key>CFBundleShortVersionString</key>
+  <string>0.2.0</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>13.0</string>
+
+  <!-- L'application vit dans la barre des menus : pas d'icône dans le Dock,
+       pas de fenêtre principale. C'est cette clé qui le décide. -->
+  <key>LSUIElement</key>
+  <true/>
+
+  <!-- Le moteur écoute sur 127.0.0.1 en HTTP simple. Sans cette exception,
+       macOS bloque la requête et le menu affiche « moteur arrêté » alors que
+       tout fonctionne. L'exception est limitée à la boucle locale. -->
+  <key>NSAppTransportSecurity</key>
+  <dict>
+    <key>NSAllowsLocalNetworking</key>
+    <true/>
+  </dict>
+
+  <key>NSHumanReadableCopyright</key>
+  <string>Zotijean — compagnon de zotify</string>
+</dict>
+</plist>
