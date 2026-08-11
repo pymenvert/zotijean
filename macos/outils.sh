@@ -140,6 +140,41 @@ if ! ls "$OUTILS/roues" | grep -qi '^zotify'; then
   exit 1
 fi
 
+# ------------------------------------------------- Vérification hors ligne
+
+echo ""
+echo "  Vérification : installation sans réseau"
+
+# On refait ici, tout de suite, exactement ce que fera l'application au premier
+# lancement. Découvrir un problème maintenant coûte une minute ; le découvrir
+# chez l'utilisateur coûte une application qui ne télécharge rien.
+BANC="$ICI/.banc-essai"
+rm -rf "$BANC"
+
+"$OUTILS/python/bin/python3" -m venv "$BANC"
+
+if ! "$BANC/bin/pip" install --no-index --find-links "$OUTILS/roues" zotify > "$ICI/.essai.log" 2>&1; then
+  echo ""
+  echo "  ÉCHEC de l'installation hors ligne. Sortie complète de pip :"
+  echo "  ────────────────────────────────────────────────────────────"
+  cat "$ICI/.essai.log"
+  echo "  ────────────────────────────────────────────────────────────"
+  echo "  Roues disponibles :"
+  ls -1 "$OUTILS/roues"
+  rm -rf "$BANC"
+  exit 1
+fi
+
+if [ ! -x "$BANC/bin/zotify" ]; then
+  echo "  L'installation a réussi mais aucun exécutable zotify n'en est sorti :"
+  ls -1 "$BANC/bin"
+  rm -rf "$BANC"
+  exit 1
+fi
+
+echo "       $("$BANC/bin/zotify" --version 2>&1 | head -1)"
+rm -rf "$BANC" "$ICI/.essai.log"
+
 # ---------------------------------------------------------------- Bilan
 
 echo ""

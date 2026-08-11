@@ -263,7 +263,10 @@ jobs:
           set -e
 
           if [ $CODE -ne 0 ]; then
-            detail=$(tail -25 recuperation.log | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            # 60 lignes : la sortie de pip est verbeuse, et c'est précisément
+            # son début qui porte la cause. Tronquer trop court obligeait à un
+            # aller-retour d'une heure par tentative.
+            detail=$(tail -60 recuperation.log | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
             echo "::error title=Récupération des outils en échec::${detail}"
             exit 1
           fi
