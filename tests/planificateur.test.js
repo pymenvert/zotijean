@@ -329,3 +329,47 @@ test('formaterÉchéance arrondit à la demi-heure', () => {
 test.after(() => {
   fs.rmSync(process.env.ZOTIJEAN_DONNEES, { recursive: true, force: true });
 });
+
+// ---------------------------------------------------------------------------
+// Dates aberrantes : l'horloge n'est pas une source fiable
+// ---------------------------------------------------------------------------
+//
+// CE QUE CES TESTS PROTÈGENT. Le fichier d'état peut contenir une date SITUÉE
+// DANS LE FUTUR : l'horloge du Mac a été corrigée, on a changé de fuseau, ou
+// l'état a été recopié depuis une autre machine en avance.
+//
+// La date du dernier succès était déjà protégée. Celle de la dernière tentative
+// ne l'était pas, et l'oubli coûtait cher : le recul après échecs compare
+// « maintenant » à cette date, la soustraction devient négative, et reste donc
+// éternellement inférieure au recul. Le planificateur diffère à chaque
+// battement — mesuré à 73 heures de blocage pour une avance de 3 jours.
+
+test('une date de dernière tentative dans le futur ne bloque pas le planificateur', () => {
+  étatModule.marquerSuccès(new Date(Date.now() - 100 * 3600 * 1000)); // échéance largement dépassée
+
+  // Trois jours d'avance, et un échec pour activer le recul.
+  étatModule.marquerTentative(new Date(Date.now() + 3 * 24 * 3600 * 1000));
+  étatModule.marquerÉchec();
+
+  const décision = évaluer(configTest(), {}, new Date());
+
+  assert.notEqual(
+    décision.code, 'recul_apres_echec',
+    'une date future a mis le planificateur en attente pour des jours',
+  );
+  assert.equal(décision.lancer, true);
+});
+
+test('une date de dernière tentative normale déclenche bien le recul', () => {
+  // Le pendant du test précédent : la garde ne doit pas neutraliser le recul
+  // quand la date est saine. Sans cette vérification, on pourrait « corriger »
+  // le bug en supprimant le recul, ce qui relancerait une synchronisation
+  // toutes les cinq minutes face à une panne durable.
+  étatModule.marquerSuccès(new Date(Date.now() - 100 * 3600 * 1000));
+  étatModule.marquerTentative(new Date());
+  étatModule.marquerÉchec();
+
+  const décision = évaluer(configTest(), {}, new Date());
+  assert.equal(décision.code, 'recul_apres_echec');
+  assert.equal(décision.lancer, false);
+});

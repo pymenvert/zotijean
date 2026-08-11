@@ -29,7 +29,17 @@ import { trouver, SCHÉMAS } from './options.js';
 const MAX_OCTETS_SEGMENT = 240;
 
 /** Interdits sur au moins un des systèmes visés, plus les caractères de contrôle. */
-const CARACTÈRES_INTERDITS = /[<>:"/\\|?*\x00-\x1f\x7f]/g;  /**  * Reconnaissance des variables `{nom}` dans un modèle.  * Attention : `\w` ne couvre que l'ASCII en JavaScript. Les noms de variables du  * projet sont français — `numéro`, `année` — donc il faut une classe Unicode,  * sinon ces deux-là ne seraient jamais remplacées et apparaîtraient telles  * quelles dans les noms de fichiers.  */ const MOTIF_VARIABLE = /\{([\p{L}\p{N}_]+)\}/gu;
+const CARACTÈRES_INTERDITS = /[<>:"/\\|?*\x00-\x1f\x7f]/g;
+
+/**
+ * Reconnaissance des variables `{nom}` dans un modèle.
+ *
+ * ATTENTION : `\w` ne couvre que l'ASCII en JavaScript. Les noms de variables du
+ * projet sont français — `numéro`, `année` — donc il faut une classe Unicode,
+ * sinon ces deux-là ne seraient jamais remplacées et apparaîtraient telles
+ * quelles dans les noms de fichiers.
+ */
+const MOTIF_VARIABLE = /\{([\p{L}\p{N}_]+)\}/gu;
 
 /** Noms réservés par Windows, quelle que soit l'extension. */
 const NOMS_RÉSERVÉS = new Set([

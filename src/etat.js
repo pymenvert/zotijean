@@ -72,6 +72,41 @@ export function dernierSuccèsSain() {
   return date;
 }
 
+/**
+ * Date de la dernière tentative, avec la MÊME garde anti-recul d'horloge.
+ *
+ * Elle manquait, et l'oubli était coûteux. Le recul après échecs compare
+ * « maintenant » à cette date : si elle est dans le futur — horloge corrigée,
+ * changement de fuseau, fichier d'état recopié depuis une autre machine —, la
+ * soustraction devient négative et reste donc éternellement inférieure au
+ * recul. Le planificateur diffère alors à chaque battement, et la
+ * synchronisation est bloquée aussi longtemps que dure l'avance : mesuré à
+ * soixante-treize heures pour une avance de trois jours.
+ *
+ * C'est exactement la panne que la garde sur `dernierSuccès` évite. Il n'y avait
+ * aucune raison de protéger une date et pas l'autre.
+ */
+export function dernièreTentativeSaine() {
+  const brut = état().dernièreTentative;
+  if (!brut) return null;
+
+  const date = new Date(brut);
+  if (Number.isNaN(date.getTime())) return null;
+
+  // UNE DATE FUTURE EST RENDUE NULLE, PAS RAMENÉE À MAINTENANT.
+  //
+  // La ramener paraît plus doux, et c'est un piège : comme rien n'est réécrit,
+  // chaque évaluation la ramène à SON « maintenant ». L'écart reste donc
+  // toujours nul, toujours inférieur au recul, et le report devient perpétuel —
+  // exactement la panne qu'on cherchait à supprimer, en pire.
+  //
+  // Sans point de départ crédible, le recul n'a simplement pas lieu d'être. Le
+  // compteur d'échecs, lui, reste intact : la prochaine tentative réelle
+  // réinscrira une date saine et l'espacement reprendra normalement.
+  if (date.getTime() > Date.now()) return null;
+  return date;
+}
+
 export function marquerTentative(date = new Date()) {
   état().dernièreTentative = date.toISOString();
   écrire();

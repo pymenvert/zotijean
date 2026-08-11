@@ -16,7 +16,7 @@
 // On affiche « environ demain vers 9 h — ou au réveil du Mac », jamais un compte
 // à rebours.
 
-import { dernierSuccèsSain, état } from './etat.js';
+import { dernierSuccèsSain, dernièreTentativeSaine, état } from './etat.js';
 import { journal } from './journal.js';
 
 const BATTEMENT_MS = 5 * 60 * 1000;
@@ -118,9 +118,9 @@ export function évaluer(config, contexte = {}, maintenant = new Date()) {
   // minutes plus tard, indéfiniment.
   const échecs = état().échecsConsécutifs || 0;
   if (échecs > 0) {
-    const dernièreTentative = état().dernièreTentative
-      ? new Date(état().dernièreTentative)
-      : null;
+    // Passe par la version « saine » : une date de tentative située dans le
+    // futur bloquerait le planificateur pour toute la durée de l'avance.
+    const dernièreTentative = dernièreTentativeSaine();
     const recul = reculAprèsÉchecs(échecs);
 
     if (dernièreTentative && maintenant.getTime() - dernièreTentative.getTime() < recul) {
