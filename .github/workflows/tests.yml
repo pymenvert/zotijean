@@ -242,7 +242,20 @@ jobs:
           # l'application autonome : rien à installer sur le Mac de destination.
           cd macos
           chmod +x outils.sh
-          ./outils.sh
+
+          # Comme pour les tests : les journaux exigent une connexion, donc on
+          # recopie l'essentiel dans une annotation, seule chose lisible sans
+          # être authentifié. Sans ça, « exit code 1 » est tout ce qu'on sait.
+          set +e
+          ./outils.sh 2>&1 | tee recuperation.log
+          CODE=${PIPESTATUS[0]}
+          set -e
+
+          if [ $CODE -ne 0 ]; then
+            detail=$(tail -25 recuperation.log | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            echo "::error title=Récupération des outils en échec::${detail}"
+            exit 1
+          fi
 
       - name: Vérifier que les outils embarqués fonctionnent vraiment
         if: runner.os == 'macOS'
@@ -269,6 +282,7 @@ jobs:
           # Le test décisif : l'installation doit réussir SANS RÉSEAU, à partir
           # des seules roues du paquet. Si elle échoue, l'utilisateur se
           # retrouverait devant une app qui ne télécharge rien.
+          set +e
           node -e "
             import('./src/outils.js').then(async (m) => {
               const r = await m.assurerZotify();
@@ -279,7 +293,15 @@ jobs:
               console.log('zotify embarqué :', (v.stdout + v.stderr).trim().split('\n')[0]);
               if (v.code !== 0) { console.error('zotify ne repond pas'); process.exit(1); }
             }).catch((e) => { console.error(e); process.exit(1); });
-          "
+          " 2>&1 | tee montage.log
+          CODE=${PIPESTATUS[0]}
+          set -e
+
+          if [ $CODE -ne 0 ]; then
+            detail=$(tail -25 montage.log | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            echo "::error title=Montage hors ligne de zotify en échec::${detail}"
+            exit 1
+          fi
 
       - name: Assembler et vérifier le paquet .app
         if: runner.os == 'macOS'
