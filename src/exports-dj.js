@@ -467,7 +467,11 @@ export async function exporter({ playlists, racineBibliothèque, rekordbox = tru
             path.relative(racine, path.resolve(f.chemin)),
           );
           const destination = path.join(dossier, nomFichierCrate(playlist.nom));
-          fs.writeFileSync(destination, construireCrate(relatifs));
+          // Écriture atomique, comme pour l'export Rekordbox et pour tout fichier
+          // d'état du projet. Une crate écrite en direct et interrompue en plein
+          // milieu — coupure de courant, disque débranché — laisserait à Serato
+          // un fichier binaire tronqué à lire au prochain démarrage.
+          écrireAtomique(destination, construireCrate(relatifs));
           écrites.push(destination);
         }
 

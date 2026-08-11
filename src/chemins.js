@@ -169,6 +169,12 @@ export function écrireAtomique(chemin, contenu, { mode = null } = {}) {
   try {
     // Le mode est posé DÈS la création, pas après : un fichier de jetons
     // brièvement lisible par tous reste un fichier lisible par tous.
+    //
+    // L'encodage annoncé ici est IGNORÉ par Node quand `contenu` est un tampon
+    // binaire — vérifié octet pour octet. C'est ce qui permet d'écrire aussi les
+    // crates Serato, qui sont de l'UTF-16BE avec des octets nuls, par le même
+    // chemin sûr. Ne pas « corriger » cette ligne en croyant qu'elle corrompt du
+    // binaire : elle ne le fait pas.
     fs.writeFileSync(temporaire, contenu, mode ? { encoding: 'utf8', mode } : 'utf8');
     fs.renameSync(temporaire, chemin);
     if (mode) fs.chmodSync(chemin, mode);

@@ -143,3 +143,31 @@ test('mettreÀLAbri conserve une copie exploitable', () => {
 test('mettreÀLAbri rend null plutôt que d’échouer sur un fichier absent', () => {
   assert.equal(mettreÀLAbri(path.join(os.tmpdir(), 'zotijean-inexistant-xyz')), null);
 });
+
+test('écrireAtomique conserve le binaire intact, octet pour octet', () => {
+  // CE QUE ÇA PROTÈGE. Les crates Serato sont de l'UTF-16BE : des octets nuls,
+  // des octets au-delà de 127, aucune structure de texte. Elles passent par le
+  // même chemin d'écriture atomique que la configuration, parce qu'une crate
+  // tronquée par une coupure de courant serait lue telle quelle par Serato au
+  // démarrage suivant.
+  //
+  // La fonction annonce un encodage « utf8 », que Node ignore quand on lui donne
+  // un tampon. Ce test existe pour que personne ne « corrige » cette ligne en
+  // croyant qu'elle corrompt du binaire — et pour le détecter si Node changeait
+  // un jour d'avis.
+  const racine = fs.mkdtempSync(path.join(os.tmpdir(), 'zotijean-bin-'));
+  try {
+    const binaire = Buffer.from([
+      0x76, 0x72, 0x73, 0x6e, 0x00, 0x00, 0x00, 0x10,
+      0x00, 0x31, 0x00, 0x2e, 0x00, 0xe9, 0x00, 0xff, 0x00, 0x00,
+    ]);
+    const cible = path.join(racine, 'essai.crate');
+    écrireAtomique(cible, binaire);
+
+    const relu = fs.readFileSync(cible);
+    assert.equal(relu.length, binaire.length, 'la taille a changé');
+    assert.ok(relu.equals(binaire), 'le contenu binaire a été altéré à l’écriture');
+  } finally {
+    fs.rmSync(racine, { recursive: true, force: true });
+  }
+});
