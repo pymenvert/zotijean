@@ -21,7 +21,7 @@ import path from 'node:path';
 import {
   config, attenteEffective, configPourPlaylist, modifier as modifierConfig,
 } from './config.js';
-import { fichierVerrou, assurerDossier, dossierDonnées, volumeMonté } from './chemins.js';
+import { fichierVerrou, assurerDossier, dossierDonnées, volumeMonté, espaceLibre } from './chemins.js';
 import { journal } from './journal.js';
 import { diagnostiquer, GRAVITÉ } from './diagnostic.js';
 import { construireArguments, télécharger } from './zotify.js';
@@ -257,6 +257,23 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
       if (!volumeMonté(racine)) {
         bilan.échec = 'Le disque de destination a été débranché pendant la synchronisation.';
         journal.erreur(bilan.échec);
+        break;
+      }
+
+      // Le disque se remplit AU FIL de l'exécution. Le diagnostic préalable a
+      // vérifié qu'il y avait la place au départ ; dix-sept heures et deux mille
+      // titres plus tard, ce n'est plus la même question. Sans cette relecture,
+      // zotify continuerait d'écrire sur un disque plein — c'est-à-dire de
+      // produire des fichiers tronqués à la chaîne.
+      const libre = espaceLibre(racine);
+      const minimum = (cp.gardes?.espaceMinimumGo ?? 2) * 1024 ** 3;
+      if (libre !== null && libre < minimum) {
+        bilan.interrompu = true;
+        bilan.raisonInterruption =
+          `il ne reste que ${(libre / 1024 ** 3).toFixed(1)} Go sur le disque de ` +
+          `destination, sous le seuil de ${(minimum / 1024 ** 3).toFixed(0)} Go que vous ` +
+          'avez fixé. Faites de la place : la synchronisation reprendra où elle en est.';
+        journal.erreur(bilan.raisonInterruption);
         break;
       }
 

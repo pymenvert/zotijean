@@ -17,6 +17,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { trouverExécutable, exécuter } from './processus.js';
+import { DOSSIER_INCOMPLETS } from './zotify.js';
 import { assurerZotify, étatOutils } from './outils.js';
 import { volumeMonté, espaceLibre, assurerDossier, version } from './chemins.js';
 import { journal } from './journal.js';
@@ -209,6 +210,47 @@ function contrôlerIdentifiants() {
 // Dossier de destination
 // ---------------------------------------------------------------------------
 
+/**
+ * Signale les téléchargements coupés en pleine écriture, mis de côté.
+ *
+ * Ils sont retéléchargés d'eux-mêmes : l'utilisateur n'a rien à faire. Mais les
+ * laisser s'accumuler sans jamais les nommer serait un dossier qui grossit en
+ * silence sur son disque, sans qu'il sache d'où il vient ni s'il peut le vider.
+ * On le dit, et on dit qu'il peut le supprimer.
+ */
+function contrôlerIncomplets(dossierMusique) {
+  const abri = path.join(dossierMusique, DOSSIER_INCOMPLETS);
+
+  let fichiers = [];
+  try {
+    fichiers = fs.readdirSync(abri).filter((n) => !n.startsWith('.'));
+  } catch {
+    // Le dossier n'existe pas : c'est le cas normal.
+  }
+
+  if (!fichiers.length) return null;
+
+  let octets = 0;
+  for (const nom of fichiers) {
+    try {
+      octets += fs.statSync(path.join(abri, nom)).size;
+    } catch {
+      // Disparu entre-temps : sans importance.
+    }
+  }
+
+  const Mo = (octets / 1024 ** 2).toFixed(0);
+  return contrôle(
+    'incomplets',
+    'Téléchargements interrompus',
+    GRAVITÉ.OK,
+    `${fichiers.length} morceau(x) coupé(s) en pleine écriture ont été mis de côté ` +
+      `(${Mo} Mo). Ils sont retéléchargés automatiquement, vous n'avez rien à faire. ` +
+      'Vous pouvez supprimer ce dossier quand vous voulez.',
+    { chemin: abri },
+  );
+}
+
 function contrôlerDestination(dossierMusique, gardes) {
   if (!volumeMonté(dossierMusique)) {
     return contrôle(
@@ -356,7 +398,8 @@ export async function diagnostiquer(config) {
     ffmpeg,
     contrôlerIdentifiants(),
     contrôlerDestination(config.général.dossierMusique, config.gardes),
-  ];
+    contrôlerIncomplets(config.général.dossierMusique),
+  ].filter(Boolean);
 
   const bloquants = contrôles.filter((c) => c.gravité === GRAVITÉ.BLOQUANT);
   const avertissements = contrôles.filter((c) => c.gravité === GRAVITÉ.AVERTISSEMENT);
