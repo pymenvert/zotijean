@@ -10,6 +10,14 @@ config.json
 etat.json
 execution.lock
 
+# Outils embarqués : téléchargés par macos/outils.sh, jamais versionnés.
+# Plusieurs centaines de mégaoctets de binaires n'ont rien à faire dans un
+# dépôt — la CI les récupère à chaque construction.
+macos/outils/
+macos/.cache-outils/
+macos/build/
+macos/.build/
+
 # Systèmes
 .DS_Store
 Thumbs.db

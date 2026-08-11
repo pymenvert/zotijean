@@ -185,6 +185,52 @@ jobs:
           swift build -c release
           echo "Coquille macOS compilée."
 
+      - name: Récupérer les outils à embarquer
+        if: runner.os == 'macOS'
+        run: |
+          # Node, Python, ffmpeg et les paquets de zotify. C'est ce qui rend
+          # l'application autonome : rien à installer sur le Mac de destination.
+          cd macos
+          chmod +x outils.sh
+          ./outils.sh
+
+      - name: Vérifier que les outils embarqués fonctionnent vraiment
+        if: runner.os == 'macOS'
+        run: |
+          # Embarquer un binaire ne prouve pas qu'il s'exécute : architecture,
+          # bibliothèques manquantes, bit d'exécution perdu. On les lance.
+          cd macos/outils
+          ./node/node --version           || { echo "Node embarqué inutilisable"; exit 1; }
+          ./python/bin/python3 --version  || { echo "Python embarqué inutilisable"; exit 1; }
+          if [ -x ./ffmpeg/ffmpeg ]; then
+            ./ffmpeg/ffmpeg -version >/dev/null || { echo "ffmpeg embarqué inutilisable"; exit 1; }
+            echo "ffmpeg embarqué : opérationnel"
+          else
+            echo "::warning title=ffmpeg absent du paquet::L'application exigera un ffmpeg installé."
+          fi
+          test "$(ls -1 roues | wc -l)" -gt 0 || { echo "Aucun paquet zotify récupéré"; exit 1; }
+          echo "Outils embarqués vérifiés."
+
+      - name: Monter zotify hors ligne, comme au premier lancement
+        if: runner.os == 'macOS'
+        env:
+          ZOTIJEAN_DONNEES: ${{ runner.temp }}/zotijean-paquet
+        run: |
+          # Le test décisif : l'installation doit réussir SANS RÉSEAU, à partir
+          # des seules roues du paquet. Si elle échoue, l'utilisateur se
+          # retrouverait devant une app qui ne télécharge rien.
+          node -e "
+            import('./src/outils.js').then(async (m) => {
+              const r = await m.assurerZotify();
+              console.log(JSON.stringify(r, null, 1));
+              if (!r.prêt) { console.error('zotify n a pas pu etre monte'); process.exit(1); }
+              const { exécuter } = await import('./src/processus.js');
+              const v = await exécuter(r.chemin, ['--version'], { délaiMs: 60000 });
+              console.log('zotify embarqué :', (v.stdout + v.stderr).trim().split('\n')[0]);
+              if (v.code !== 0) { console.error('zotify ne repond pas'); process.exit(1); }
+            }).catch((e) => { console.error(e); process.exit(1); });
+          "
+
       - name: Assembler et vérifier le paquet .app
         if: runner.os == 'macOS'
         run: |
@@ -200,14 +246,33 @@ jobs:
           # elle apparaîtrait dans le Dock avec une fenêtre vide.
           /usr/libexec/PlistBuddy -c "Print :LSUIElement" "$APP/Contents/Info.plist" | grep -q true \
             || { echo "LSUIElement manquant"; exit 1; }
-          echo "Paquet .app conforme."
+
+          # Le paquet doit être AUTONOME : sans ces outils, double-cliquer ne
+          # suffirait pas et l'app exigerait des installations.
+          test -x "$APP/Contents/Resources/outils/node/node" \
+            || { echo "Node absent du paquet : l'app ne demarrerait pas"; exit 1; }
+          test -x "$APP/Contents/Resources/outils/python/bin/python3" \
+            || { echo "Python absent du paquet"; exit 1; }
+          test -d "$APP/Contents/Resources/outils/roues" \
+            || { echo "Paquets zotify absents"; exit 1; }
+          echo "Paquet .app autonome, $(du -sh "$APP" | cut -f1)."
+
+      - name: Emballer en archive téléchargeable
+        if: runner.os == 'macOS'
+        run: |
+          cd macos/build
+          # ditto préserve les bits d'exécution et les liens symboliques, ce que
+          # zip ne fait pas toujours : une archive mal faite donne une app qui
+          # refuse de s'ouvrir.
+          ditto -c -k --sequesterRsrc --keepParent Zotijean.app Zotijean.zip
+          echo "Archive : $(du -sh Zotijean.zip | cut -f1)"
 
       - name: Publier l'application
         if: runner.os == 'macOS'
         uses: actions/upload-artifact@v4
         with:
           name: Zotijean-app-macos
-          path: macos/build/Zotijean.app
+          path: macos/build/Zotijean.zip
           if-no-files-found: error
 
       - name: Vérifier que le lanceur macOS est exécutable et en LF

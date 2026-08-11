@@ -17,6 +17,8 @@ import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
 
+import { dossiersEmbarqués } from './chemins.js';
+
 /** Dossiers où vivent réellement les outils installés par l'utilisateur. */
 function dossiersCandidats() {
   const maison = os.homedir();
@@ -51,10 +53,18 @@ function dossiersCandidats() {
   return [path.join(maison, '.local', 'bin'), '/usr/local/bin', '/usr/bin', '/bin'];
 }
 
-/** Le PATH d'origine, enrichi des dossiers candidats qui existent vraiment. */
+/**
+ * Le PATH d'origine, enrichi des dossiers candidats qui existent vraiment.
+ *
+ * Les outils EMBARQUÉS passent devant tout le reste : c'est ce qui garantit
+ * qu'un paquet autonome utilise sa propre copie de ffmpeg et de zotify, et non
+ * une version installée ailleurs sur la machine dont on ne sait rien.
+ */
 export function cheminEnrichi(supplémentaires = []) {
   const séparateur = process.platform === 'win32' ? ';' : ':';
-  const actuel = (process.env.PATH || '').split(séparateur).filter(Boolean);
+  const embarqués = dossiersEmbarqués();
+  const actuel = [...embarqués, ...(process.env.PATH || '').split(séparateur)]
+    .filter(Boolean);
 
   const vus = new Set(actuel.map((d) => d.toLowerCase()));
   const ajouts = [];

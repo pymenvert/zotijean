@@ -17,6 +17,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { trouverExécutable, exécuter } from './processus.js';
+import { assurerZotify, étatOutils } from './outils.js';
 import { volumeMonté, espaceLibre } from './chemins.js';
 import { journal } from './journal.js';
 
@@ -61,6 +62,13 @@ async function contrôlerZotify(commandeConfigurée) {
   if (commandeConfigurée && commandeConfigurée !== 'zotify') {
     candidats.push(commandeConfigurée);
   }
+
+  // Le zotify EMBARQUÉ passe devant celui du système : c'est celui dont on
+  // connaît la version et les options. Il est monté au premier lancement à
+  // partir des roues du paquet, hors ligne.
+  const embarqué = await assurerZotify();
+  if (embarqué.chemin) candidats.push(embarqué.chemin);
+
   const trouvé = trouverExécutable('zotify');
   if (trouvé) candidats.push(trouvé);
   candidats.push('zotify');
@@ -94,14 +102,21 @@ async function contrôlerZotify(commandeConfigurée) {
     );
   }
 
+  // Message adapté selon qu'un paquet autonome était censé le fournir ou non :
+  // dire « installez zotify » à quelqu'un qui vient de double-cliquer une app
+  // supposée tout contenir serait incompréhensible.
+  const messageAutonome = embarqué.raison && embarqué.raison !== 'aucun outil embarqué'
+    ? `${embarqué.raison} Relancez l’application ; si le problème persiste, ` +
+      'consultez le journal dans cet onglet.'
+    : 'zotify est introuvable. Vérifiez qu’il fonctionne en tapant ' +
+      '« zotify --version » dans le Terminal, puis indiquez son chemin dans les réglages.';
+
   return contrôle(
     'zotify',
     'zotify',
     GRAVITÉ.BLOQUANT,
-    "zotify est introuvable. L'app ne télécharge rien elle-même : elle pilote " +
-      "votre installation existante. Vérifiez qu'elle fonctionne en tapant " +
-      '« zotify --version » dans le Terminal, puis indiquez son chemin dans les réglages.',
-    { chemin: null, version: null, options: [] },
+    messageAutonome,
+    { chemin: null, version: null, options: [], embarqué: embarqué.prêt },
   );
 }
 

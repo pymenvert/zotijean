@@ -43,14 +43,30 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/moteur"
 cp "$BINAIRE" "$APP/Contents/MacOS/Zotijean"
 cp "$ICI/Info.plist" "$APP/Contents/Info.plist"
 
-echo "  3/4  Copie du moteur…"
-# Le moteur n'a aucune dépendance : on copie les sources telles quelles.
+echo "  3/5  Copie du moteur…"
+# Le moteur n'a aucune dépendance npm : on copie les sources telles quelles.
 cp "$RACINE/server.js" "$APP/Contents/Resources/moteur/"
 cp "$RACINE/package.json" "$APP/Contents/Resources/moteur/"
 cp -R "$RACINE/src" "$APP/Contents/Resources/moteur/"
 cp -R "$RACINE/public" "$APP/Contents/Resources/moteur/"
 
-echo "  4/4  Signature…"
+echo "  4/5  Copie des outils embarqués…"
+# Node, Python, ffmpeg et les paquets de zotify. C'est ce qui fait qu'un double
+# clic suffit : rien n'est exigé de la machine.
+if [ -d "$ICI/outils" ]; then
+  cp -R "$ICI/outils" "$APP/Contents/Resources/outils"
+  # Le copiage perd parfois le bit d'exécution selon le système de fichiers.
+  for binaire in node/node python/bin/python3 ffmpeg/ffmpeg ffmpeg/ffprobe; do
+    [ -f "$APP/Contents/Resources/outils/$binaire" ] \
+      && chmod +x "$APP/Contents/Resources/outils/$binaire"
+  done
+  echo "       $(du -sh "$APP/Contents/Resources/outils" | cut -f1) embarqués"
+else
+  echo "       AUCUN — lancez d'abord ./outils.sh, sinon l'app exigera"
+  echo "       que Node, ffmpeg et zotify soient déjà installés."
+fi
+
+echo "  5/5  Signature…"
 # Signature ad hoc : suffisante pour un usage personnel. Elle n'évite pas
 # l'avertissement Gatekeeper au premier lancement — faites alors un clic droit
 # sur l'app puis « Ouvrir », une seule fois.

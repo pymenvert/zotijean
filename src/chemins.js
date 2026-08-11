@@ -7,6 +7,7 @@
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 const NOM_APP = 'Zotijean';
 
@@ -46,6 +47,45 @@ export function dossierMusiqueParDéfaut() {
     ? path.join(maison, 'Music')
     : path.join(maison, 'Music');
   return path.join(musique, NOM_APP);
+}
+
+/**
+ * Dossier des outils embarqués dans le paquet, ou null.
+ *
+ * Défini ici plutôt que dans outils.js pour éviter un cycle : processus.js en a
+ * besoin pour construire le PATH, et outils.js dépend de processus.js. Ce
+ * module, lui, ne dépend que de la bibliothèque standard.
+ *
+ * Dans un paquet, le moteur vit dans Contents/Resources/moteur/ et les outils
+ * dans Contents/Resources/outils/ : ils sont voisins.
+ */
+export function dossierOutils() {
+  const ici = path.dirname(fileURLToPath(import.meta.url));
+  for (const candidat of [
+    path.resolve(ici, '..', '..', 'outils'),      // dans le paquet
+    path.resolve(ici, '..', 'macos', 'outils'),   // depuis le dépôt
+  ]) {
+    if (fs.existsSync(candidat)) return candidat;
+  }
+  return null;
+}
+
+/** Les dossiers à placer EN TÊTE du PATH pour privilégier ce qui est embarqué. */
+export function dossiersEmbarqués() {
+  const racine = dossierOutils();
+  const venv = path.join(dossierDonnées(), 'outils', 'venv', 'bin');
+
+  const candidats = racine
+    ? ['node', 'python/bin', 'ffmpeg'].map((r) => path.join(racine, r)).concat(venv)
+    : [venv];
+
+  return candidats.filter((dossier) => {
+    try {
+      return fs.statSync(dossier).isDirectory();
+    } catch {
+      return false;
+    }
+  });
 }
 
 export const fichierConfig = () => path.join(dossierDonnées(), 'config.json');

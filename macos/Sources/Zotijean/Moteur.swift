@@ -34,7 +34,20 @@ final class Moteur {
         NSHomeDirectory() + "/.local/bin",
     ]
 
+    /// Le Node livré dans le paquet, s'il y en a un.
+    ///
+    /// Il passe AVANT tout ce qui est installé sur la machine : c'est celui dont
+    /// on connaît la version, et c'est lui qui rend l'application utilisable sur
+    /// un Mac où rien n'a jamais été installé.
+    static func nodeEmbarqué() -> String? {
+        guard let ressources = Bundle.main.resourceURL else { return nil }
+        let candidat = ressources.appendingPathComponent("outils/node/node").path
+        return FileManager.default.isExecutableFile(atPath: candidat) ? candidat : nil
+    }
+
     static func trouverNode() -> String? {
+        if let embarqué = nodeEmbarqué() { return embarqué }
+
         let gestionnaire = FileManager.default
 
         for dossier in dossiersNode {

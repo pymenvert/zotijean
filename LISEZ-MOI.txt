@@ -1,15 +1,32 @@
 ZOTIJEAN
 ========
 
-Pour démarrer, double-cliquez sur :
+Glissez Zotijean.app dans votre dossier Applications, puis double-cliquez.
+
+Une petite icône apparaît en haut à droite de l'écran, dans la barre des menus.
+Cliquez dessus : c'est là que tout se passe.
+
+Il n'y a RIEN à installer. L'application contient tout ce dont elle a besoin.
+
+
+AU TOUT PREMIER LANCEMENT
+-------------------------
+
+macOS affichera un avertissement — il le fait pour toute application qui ne
+vient pas de l'App Store. Faites un CLIC DROIT sur Zotijean.app, puis OUVRIR.
+Une seule fois : ensuite, le double-clic suffit.
+
+
+VERSION POUR DÉVELOPPER
+-----------------------
+
+Si vous lancez le projet depuis ses sources plutôt que depuis l'app :
 
     Zotijean - Mac.command      (sur Mac)
     Zotijean - PC.bat           (sur PC)
 
-Une fenêtre noire s'ouvre — c'est normal, c'est le moteur. Laissez-la ouverte.
-L'interface apparaît toute seule dans votre navigateur.
-
-Pour arrêter Zotijean : fermez la fenêtre noire.
+Une fenêtre noire s'ouvre — c'est le moteur, laissez-la ouverte. Dans ce mode,
+Node.js, zotify et ffmpeg doivent être installés sur la machine.
 
 
 LA PREMIÈRE FOIS

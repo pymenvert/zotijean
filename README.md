@@ -30,22 +30,46 @@ continue de fonctionner exactement comme avant.
 
 ## Installation
 
-Il faut **Node.js 20 ou plus récent** et **zotify déjà fonctionnel**.
+**Rien à installer.** Téléchargez `Zotijean.zip` depuis l'onglet
+[Actions](https://github.com/pymenvert/zotijean/actions) du dépôt — dernière exécution
+réussie, section *Artifacts* —, décompressez, glissez `Zotijean.app` dans Applications, et
+double-cliquez.
 
-```bash
-brew install node ffmpeg
-```
+L'application embarque Node.js, Python, ffmpeg et zotify. Elle ne demande rien à votre Mac.
 
-Puis récupérez le dossier du projet et double-cliquez :
+Deux choses restent à faire, et aucun paquet ne peut les éviter :
+
+1. **Au tout premier lancement**, macOS affiche un avertissement pour toute application
+   téléchargée hors de l'App Store. Faites un **clic droit sur l'app, puis Ouvrir**. Une
+   seule fois.
+2. **Connectez votre compte Spotify.** Zotijean pilote zotify, qui a besoin de vos
+   identifiants — ils ne peuvent évidemment pas voyager dans le paquet. L'onglet
+   **Diagnostic** vous dit où vous en êtes.
+
+La première chose à regarder est justement cet onglet **Diagnostic** : il vérifie chaque
+pièce et dit précisément quoi faire si quelque chose manque.
+
+### Pour développer
+
+Le moteur seul tourne partout où Node.js 20+ est installé, sans construire de paquet :
 
 - **macOS** : `Zotijean - Mac.command`
 - **Windows** : `Zotijean - PC.bat`
 
-L'interface s'ouvre dans votre navigateur sur `http://127.0.0.1:8787`.
+Dans ce mode, zotify et ffmpeg doivent être installés sur la machine
+(`brew install ffmpeg`).
 
-La première chose à regarder est l'onglet **Diagnostic** : il vérifie que zotify et ffmpeg
-sont bien trouvés, que le dossier de destination est accessible, et il vous dit précisément
-quoi faire si quelque chose manque.
+### Construire le paquet soi-même
+
+Sur un Mac, avec Xcode installé :
+
+```bash
+cd macos && ./outils.sh && ./construire.sh
+```
+
+`outils.sh` télécharge Node, Python, ffmpeg et les paquets de zotify (quelques centaines de
+mégaoctets, mis en cache). `construire.sh` compile la coquille et assemble le tout dans
+`macos/build/Zotijean.app`.
 
 > **ffmpeg n'est pas optionnel.** Sans lui, zotify renomme le fichier téléchargé avant de
 > constater son absence et ne le restaure jamais : des morceaux sont détruits sans aucun
