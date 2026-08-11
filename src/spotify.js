@@ -62,10 +62,21 @@ export function oublierJetons() {
   }
 }
 
-/** L'utilisateur est-il connecté ? Ne dit rien de la validité du jeton. */
+/**
+ * L'utilisateur est-il connecté, et la connexion est-elle encore valable ?
+ *
+ * Un jeton de rafraîchissement présent ne suffit pas : Spotify peut l'avoir
+ * révoqué. Répondre « oui » dans ce cas ferait afficher « connecté » à une app
+ * dont toutes les fonctions Spotify échouent en silence.
+ */
 export function estConnecté() {
   const jetons = lireJetons();
-  return !!(jetons?.refresh_token);
+  return !!(jetons?.refresh_token) && !jetons.reconnexionNécessaire;
+}
+
+/** Une reconnexion est-elle explicitement exigée par Spotify ? */
+export function reconnexionNécessaire() {
+  return !!lireJetons()?.reconnexionNécessaire;
 }
 
 // ---------------------------------------------------------------------------
@@ -230,7 +241,32 @@ async function rafraîchir() {
   const données = await réponse.json().catch(() => ({}));
 
   if (!réponse.ok) {
-    journal.avertir('Le jeton Spotify n’a pas pu être rafraîchi ; reconnexion nécessaire.');
+    // DEUX ÉCHECS TRÈS DIFFÉRENTS, QU'IL NE FAUT PAS CONFONDRE.
+    //
+    // Une coupure réseau ou une panne côté Spotify se répare toute seule : il
+    // n'y a rien à demander à l'utilisateur, et l'inquiéter serait déplacé.
+    //
+    // Une autorisation révoquée — mot de passe changé, accès retiré depuis le
+    // compte Spotify — ne se réparera JAMAIS sans une reconnexion. Or le jeton
+    // de rafraîchissement reste dans le fichier, donc l'app continuait
+    // d'afficher « connecté » pendant que plus rien ne fonctionnait. On note
+    // donc le refus, sans effacer quoi que ce soit.
+    const définitif = (réponse.status === 400 || réponse.status === 401)
+      && données.error === 'invalid_grant';
+
+    if (définitif) {
+      écrireJetons({ ...jetons, reconnexionNécessaire: true });
+      journal.erreur(
+        'Spotify a révoqué l’autorisation de Zotijean. Les fonctions qui en dépendent ' +
+          'sont suspendues jusqu’à une reconnexion depuis les réglages. Le téléchargement, ' +
+          'lui, continue de fonctionner : il passe par zotify, pas par cette connexion.',
+      );
+    } else {
+      journal.avertir(
+        'Le jeton Spotify n’a pas pu être rafraîchi (problème passager). ' +
+          'Nouvelle tentative à la prochaine requête.',
+      );
+    }
     return null;
   }
 
@@ -241,6 +277,11 @@ async function rafraîchir() {
     // écraser l'ancien par « undefined » déconnecterait l'utilisateur.
     refresh_token: données.refresh_token || jetons.refresh_token,
     expire_le: Date.now() + (données.expires_in ?? 3600) * 1000,
+    // Ce rafraîchissement a réussi : quoi qu'il se soit passé avant, la
+    // connexion est valable. L'étalement de `jetons` ci-dessus aurait sinon
+    // reconduit un drapeau de reconnexion périmé, et l'app aurait continué de
+    // réclamer une reconnexion dont elle n'a plus besoin.
+    reconnexionNécessaire: false,
   });
 
   return données.access_token;

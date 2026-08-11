@@ -321,6 +321,9 @@ export const routes = {
       actif: !!c.spotify?.actif,
       clientIdRenseigné: !!c.spotify?.clientId,
       connecté: spotify.estConnecté(),
+      // Distinct de « pas connecté » : là, il y a bien eu une connexion, et
+      // Spotify l'a révoquée. Le message à afficher n'est pas le même.
+      reconnexionNécessaire: spotify.reconnexionNécessaire(),
       redirection: adresseRetourSpotify(c),
     };
 

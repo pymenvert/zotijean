@@ -1039,7 +1039,9 @@ async function rendreSpotify() {
   const état_ = await appeler('GET', '/api/spotify/etat');
   $('#spotify-etat').textContent = état_.connecté
     ? (état_.profil ? `connecté — ${état_.profil.nom}` : 'connecté')
-    : 'non connecté';
+    : état_.reconnexionNécessaire
+      ? 'autorisation révoquée'
+      : 'non connecté';
 
   if (état_.connecté) {
     zone.innerHTML = `
@@ -1063,9 +1065,19 @@ async function rendreSpotify() {
     return;
   }
 
+  // Autorisation révoquée : ce n'est pas la même chose que « jamais connecté ».
+  // L'utilisateur a fait la manipulation ; elle a été annulée depuis son compte
+  // Spotify. Sans cette distinction, il relirait les explications de mise en
+  // route en se demandant ce qu'il a raté.
+  const avertissementRévocation = état_.reconnexionNécessaire
+    ? `<p class="erreur-champ">Spotify a révoqué l’autorisation de Zotijean — mot de
+       passe changé, ou accès retiré depuis votre compte. Reconnectez-vous ci-dessous.
+       Vos téléchargements, eux, ne sont pas concernés : ils passent par zotify.</p>`
+    : '';
+
   // Non connecté : on explique ce que ça apporte ET ce que ça coûte, comme
   // pour toute autre option de l'app.
-  zone.innerHTML = `
+  zone.innerHTML = avertissementRévocation + `
     <p class="aide">Facultatif. Sans connexion, Zotijean fonctionne : il passe vos
     liens à zotify et regarde ce qui apparaît sur le disque. Avec, il sait en plus
     quelles playlists n’ont pas bougé — et les saute, ce qui fait gagner des

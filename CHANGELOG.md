@@ -30,6 +30,17 @@ sombre**, le texte d'aide était sous le seuil de lisibilité du texte courant.
 Toutes les couleurs des deux thèmes passent maintenant le seuil, sur fond de
 carte comme sur fond de page.
 
+### Une connexion Spotify révoquée s'affichait comme « connecté »
+
+Si Spotify retire son autorisation — mot de passe changé, accès révoqué depuis
+votre compte —, l'app continuait d'annoncer une connexion valide pendant que
+toutes les fonctions qui en dépendent échouaient en silence.
+
+Elle le dit maintenant, et distingue ce cas de « jamais connecté » : vous n'avez
+pas raté une étape, c'est votre autorisation qui a été annulée. Vos
+téléchargements ne sont pas concernés — ils passent par zotify, pas par cette
+connexion.
+
 ### Une erreur de téléchargement ne se distinguait plus des lignes ordinaires
 
 Une piste indisponible dans votre pays, une clé audio refusée : ça défilait au
