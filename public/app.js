@@ -346,11 +346,20 @@ async function rendreHistorique() {
     const ligne = document.createElement('div');
     ligne.className = 'execution';
     const date = new Date(exécution.date);
+    // « Interrompue » tout court n'apprend rien : c'est justement quand une
+    // exécution s'arrête que l'utilisateur a besoin de savoir pourquoi, et si
+    // ça repartira tout seul.
+    const interruption = exécution.interrompu
+      ? exécution.raisonInterruption
+        ? ` — en pause : ${exécution.raisonInterruption}`
+        : ', interrompue'
+      : '';
+
     const résultat = exécution.échec
       ? `Échec — ${exécution.échec}`
       : `${exécution.nbFichiers} nouveau${exécution.nbFichiers > 1 ? 'x' : ''} titre${exécution.nbFichiers > 1 ? 's' : ''}` +
         (exécution.nbErreurs ? `, ${exécution.nbErreurs} erreur${exécution.nbErreurs > 1 ? 's' : ''}` : '') +
-        (exécution.interrompu ? ', interrompue' : '');
+        interruption;
 
     ligne.innerHTML = `
       <span class="execution-date">${date.toLocaleDateString('fr-FR')} ${date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</span>
@@ -1327,6 +1336,17 @@ function rendreSimulation(simu) {
 
   const notes = [tableau];
   if (simu.rythme.noteEspace) notes.push(paragraphe(simu.rythme.noteEspace));
+
+  // Annoncer « dix-sept heures » sans dire ça reviendrait à mentir : Zotijean
+  // empêche la veille d'inactivité, mais rien ne peut empêcher un couvercle
+  // fermé d'endormir un Mac. Sans cette phrase, l'utilisateur constate que ses
+  // dix-sept heures en prennent trois fois plus, sans comprendre pourquoi.
+  notes.push(paragraphe(
+    'Pendant la synchronisation, Zotijean empêche le Mac de s’endormir tout seul. '
+    + 'En revanche, fermer le couvercle l’endort quand même et met le téléchargement '
+    + 'en pause jusqu’au réveil — laissez-le ouvert pour que la durée annoncée soit la bonne.',
+  ));
+
   notes.push(paragraphe(simu.incertitude));
 
   blocs.push(bloc(

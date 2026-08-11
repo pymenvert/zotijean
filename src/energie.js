@@ -8,6 +8,8 @@
 // Node n'expose rien de tout cela : il faut interroger le système. On le fait
 // donc avec les outils de macOS, et on l'annonce franchement ailleurs.
 
+import { spawn } from 'node:child_process';
+
 import { exécuter } from './processus.js';
 import { journal } from './journal.js';
 
@@ -114,4 +116,110 @@ export async function lireContextePlateforme() {
 export function oublierCache() {
   cache = null;
   dateCache = 0;
+}
+
+/**
+ * Empêche le Mac de s'endormir par inactivité, le temps d'une synchronisation.
+ *
+ * CE QUE ÇA CHANGE. L'interface annonce « environ 17 heures pour 2 000 titres »
+ * et l'utilisateur en conclut, raisonnablement, qu'il suffit de laisser tourner.
+ * Or un Mac inactif s'endort au bout de quelques minutes : Node et zotify sont
+ * gelés, la connexion Spotify de zotify meurt, et au réveil le chien de garde a
+ * toutes les chances de prendre le silence de la nuit pour un blocage. Les
+ * dix-sept heures annoncées s'étalaient en réalité sur des jours, avec une
+ * interruption et une reprise partielle à chaque cycle de veille.
+ *
+ * CE QUE ÇA NE CHANGE PAS, et il faut le dire à l'utilisateur plutôt que de le
+ * masquer : « -i » ne bloque que la veille d'INACTIVITÉ. Fermer le couvercle
+ * endort le Mac de toute façon.
+ *
+ * Le « -w » de sécurité fait mourir caffeinate avec le moteur : même si l'app
+ * plante sans relâcher, le Mac retrouve son comportement normal.
+ *
+ * Renvoie une fonction à appeler pour relâcher. Toujours sûre : hors macOS, ou
+ * si caffeinate manque, elle ne fait rien et ne lève pas.
+ */
+export function empêcherLaVeille() {
+  if (process.platform !== 'darwin') return () => {};
+
+  let processus;
+  try {
+    processus = spawn('caffeinate', ['-i', '-w', String(process.pid)], {
+      stdio: 'ignore',
+      detached: false,
+    });
+  } catch {
+    journal.debug('caffeinate est introuvable : la veille ne sera pas retenue.');
+    return () => {};
+  }
+
+  // Un caffeinate absent ne doit pas faire tomber une synchronisation de
+  // dix-sept heures pour autant.
+  processus.on('error', () => {
+    journal.avertir(
+      'Impossible d’empêcher la veille du Mac. Si l’écran s’éteint, la ' +
+        'synchronisation sera suspendue jusqu’au réveil.',
+    );
+  });
+
+  journal.info('La mise en veille par inactivité est suspendue pendant la synchronisation.');
+
+  let relâché = false;
+  return () => {
+    if (relâché) return;
+    relâché = true;
+    try {
+      processus.kill();
+    } catch {
+      // Déjà mort : c'est le résultat recherché.
+    }
+  };
+}
+
+/**
+ * Les conditions posées par l'utilisateur sont-elles TOUJOURS remplies ?
+ *
+ * POURQUOI CE N'EST PAS LA MÊME CHOSE QUE LA DÉCISION DE DÉMARRER. Le
+ * planificateur vérifie « sur secteur » et « en Wi-Fi » au moment de LANCER.
+ * Une fois parti, plus rien ne les relisait — alors qu'un rattrapage dure
+ * dix-sept heures.
+ *
+ * Le scénario coûte cher, et il est banal : on lance la synchronisation chez soi,
+ * branché en Wi-Fi ; trois heures plus tard on débranche, on ferme son sac, et
+ * on partage la connexion de son téléphone dans le train. Le moteur continue
+ * quatorze heures sur batterie et sur données cellulaires. Deux mille titres à
+ * huit mégaoctets, c'est une quinzaine de gigaoctets en itinérance. La case
+ * était cochée ; elle n'a protégé que la première seconde.
+ *
+ * Renvoie null si tout va bien, sinon la phrase à afficher et à journaliser.
+ */
+export async function conditionToujoursRemplie(config) {
+  const planification = config?.planification || {};
+  if (!planification.uniquementSurSecteur && !planification.uniquementEnWifi) return null;
+
+  // Le cache dure quelques minutes : sans cet oubli, on relirait indéfiniment
+  // l'état d'avant le débranchement.
+  oublierCache();
+  const contexte = await lireContextePlateforme();
+
+  // Un état qu'on ne sait pas lire ne doit jamais interrompre une exécution en
+  // cours : on ne punit pas l'utilisateur pour une commande système muette.
+  if (!contexte.connu) return null;
+
+  if (planification.uniquementEnWifi && !contexte.réseauDisponible) {
+    return (
+      'Passage sur une connexion facturée détecté. La synchronisation est mise ' +
+      'en pause pour ne pas consommer vos données mobiles ; elle reprendra ' +
+      'd’elle-même sur le Wi-Fi.'
+    );
+  }
+
+  if (planification.uniquementSurSecteur && !contexte.surSecteur) {
+    return (
+      'Passage sur batterie détecté. La synchronisation est mise en pause pour ' +
+      'ne pas vider le Mac ; elle reprendra d’elle-même une fois rebranché.'
+    );
+  }
+
+  return null;
 }

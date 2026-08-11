@@ -34,6 +34,7 @@ import {
   archiver, mettreÀLaCorbeille, sansSourcesConverties,
 } from './bibliotheque.js';
 import * as étatModule from './etat.js';
+import { conditionToujoursRemplie, empêcherLaVeille } from './energie.js';
 
 // ---------------------------------------------------------------------------
 // Verrou d'exécution
@@ -188,6 +189,10 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
     lignesErreur: [],
   };
 
+  // Le Mac ne doit pas s'endormir pendant les heures qui viennent. Posé avant
+  // le « try » pour que le « finally » le relâche quoi qu'il arrive.
+  const laisserDormir = empêcherLaVeille();
+
   try {
     // --- Diagnostic préalable -------------------------------------------
     const rapport = await diagnostiquer(c);
@@ -252,6 +257,18 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
       if (!volumeMonté(racine)) {
         bilan.échec = 'Le disque de destination a été débranché pendant la synchronisation.';
         journal.erreur(bilan.échec);
+        break;
+      }
+
+      // Les conditions de l'utilisateur peuvent cesser d'être remplies en cours
+      // de route : on débranche, on part, on passe sur le partage de connexion.
+      // C'est un REPORT, pas un échec — on n'avance pas `dernierSuccès`, donc la
+      // reprise se fera d'elle-même dès que la condition redevient vraie.
+      const conditionPerdue = await conditionToujoursRemplie(cp);
+      if (conditionPerdue) {
+        bilan.interrompu = true;
+        bilan.raisonInterruption = conditionPerdue;
+        journal.avertir(conditionPerdue);
         break;
       }
 
@@ -496,6 +513,9 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
     diffuser({ type: 'synchro-echec', message: erreur.message });
     return { lancé: false, raison: erreur.message };
   } finally {
+    // Rendre au Mac son comportement normal, même si tout s'est mal passé :
+    // laisser une machine incapable de dormir serait un dégât collatéral.
+    laisserDormir();
     courante = null;
     rendreVerrou();
   }
