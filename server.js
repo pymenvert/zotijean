@@ -330,6 +330,62 @@ function ouvrirNavigateur(adresse) {
 }
 
 /**
+ * Reprend le port à un moteur Zotijean abandonné.
+ *
+ * Après un plantage, un moteur peut rester en écoute alors que plus rien ne le
+ * pilote : l'application refuserait alors de démarrer sur un « port déjà
+ * utilisé » que l'utilisateur ne sait pas résoudre.
+ *
+ * ON N'ARRÊTE QUE CE QU'ON A IDENTIFIÉ. Tuer à l'aveugle ce qui occupe un port
+ * reviendrait à arrêter le programme de quelqu'un d'autre : on interroge donc
+ * la carte d'identité, et on s'abstient au moindre doute.
+ */
+async function reprendreLePort(port) {
+  let identité;
+  try {
+    const réponse = await fetch(`http://127.0.0.1:${port}/api/identite`, {
+      signal: AbortSignal.timeout(3000),
+      headers: { 'X-Zotijean': 'local' },
+    });
+    if (!réponse.ok) return false;
+    identité = await réponse.json();
+  } catch {
+    return false; // injoignable ou muet : ce n'est pas nous, on ne touche à rien
+  }
+
+  if (identité?.application !== 'zotijean' || !Number.isInteger(identité.pid)) return false;
+  if (identité.pid === process.pid) return false;
+
+  journal.avertir(
+    `Un moteur Zotijean tournait encore sur le port ${port} (démarré le ` +
+      `${new Date(identité.démarréLe).toLocaleString('fr-FR')}). Il est arrêté ` +
+      'pour laisser la place à celui-ci.',
+  );
+
+  try {
+    process.kill(identité.pid, 'SIGTERM');
+  } catch {
+    return false; // déjà parti, ou hors de notre portée
+  }
+
+  // On lui laisse le temps de s'arrêter proprement : il écrit son état et
+  // interrompt une éventuelle synchronisation.
+  for (let essai = 0; essai < 20; essai++) {
+    await new Promise((r) => setTimeout(r, 250));
+    try {
+      process.kill(identité.pid, 0);
+    } catch {
+      return true; // il a rendu la main
+    }
+  }
+
+  try {
+    process.kill(identité.pid, 'SIGKILL');
+  } catch { /* déjà parti */ }
+  return true;
+}
+
+/**
  * S'arrêter quand l'application qui nous a lancés disparaît.
  *
  * LE TROU QUE CELA COMBLE. À une fermeture normale, la coquille macOS nous
@@ -393,16 +449,30 @@ export function démarrer() {
     });
   });
 
-  serveur.on('error', (erreur) => {
-    if (erreur.code === 'EADDRINUSE') {
-      journal.erreur(
-        `Le port ${port} est déjà utilisé. Zotijean est peut-être déjà lancé — ` +
-          `ouvrez http://127.0.0.1:${port} — ou choisissez un autre port avec ` +
-          '« node server.js --port 9000 ».',
-      );
-      process.exit(1);
+  let repriseTentée = false;
+
+  serveur.on('error', async (erreur) => {
+    if (erreur.code !== 'EADDRINUSE') {
+      journal.erreur('Erreur du serveur.', erreur.message);
+      return;
     }
-    journal.erreur('Erreur du serveur.', erreur.message);
+
+    // Une seule tentative : deux instances qui se reprendraient le port l'une à
+    // l'autre tourneraient en boucle.
+    if (!repriseTentée) {
+      repriseTentée = true;
+      if (await reprendreLePort(port)) {
+        serveur.listen(port, '127.0.0.1');
+        return;
+      }
+    }
+
+    journal.erreur(
+      `Le port ${port} est occupé par un autre programme que Zotijean. ` +
+        'Fermez-le, ou lancez Zotijean sur un autre port avec ' +
+        '« node server.js --port 9000 ».',
+    );
+    process.exit(1);
   });
 
   serveur.listen(port, '127.0.0.1', async () => {

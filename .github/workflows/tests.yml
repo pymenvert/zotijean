@@ -236,6 +236,57 @@ jobs:
           kill $PID 2>/dev/null || true
           echo "Démarrage vérifié."
 
+      - name: Vérifier la reprise du port, et qu'un programme étranger est épargné
+        shell: bash
+        env:
+          ZOTIJEAN_DONNEES: ${{ runner.temp }}/zotijean-port
+        run: |
+          # Après un plantage, un moteur peut rester en écoute : l'application
+          # doit pouvoir reprendre sa place. Mais tuer à l'aveugle ce qui occupe
+          # un port arrêterait le programme de quelqu'un d'autre — c'est cette
+          # seconde moitié qui compte le plus.
+
+          echo "--- Un moteur abandonné est remplacé ---"
+          node server.js --port 8796 --sans-navigateur &
+          PREMIER=$!
+          for i in $(seq 1 20); do
+            curl -sf -o /dev/null "http://127.0.0.1:8796/api/identite" && break; sleep 1
+          done
+
+          node server.js --port 8796 --sans-navigateur &
+          SECOND=$!
+          sleep 10
+
+          curl -sf -o /dev/null "http://127.0.0.1:8796/api/tableau-de-bord" \
+            || { echo "::error::Le second moteur n'a pas pu reprendre le port."; exit 1; }
+          if kill -0 $PREMIER 2>/dev/null; then
+            kill -9 $PREMIER $SECOND 2>/dev/null || true
+            echo "::error::Le moteur abandonné n'a pas été remplacé."; exit 1
+          fi
+          kill -9 $SECOND 2>/dev/null || true
+
+          echo "--- Un programme étranger n'est PAS touché ---"
+          node -e "require('http').createServer((q,r)=>{r.writeHead(200);r.end('etranger')}).listen(8794,'127.0.0.1')" &
+          ETRANGER=$!
+          sleep 3
+
+          set +e
+          node server.js --port 8794 --sans-navigateur
+          CODE=$?
+          set -e
+
+          if [ $CODE -eq 0 ]; then
+            kill -9 $ETRANGER 2>/dev/null || true
+            echo "::error::Zotijean a démarré sur un port occupé par un tiers."; exit 1
+          fi
+          if ! kill -0 $ETRANGER 2>/dev/null; then
+            echo "::error title=Programme tiers arrêté::Zotijean a tué un programme qui n'est pas le sien pour récupérer son port."
+            exit 1
+          fi
+
+          kill -9 $ETRANGER 2>/dev/null || true
+          echo "Reprise du port sûre : le nôtre est remplacé, celui des autres est épargné."
+
       - name: Vérifier l'arrêt automatique quand l'application hôte disparaît
         shell: bash
         env:

@@ -185,6 +185,19 @@ export const routes = {
   // batterie ou de partage de connexion.
   'GET /api/tableau-de-bord': async () => tableauDeBord(await lireContextePlateforme()),
 
+  /**
+   * Carte d'identité du moteur.
+   *
+   * Sert à un démarrage qui trouve le port occupé : avant de reprendre la main,
+   * il doit s'assurer que ce qui écoute est bien un Zotijean abandonné, et non
+   * un tout autre programme qu'on arrêterait par erreur.
+   */
+  'GET /api/identite': () => ({
+    application: 'zotijean',
+    pid: process.pid,
+    démarréLe: new Date(Date.now() - Math.round(process.uptime() * 1000)).toISOString(),
+  }),
+
   'GET /api/catalogue': () => ({
     ...catalogueComplet(),
     // L'interface a besoin des variables pour l'éditeur de modèle personnalisé.
