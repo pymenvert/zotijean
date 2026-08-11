@@ -19,6 +19,18 @@ function étatVide() {
     dernièreTentative: null,
     exécutions: [],           // historique, du plus récent au plus ancien
     playlists: {},            // id → { dernierSuccès, nbFichiers, dernièreErreur }
+
+    // Trace de l'exécution en cours. Écrite au démarrage, effacée à la fin
+    // normale : si elle survit, c'est que l'app a été interrompue — fermeture,
+    // mise en veille, coupure de courant — et la prochaine exécution reprend
+    // là où elle en était plutôt que de tout refaire.
+    reprise: null,            // { début, déclencheur, playlistsTerminées: [] }
+
+    // Échecs enchaînés, pour espacer les tentatives. Sans ce compteur, une
+    // panne persistante (disque débranché, compte suspendu) relancerait une
+    // synchronisation toutes les cinq minutes — le meilleur moyen d'aggraver
+    // le problème auprès de Spotify.
+    échecsConsécutifs: 0,
   };
 }
 
@@ -66,8 +78,63 @@ export function marquerTentative(date = new Date()) {
 }
 
 export function marquerSuccès(date = new Date()) {
-  état().dernierSuccès = date.toISOString();
+  const e = état();
+  e.dernierSuccès = date.toISOString();
+  e.échecsConsécutifs = 0;
   écrire();
+}
+
+export function marquerÉchec() {
+  const e = état();
+  e.échecsConsécutifs = (e.échecsConsécutifs || 0) + 1;
+  écrire();
+  return e.échecsConsécutifs;
+}
+
+// ---------------------------------------------------------------------------
+// Reprise après interruption
+// ---------------------------------------------------------------------------
+
+/** Au-delà, une reprise n'a plus de sens : on repart proprement de zéro. */
+const REPRISE_VALABLE_MS = 24 * 3600 * 1000;
+
+export function ouvrirReprise(déclencheur, date = new Date()) {
+  état().reprise = {
+    début: date.toISOString(),
+    déclencheur,
+    playlistsTerminées: [],
+  };
+  écrire();
+}
+
+export function noterPlaylistTerminée(id) {
+  const e = état();
+  if (!e.reprise) return;
+  if (!e.reprise.playlistsTerminées.includes(id)) {
+    e.reprise.playlistsTerminées.push(id);
+    écrire();
+  }
+}
+
+export function fermerReprise() {
+  état().reprise = null;
+  écrire();
+}
+
+/**
+ * Les playlists déjà traitées par une exécution interrompue, si elle est encore
+ * récente. Passé un jour, on préfère tout revérifier : la playlist a pu changer,
+ * et refaire le travail coûte moins cher que de rater des nouveautés.
+ */
+export function repriseEnAttente(maintenant = new Date()) {
+  const reprise = état().reprise;
+  if (!reprise?.début) return null;
+
+  const âge = maintenant.getTime() - new Date(reprise.début).getTime();
+  if (!Number.isFinite(âge) || âge < 0 || âge > REPRISE_VALABLE_MS) return null;
+  if (!reprise.playlistsTerminées?.length) return null;
+
+  return reprise;
 }
 
 /** Enregistre le bilan d'une exécution complète. */

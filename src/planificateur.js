@@ -16,10 +16,29 @@
 // On affiche « environ demain vers 9 h — ou au réveil du Mac », jamais un compte
 // à rebours.
 
-import { dernierSuccèsSain } from './etat.js';
+import { dernierSuccèsSain, état } from './etat.js';
 import { journal } from './journal.js';
 
 const BATTEMENT_MS = 5 * 60 * 1000;
+
+/**
+ * Espacement croissant après des échecs enchaînés, en minutes.
+ *
+ * Une exécution qui échoue n'avance pas la date de référence : sans ce recul,
+ * le battement de cœur relancerait donc une synchronisation toutes les cinq
+ * minutes. Face à une panne durable — disque débranché, compte suspendu,
+ * limitation de débit — c'est exactement le comportement à éviter : on
+ * aggraverait le problème auprès de Spotify tout en noyant le journal.
+ *
+ * Le dernier palier plafonne : au-delà, l'intervalle normal reprend la main.
+ */
+const RECULS_MINUTES = [5, 15, 60, 240];
+
+export function reculAprèsÉchecs(nombre) {
+  if (!nombre || nombre < 1) return 0;
+  const index = Math.min(nombre, RECULS_MINUTES.length) - 1;
+  return RECULS_MINUTES[index] * 60 * 1000;
+}
 
 /** Convertit « 23:00 » en minutes depuis minuit. */
 function enMinutes(heure) {
@@ -92,6 +111,29 @@ export function évaluer(config, contexte = {}, maintenant = new Date()) {
       code: 'pas_encore',
       échéance: échéance.toISOString(),
     };
+  }
+
+  // Recul après échecs. Une exécution ratée n'avance pas la date de référence,
+  // donc sans ce garde la suivante partirait au battement suivant, soit cinq
+  // minutes plus tard, indéfiniment.
+  const échecs = état().échecsConsécutifs || 0;
+  if (échecs > 0) {
+    const dernièreTentative = état().dernièreTentative
+      ? new Date(état().dernièreTentative)
+      : null;
+    const recul = reculAprèsÉchecs(échecs);
+
+    if (dernièreTentative && maintenant.getTime() - dernièreTentative.getTime() < recul) {
+      const reprise = new Date(dernièreTentative.getTime() + recul);
+      return {
+        lancer: false,
+        code: 'recul_apres_echec',
+        raison:
+          `${échecs} tentative${échecs > 1 ? 's' : ''} sans succès. ` +
+          `Nouvel essai ${formaterÉchéance(reprise, maintenant)}.`,
+        échéance: reprise.toISOString(),
+      };
+    }
   }
 
   // Les garde-fous suivants REPORTENT sans consommer l'échéance : dès que la

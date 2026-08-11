@@ -16,7 +16,7 @@ process.env.ZOTIJEAN_DONNEES = fs.mkdtempSync(path.join(os.tmpdir(), 'zotijean-p
 
 const {
   dansLesHeuresCalmes, prochaineÉchéance, évaluer,
-  duréeEnFrançais, formaterÉchéance,
+  duréeEnFrançais, formaterÉchéance, reculAprèsÉchecs,
 } = await import('../src/planificateur.js');
 const étatModule = await import('../src/etat.js');
 
@@ -195,6 +195,105 @@ test('une date de dernier succès dans le futur est ramenée à maintenant', () 
 test('une date de dernier succès illisible est traitée comme absente', () => {
   étatModule.état().dernierSuccès = 'pas une date';
   assert.equal(étatModule.dernierSuccèsSain(), null);
+});
+
+// ---------------------------------------------------------------------------
+// Recul après échecs
+// ---------------------------------------------------------------------------
+
+test('le recul s’allonge à chaque échec puis plafonne', () => {
+  // Sans lui, une exécution ratée — qui n'avance pas la date de référence —
+  // serait relancée au battement suivant, soit toutes les cinq minutes,
+  // indéfiniment. Face à une panne durable, c'est le meilleur moyen d'aggraver
+  // le problème auprès de Spotify.
+  assert.equal(reculAprèsÉchecs(0), 0);
+  assert.equal(reculAprèsÉchecs(1), 5 * 60 * 1000);
+  assert.equal(reculAprèsÉchecs(2), 15 * 60 * 1000);
+  assert.equal(reculAprèsÉchecs(3), 60 * 60 * 1000);
+  assert.equal(reculAprèsÉchecs(4), 240 * 60 * 1000);
+  // Au-delà, on plafonne au lieu de croître sans fin.
+  assert.equal(reculAprèsÉchecs(50), 240 * 60 * 1000);
+});
+
+test('après un échec, la synchronisation est reportée et le dit', () => {
+  const é = étatModule.état();
+  é.dernierSuccès = null;
+  é.échecsConsécutifs = 2;
+  é.dernièreTentative = new Date(Date.now() - 60 * 1000).toISOString(); // il y a 1 min
+
+  const décision = évaluer(configTest());
+  assert.equal(décision.lancer, false);
+  assert.equal(décision.code, 'recul_apres_echec');
+  assert.match(décision.raison, /2 tentatives sans succès/);
+});
+
+test('le recul écoulé laisse repartir la synchronisation', () => {
+  const é = étatModule.état();
+  é.dernierSuccès = null;
+  é.échecsConsécutifs = 1;
+  é.dernièreTentative = new Date(Date.now() - 10 * 60 * 1000).toISOString(); // 10 min
+
+  assert.equal(évaluer(configTest()).lancer, true, 'le recul de 5 min est passé');
+});
+
+test('sans échec, aucun recul n’est appliqué', () => {
+  const é = étatModule.état();
+  é.dernierSuccès = null;
+  é.échecsConsécutifs = 0;
+  é.dernièreTentative = new Date().toISOString();
+
+  assert.equal(évaluer(configTest()).lancer, true);
+});
+
+// ---------------------------------------------------------------------------
+// Reprise après interruption
+// ---------------------------------------------------------------------------
+
+test('une exécution interrompue laisse une trace exploitable', () => {
+  étatModule.ouvrirReprise('planifiée');
+  étatModule.noterPlaylistTerminée('a');
+  étatModule.noterPlaylistTerminée('b');
+
+  const reprise = étatModule.repriseEnAttente();
+  assert.ok(reprise, 'aucune trace de reprise');
+  assert.deepEqual(reprise.playlistsTerminées, ['a', 'b']);
+});
+
+test('noter deux fois la même playlist ne la duplique pas', () => {
+  étatModule.ouvrirReprise('manuelle');
+  étatModule.noterPlaylistTerminée('a');
+  étatModule.noterPlaylistTerminée('a');
+  assert.deepEqual(étatModule.repriseEnAttente().playlistsTerminées, ['a']);
+});
+
+test('une exécution menée à terme ne laisse aucune trace', () => {
+  étatModule.ouvrirReprise('planifiée');
+  étatModule.noterPlaylistTerminée('a');
+  étatModule.fermerReprise();
+  assert.equal(étatModule.repriseEnAttente(), null);
+});
+
+test('une trace trop ancienne est ignorée', () => {
+  // Passé un jour, la playlist a pu changer : refaire le travail coûte moins
+  // cher que de rater des nouveautés.
+  étatModule.ouvrirReprise('planifiée', new Date(Date.now() - 30 * 3600 * 1000));
+  étatModule.noterPlaylistTerminée('a');
+  assert.equal(étatModule.repriseEnAttente(), null);
+});
+
+test('une trace sans playlist terminée ne déclenche pas de reprise', () => {
+  // Interrompue avant d'avoir fini quoi que ce soit : il n'y a rien à sauter.
+  étatModule.ouvrirReprise('planifiée');
+  assert.equal(étatModule.repriseEnAttente(), null);
+  étatModule.fermerReprise();
+});
+
+test('un succès remet le compteur d’échecs à zéro', () => {
+  étatModule.marquerÉchec();
+  étatModule.marquerÉchec();
+  assert.equal(étatModule.état().échecsConsécutifs, 2);
+  étatModule.marquerSuccès();
+  assert.equal(étatModule.état().échecsConsécutifs, 0);
 });
 
 // ---------------------------------------------------------------------------

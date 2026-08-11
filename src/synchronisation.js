@@ -202,10 +202,35 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
     const capacités = rapport.contrôles.find((x) => x.id === 'zotify');
     const attente = attenteEffective(c);
 
-    const playlists = (c.playlists || []).filter(
+    let playlists = (c.playlists || []).filter(
       (p) => p.actif && (!playlistsCiblées || playlistsCiblées.includes(p.id)),
     );
+
+    // --- Reprise d'une exécution interrompue ------------------------------
+    // Une fermeture de l'app, une mise en veille ou une coupure de courant
+    // laissent une trace. Plutôt que de tout refaire — chaque playlist coûte
+    // ses trente secondes d'attente par titre — on repart des suivantes.
+    const reprise = étatModule.repriseEnAttente();
+    if (reprise && !playlistsCiblées) {
+      const déjàFaites = new Set(reprise.playlistsTerminées);
+      const restantes = playlists.filter((p) => !déjàFaites.has(p.id));
+
+      if (restantes.length && restantes.length < playlists.length) {
+        journal.info(
+          `Reprise de la synchronisation interrompue : ${playlists.length - restantes.length} ` +
+            `playlist(s) déjà traitée(s), ${restantes.length} restante(s).`,
+        );
+        bilan.reprise = { déjàTraitées: playlists.length - restantes.length };
+        playlists = restantes;
+      }
+    }
+
+    étatModule.ouvrirReprise(déclencheur, début);
     courante.totalPlaylists = playlists.length;
+
+    // Playlists dont la première tentative n'a rien donné : on les reprend
+    // une fois à la fin, quand le réseau ou Spotify se sera peut-être calmé.
+    const àReprendre = [];
 
     // --- Une playlist après l'autre --------------------------------------
     for (const [index, playlist] of playlists.entries()) {
@@ -342,11 +367,38 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
         dernièreErreur: résultat.erreurs?.[0]?.texte ?? null,
       });
 
+      // Une playlist qui n'a RIEN produit alors qu'elle a signalé des erreurs
+      // mérite une seconde chance : une coupure réseau passagère ou une
+      // limitation temporaire de Spotify se résorbent souvent en quelques
+      // minutes. Une playlist sans nouveauté et sans erreur, elle, est
+      // simplement à jour — la reprendre ne servirait à rien.
+      const mériteReprise = nbNouveaux === 0
+        && (résultat.erreurs?.length ?? 0) > 0
+        && !résultat.interrompu;
+
+      if (mériteReprise) àReprendre.push(playlist);
+      else étatModule.noterPlaylistTerminée(playlist.id);
+
       diffuser({
         type: 'playlist-fin',
         nom: courante.playlistActuelle,
         nbFichiers: nbNouveaux,
       });
+    }
+
+    // --- Playlists à reprendre --------------------------------------------
+    //
+    // Elles ne sont volontairement PAS marquées comme terminées : la trace de
+    // reprise les conserve, et la prochaine exécution s'en occupera en premier.
+    // On réutilise ainsi la mécanique déjà en place plutôt que d'enchaîner une
+    // seconde tentative immédiate — qui échouerait de toute façon si la cause
+    // est une limitation de débit, justement la plus fréquente.
+    if (àReprendre.length) {
+      bilan.àReprendre = àReprendre.map((p) => p.nom || p.url);
+      journal.avertir(
+        `${àReprendre.length} playlist(s) n'ont rien donné et ont signalé des erreurs. ` +
+          'Elles seront reprises en priorité à la prochaine synchronisation.',
+      );
     }
 
     // --- Exports vers les logiciels DJ -----------------------------------
@@ -377,7 +429,18 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
     // On n'avance la date de référence que si l'exécution est allée au bout :
     // une synchronisation interrompue doit repartir à la prochaine occasion,
     // pas attendre 48 h de plus.
-    if (!bilan.interrompu && !bilan.échec) étatModule.marquerSuccès(new Date());
+    if (!bilan.interrompu && !bilan.échec) {
+      étatModule.marquerSuccès(new Date());
+      étatModule.fermerReprise();
+    } else {
+      // La trace de reprise SURVIT volontairement : c'est elle qui permettra à
+      // la prochaine exécution de repartir des playlists non traitées.
+      const échecs = étatModule.marquerÉchec();
+      journal.avertir(
+        `Synchronisation non menée à son terme (${échecs} échec(s) d'affilée). ` +
+          'La prochaine tentative sera espacée en conséquence.',
+      );
+    }
 
     étatModule.enregistrerExécution(bilan);
 
