@@ -2,7 +2,7 @@
 
 ## 1.0.1 — 12 août 2026
 
-Six correctifs trouvés par un audit de la 1.0. Ils se déclenchent tous pendant un
+Huit correctifs trouvés par un audit de la 1.0. Ils se déclenchent tous pendant un
 gros rattrapage — celui de la première utilisation, justement. **Mise à jour
 recommandée avant votre première grosse synchronisation.**
 
@@ -64,6 +64,12 @@ L'export Rekordbox était protégé contre une coupure en pleine écriture, les
 crates Serato non. Une panne de courant au mauvais moment laissait un fichier
 tronqué, que Serato lisait tel quel au démarrage suivant. Elles passent
 désormais par le même chemin sûr.
+
+### L'export DJ montre qu'il travaille
+
+Il sonde chaque fichier de la bibliothèque un par un : sur 2 000 titres, ça prend
+plusieurs minutes pendant lesquelles l'écran affichait un message figé. Un
+compteur avance maintenant, avec le fichier en cours.
 
 ### Et l'historique dit enfin pourquoi
 
