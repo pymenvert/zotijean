@@ -486,7 +486,22 @@ export function télécharger({
       // réussi. On le reconnaît à sa date d'écriture, postérieure à l'instant où
       // l'on a demandé l'arrêt. Les morceaux terminés AVANT ne bougent pas.
       if ((arrêtDemandé || expiré) && instantArrêt && nouveaux.length) {
-        const marge = 2000; // horloges et systèmes de fichiers ne sont pas au millième
+        // LA MARGE EST UN ARBITRAGE, PAS UNE PRÉCAUTION TECHNIQUE.
+        //
+        // Un morceau terminé une seconde avant l'arrêt et un morceau coupé une
+        // seconde après ont des dates d'écriture presque identiques : aucune
+        // marge ne les sépare parfaitement. Il faut donc choisir de quel côté se
+        // tromper.
+        //
+        // Se tromper en écartant un bon fichier coûte un retéléchargement — une
+        // trentaine de secondes, et le fichier est déplacé, pas détruit. Se
+        // tromper dans l'autre sens laisse un morceau tronqué entrer dans une
+        // bibliothèque DJ, où il sera découvert en le jouant. L'asymétrie est
+        // écrasante : on penche du côté prudent.
+        //
+        // Une seconde suffit à couvrir la granularité des dates de HFS+ sans
+        // ratisser large inutilement.
+        const marge = 1000;
         const encoreOuvert = nouveaux
           .filter((f) => f.modifiéLe >= instantArrêt - marge)
           .sort((a, b) => b.modifiéLe - a.modifiéLe)[0];

@@ -403,6 +403,33 @@ test('deux interruptions du même morceau ne s’écrasent pas', () => {
   }
 });
 
+test('seul le fichier en cours d’écriture est écarté, pas ceux déjà terminés', () => {
+  // On rejoue la sélection exacte du pilote : parmi les nouveaux fichiers, ne
+  // retenir que celui dont la date d'écriture suit l'instant de l'arrêt.
+  //
+  // Ce test protège les DEUX sens. Écarter trop coûterait un retéléchargement
+  // inutile à chaque interruption ; écarter trop peu laisserait un morceau
+  // tronqué entrer dans la bibliothèque DJ.
+  const instantArrêt = 1_000_000_000_000;
+  const marge = 1000;
+
+  const nouveaux = [
+    { chemin: '/m/termine-il-y-a-longtemps.ogg', modifiéLe: instantArrêt - 600_000 },
+    { chemin: '/m/termine-juste-avant.ogg', modifiéLe: instantArrêt - 30_000 },
+    { chemin: '/m/coupe-en-plein-vol.ogg', modifiéLe: instantArrêt + 200 },
+  ];
+
+  const écarté = nouveaux
+    .filter((f) => f.modifiéLe >= instantArrêt - marge)
+    .sort((a, b) => b.modifiéLe - a.modifiéLe)[0];
+
+  assert.equal(écarté.chemin, '/m/coupe-en-plein-vol.ogg');
+
+  // Et surtout : les deux morceaux terminés ne sont pas concernés.
+  const concernés = nouveaux.filter((f) => f.modifiéLe >= instantArrêt - marge);
+  assert.equal(concernés.length, 1, 'un morceau terminé a été écarté à tort');
+});
+
 test('l’inventaire note la date d’écriture, seul moyen de reconnaître le fichier coupé', () => {
   const racine = dossierTemporaire();
   try {

@@ -424,6 +424,34 @@ test('ce qui n’est pas un lien Spotify est rejeté', () => {
   }
 });
 
+test('une surcharge de playlist conserve les garde-fous de sécurité', () => {
+  // CE QUE CE TEST PROTÈGE. Pendant une synchronisation, les conditions
+  // « seulement sur secteur » et « seulement en Wi-Fi », ainsi que le seuil
+  // d'espace disque, sont relues playlist après playlist — à partir de la
+  // configuration EFFECTIVE de la playlist en cours.
+  //
+  // Si une refonte de la fusion oubliait de recopier « planification » ou
+  // « gardes », ces gardes deviendraient muettes : le téléchargement
+  // continuerait sur batterie et sur données mobiles, ou remplirait le disque,
+  // sans qu'aucun test ne s'en aperçoive. On le vérifie donc ici.
+  const c = config();
+  c.planification.uniquementSurSecteur = true;
+  c.planification.uniquementEnWifi = true;
+  c.gardes.espaceMinimumGo = 7;
+
+  const cp = configPourPlaylist(c, {
+    id: '1',
+    url: 'u',
+    remplacements: { dossierMusique: '/ailleurs' },
+  });
+
+  assert.notEqual(cp, c, 'la surcharge n’a pas été appliquée, le test ne prouve rien');
+  assert.equal(cp.général.dossierMusique, '/ailleurs');
+  assert.equal(cp.planification.uniquementSurSecteur, true);
+  assert.equal(cp.planification.uniquementEnWifi, true);
+  assert.equal(cp.gardes.espaceMinimumGo, 7);
+});
+
 test.after(() => {
   fs.rmSync(DOSSIER, { recursive: true, force: true });
 });
