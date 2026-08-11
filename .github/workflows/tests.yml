@@ -87,7 +87,9 @@ jobs:
             # rien est pire qu'une CI rouge.
             if [ "${{ runner.os }}" != "Windows" ]; then
               temoin="une synchronisation complète télécharge, range et recense"
-              if ! grep -qF "ok 1 - $temoin" resultat.tap; then
+              # Le numéro du test dépend de sa place dans la suite : le figer à
+              # « ok 1 » faisait échouer le garde-fou alors que tout passait.
+              if ! grep -qE "^ok [0-9]+ - $temoin\$" resultat.tap; then
                 echo "::error title=Tests d'intégration non exécutés::Le test « $temoin » n'a pas tourné sur ${{ matrix.os }}. La suite ne valide donc pas la chaîne de synchronisation."
                 grep -F "$temoin" resultat.tap || echo "(test introuvable dans le rapport)"
                 exit 1

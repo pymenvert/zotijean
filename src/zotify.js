@@ -242,12 +242,24 @@ export function nouveauxFichiers(avant, après, tailleMinimale = 32 * 1024) {
  * `surÉvénement` reçoit des objets typés au fil de l'eau. La promesse se résout
  * avec le bilan établi à partir du DISQUE, pas du code de sortie.
  */
+/**
+ * Silence toléré avant de conclure que zotify est bloqué.
+ *
+ * Surtout PAS un délai total : un rattrapage légitime dure dix-sept heures. Ce
+ * qui est anormal, c'est l'absence de toute sortie pendant longtemps — zotify
+ * en produit à chaque piste, et il attend au plus une trentaine de secondes
+ * entre deux. Un quart d'heure de silence signifie qu'il est figé, typiquement
+ * sur une invite qu'on ne voit pas.
+ */
+const SILENCE_MAXIMAL_MS = 15 * 60 * 1000;
+
 export function télécharger({
   commande,
   arguments: arguments_,
   dossierRacine,
   surÉvénement = () => {},
   signalArrêt = null,
+  silenceMaximalMs = SILENCE_MAXIMAL_MS,
 }) {
   return new Promise((résoudre) => {
     const avant = inventorier(dossierRacine);
@@ -285,13 +297,42 @@ export function télécharger({
       return;
     }
 
+    // Chien de garde d'inactivité. Sans lui, un zotify bloqué — sur une invite
+    // d'identifiants, sur un réseau qui ne répond plus — fige le moteur
+    // indéfiniment : c'était la seule exécution du projet sans aucun délai.
+    let expiré = false;
+    let chien = null;
+
+    const réarmerChien = () => {
+      clearTimeout(chien);
+      chien = setTimeout(() => {
+        expiré = true;
+        journal.erreur(
+          `zotify n’a rien produit depuis ${Math.round(silenceMaximalMs / 60000)} minutes : ` +
+            'il est considéré comme bloqué et arrêté. Les morceaux déjà téléchargés ' +
+            'sont conservés, les autres seront repris à la prochaine synchronisation.',
+        );
+        surÉvénement({ type: 'expiration' });
+        processus.kill('SIGTERM');
+        setTimeout(() => {
+          if (processus.exitCode === null && processus.signalCode === null) {
+            processus.kill('SIGKILL');
+          }
+        }, 3000);
+      }, silenceMaximalMs);
+      chien.unref?.();
+    };
+
     const enregistrer = (ligne) => {
+      réarmerChien();
       const classée = classerLigne(ligne);
       lignes.push(classée);
       if (lignes.length > 2000) lignes.shift();
       surÉvénement({ type: 'ligne', ...classée });
       if (classée.type === 'erreur') journal.avertir(`zotify : ${ligne}`);
     };
+
+    réarmerChien();
 
     const découpeurSortie = créerDécoupeur(enregistrer);
     const découpeurErreur = créerDécoupeur(enregistrer);
@@ -326,6 +367,7 @@ export function télécharger({
     signalArrêt?.addEventListener?.('abort', arrêter, { once: true });
 
     processus.on('error', (erreur) => {
+      clearTimeout(chien);
       résoudre({
         lancé: false,
         erreur: erreur.message,
@@ -337,6 +379,7 @@ export function télécharger({
     });
 
     processus.on('close', (code) => {
+      clearTimeout(chien);
       signalArrêt?.removeEventListener?.('abort', arrêter);
 
       const après = inventorier(dossierRacine);
@@ -358,6 +401,7 @@ export function télécharger({
       résoudre({
         lancé: true,
         interrompu: arrêtDemandé,
+        expiré,
         codeSortie: code,
         nouveaux,
         suspects,
