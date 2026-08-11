@@ -30,8 +30,19 @@ import { inventaireComplet } from './analyse.js';
  * compris. C'est la cause d'échec la plus fréquente, d'où son affichage dans
  * l'interface plutôt que sa dissimulation dans le code.
  */
+/**
+ * Le port RÉELLEMENT écouté, qui n'est pas toujours celui des réglages :
+ * « node server.js --port 9000 » le change sans toucher à la configuration.
+ * Annoncer le mauvais port rendait la connexion Spotify impossible, avec une
+ * erreur incompréhensible côté Spotify.
+ */
+let portÉcoute = null;
+export function définirPortÉcoute(port) {
+  portÉcoute = port;
+}
+
 export function adresseRetourSpotify(c = config()) {
-  return `http://127.0.0.1:${c.général.port}/api/spotify/retour`;
+  return `http://127.0.0.1:${portÉcoute ?? c.général.port}/api/spotify/retour`;
 }
 
 const NOMS_VARIABLES = VARIABLES.map((v) => v.nom);

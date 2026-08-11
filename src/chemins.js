@@ -143,11 +143,24 @@ export function assurerDossier(chemin) {
  * fichier tronqué. Sans ça, une coupure pendant l'écriture de la configuration
  * la rendrait illisible au prochain démarrage.
  */
-export function écrireAtomique(chemin, contenu) {
+export function écrireAtomique(chemin, contenu, { mode = null } = {}) {
   assurerDossier(path.dirname(chemin));
   const temporaire = `${chemin}.${process.pid}.tmp`;
-  fs.writeFileSync(temporaire, contenu, 'utf8');
-  fs.renameSync(temporaire, chemin);
+
+  try {
+    // Le mode est posé DÈS la création, pas après : un fichier de jetons
+    // brièvement lisible par tous reste un fichier lisible par tous.
+    fs.writeFileSync(temporaire, contenu, mode ? { encoding: 'utf8', mode } : 'utf8');
+    fs.renameSync(temporaire, chemin);
+    if (mode) fs.chmodSync(chemin, mode);
+  } catch (erreur) {
+    // Un temporaire abandonné contiendrait une copie partielle du contenu —
+    // gênant pour la configuration, franchement mauvais pour des jetons.
+    try {
+      fs.unlinkSync(temporaire);
+    } catch { /* déjà absent */ }
+    throw erreur;
+  }
 }
 
 /**

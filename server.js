@@ -12,7 +12,7 @@ import { spawn } from 'node:child_process';
 
 import { config } from './src/config.js';
 import { journal } from './src/journal.js';
-import { routes, ErreurRequête } from './src/api.js';
+import { routes, ErreurRequête, définirPortÉcoute } from './src/api.js';
 import { refuser, ENTÊTES_SÉCURITÉ } from './src/securite.js';
 import { lireContextePlateforme } from './src/energie.js';
 import { terminerConnexion as terminerConnexionSpotify } from './src/spotify.js';
@@ -231,10 +231,23 @@ async function servirRetourSpotify(url, réponse) {
     }));
   }
 
-  const résultat = await terminerConnexionSpotify(
-    url.searchParams.get('code'),
-    url.searchParams.get('state'),
-  );
+  // L'échange avec Spotify passe par le réseau : une coupure de Wi-Fi au
+  // mauvais moment produisait une page blanche « Erreur interne », sans que
+  // l'utilisateur sache s'il devait recommencer.
+  let résultat;
+  try {
+    résultat = await terminerConnexionSpotify(
+      url.searchParams.get('code'),
+      url.searchParams.get('state'),
+    );
+  } catch (erreur) {
+    journal.avertir('Échange du code Spotify impossible.', erreur.message);
+    résultat = {
+      réussi: false,
+      raison: 'La connexion à Spotify a été interrompue. Vérifiez votre accès à ' +
+        'internet, puis relancez la connexion depuis Zotijean.',
+    };
+  }
 
   return envoyer(pageRetour(résultat.réussi
     ? {
@@ -326,6 +339,10 @@ function lirePortDesArguments() {
 export function démarrer() {
   const c = config();
   const port = lirePortDesArguments() ?? c.général.port;
+
+  // L'adresse de retour de Spotify doit désigner le port réellement écouté,
+  // pas celui des réglages.
+  définirPortÉcoute(port);
   // Filet général. `traiter` est asynchrone : une exception hors de ses blocs
   // try — par exemple `decodeURIComponent` sur une URL contenant un « % » isolé —
   // deviendrait un rejet non rattrapé, ce qui termine le processus Node. Le

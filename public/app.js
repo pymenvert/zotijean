@@ -1043,38 +1043,104 @@ async function rendreSpotify() {
     </div>
     <p class="erreur-champ" id="erreur-spotify" hidden></p>`;
 
-  $('#btn-connecter-spotify').addEventListener('click', async () => {
+  $('#btn-connecter-spotify').addEventListener('click', async (événement) => {
+    const bouton = événement.currentTarget;
     const erreur = $('#erreur-spotify');
     erreur.hidden = true;
+
+    // Deux clics lançaient deux demandes : la seconde écrasait le secret de la
+    // première, et l'utilisateur recevait « La réponse de Spotify ne correspond
+    // pas à la demande » pour avoir simplement cliqué deux fois.
+    bouton.disabled = true;
     try {
       const { url } = await appeler('POST', '/api/spotify/connexion', {
         clientId: $('#champ-client-id').value.trim(),
       });
       window.open(url, '_blank', 'noopener');
       noter('Autorisez Zotijean dans l’onglet qui vient de s’ouvrir, puis revenez ici.');
-      // On ne sait pas quand l'utilisateur aura terminé : on regarde
-      // régulièrement plutôt que de lui demander de cliquer une fois de plus.
-      const guet = setInterval(async () => {
-        const à_jour = await appeler('GET', '/api/spotify/etat');
-        if (à_jour.connecté) {
-          clearInterval(guet);
-          noter('Compte Spotify connecté.', 'succes');
-          rendreSpotify();
-        }
-      }, 2000);
-      setTimeout(() => clearInterval(guet), 180000);
+      guetterConnexion();
     } catch (problème) {
       erreur.textContent = problème.message;
       erreur.hidden = false;
+    } finally {
+      bouton.disabled = false;
     }
   });
 }
 
-async function afficherSélecteurPlaylists() {
+/** Un seul guet à la fois : les précédents s'accumulaient sinon. */
+let guetConnexion = null;
+
+/**
+ * Attend que l'utilisateur ait autorisé l'application dans l'autre onglet.
+ *
+ * On regarde régulièrement plutôt que de lui demander de cliquer une fois de
+ * plus. L'attente est généreuse : une authentification à deux facteurs prend du
+ * temps, et abandonner en silence laissait la carte afficher « non connecté »
+ * alors que les jetons étaient bien là.
+ */
+function guetterConnexion() {
+  clearInterval(guetConnexion);
+  const départ = Date.now();
+
+  const vérifier = async () => {
+    try {
+      const à_jour = await appeler('GET', '/api/spotify/etat');
+      if (à_jour.connecté) {
+        clearInterval(guetConnexion);
+        guetConnexion = null;
+        noter('Compte Spotify connecté.', 'succes');
+        rendreSpotify().catch(() => {});
+        return;
+      }
+    } catch {
+      // Moteur momentanément injoignable : on réessaiera au prochain tour.
+    }
+
+    if (Date.now() - départ > 10 * 60 * 1000) {
+      clearInterval(guetConnexion);
+      guetConnexion = null;
+      noter('Toujours pas de réponse de Spotify. Si vous avez terminé, cliquez sur Connecter à nouveau.');
+      rendreSpotify().catch(() => {});
+    }
+  };
+
+  guetConnexion = setInterval(vérifier, 2000);
+
+  // Beaucoup d'utilisateurs reviennent sur l'onglet une fois l'autorisation
+  // donnée : c'est le meilleur moment pour revérifier tout de suite.
+  document.addEventListener('visibilitychange', function auRetour() {
+    if (document.hidden) return;
+    document.removeEventListener('visibilitychange', auRetour);
+    if (guetConnexion) vérifier();
+  });
+}
+
+async function afficherSélecteurPlaylists(événement) {
+  const bouton = événement?.currentTarget;
   const zone = $('#spotify-resultat');
+  if (bouton) bouton.disabled = true;
   zone.innerHTML = '<p class="aide">Lecture de vos playlists…</p>';
 
-  const { playlists } = await appeler('GET', '/api/spotify/playlists');
+  let playlists;
+  try {
+    ({ playlists } = await appeler('GET', '/api/spotify/playlists'));
+  } catch (erreur) {
+    zone.innerHTML = `<p class="erreur-champ">${échapper(erreur.message)}</p>`;
+    return;
+  } finally {
+    if (bouton) bouton.disabled = false;
+  }
+
+  // Un cadre vide avec un bouton actif capable de tout effacer serait le pire
+  // des états : on explique la cause la plus fréquente.
+  if (!playlists.length) {
+    zone.innerHTML = `<p class="aide">Aucune playlist trouvée sur ce compte.
+      Si votre application Spotify est en mode développement, votre compte doit
+      être ajouté à sa liste d’utilisateurs dans le tableau de bord développeur.</p>`;
+    return;
+  }
+
   const choisies = new Map(playlists.filter((p) => p.suivie).map((p) => [p.url, p]));
 
   zone.innerHTML = `
@@ -1129,8 +1195,14 @@ async function afficherSélecteurPlaylists() {
   });
 }
 
-async function afficherManquants() {
+async function afficherManquants(événement) {
+  const bouton = événement?.currentTarget;
   const zone = $('#spotify-resultat');
+
+  // Sans cette désactivation, trois clics lancaient trois inventaires complets
+  // en parallèle — autant de lectures de toute la bibliothèque et d'appels à
+  // Spotify, pour un résultat identique.
+  if (bouton) bouton.disabled = true;
   zone.innerHTML = '<p class="aide">Comparaison avec vos fichiers…</p>';
 
   try {
@@ -1161,6 +1233,8 @@ async function afficherManquants() {
     }).join('');
   } catch (erreur) {
     zone.innerHTML = `<p class="erreur-champ">${échapper(erreur.message)}</p>`;
+  } finally {
+    if (bouton) bouton.disabled = false;
   }
 }
 

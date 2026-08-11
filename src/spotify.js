@@ -49,7 +49,9 @@ function lireJetons() {
 
 function écrireJetons(jetons) {
   assurerDossier(dossierDonnées());
-  écrireAtomique(fichierJetons(), JSON.stringify(jetons, null, 2));
+  // Lisible et modifiable par son seul propriétaire. Le dossier par défaut de
+  // macOS est déjà restreint, mais ZOTIJEAN_DONNEES peut pointer ailleurs.
+  écrireAtomique(fichierJetons(), JSON.stringify(jetons, null, 2), { mode: 0o600 });
 }
 
 export function oublierJetons() {

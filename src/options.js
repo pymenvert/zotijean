@@ -412,9 +412,15 @@ export function configParDéfaut() {
     organisation: {
       schéma: 'par_playlist',
       modèlePersonnalisé: '{playlist}/{numéro} - {artiste} - {titre}',
-      minusculeForcée: false,
-      remplacerEspacesPar: '',
       écrireM3U: true,
+      // « minusculeForcée » et « remplacerEspacesPar » ont été RETIRÉS.
+      // Ils n'étaient exposés nulle part, mais ils s'appliquaient au chemin que
+      // Zotijean CHERCHE sans jamais être transmis à zotify, qui écrit ses
+      // fichiers autrement. Activés, ils auraient fait chercher dans un dossier
+      // différent de celui réellement utilisé : rien n'aurait été reconnu, et
+      // toute la bibliothèque se serait retéléchargée à chaque passage.
+      // La fonction d'assainissement sait toujours les appliquer ; simplement,
+      // plus rien ne peut les activer.
     },
     planification: {
       actif: true,
