@@ -15,6 +15,7 @@ import { journal } from './src/journal.js';
 import { routes, ErreurRequête } from './src/api.js';
 import { refuser, ENTÊTES_SÉCURITÉ } from './src/securite.js';
 import { lireContextePlateforme } from './src/energie.js';
+import { terminerConnexion as terminerConnexionSpotify } from './src/spotify.js';
 import { diagnostiquer } from './src/diagnostic.js';
 import * as synchro from './src/synchronisation.js';
 import * as planificateur from './src/planificateur.js';
@@ -146,6 +147,65 @@ function servirÉvénements(requête, réponse) {
 }
 
 // ---------------------------------------------------------------------------
+// Retour de Spotify après autorisation
+// ---------------------------------------------------------------------------
+
+/** Page de fin de connexion, affichée dans le navigateur de l'utilisateur. */
+function pageRetour({ titre, message, réussi }) {
+  const accent = réussi ? '#4ec98a' : '#f4685f';
+  return `<!doctype html><html lang="fr"><head><meta charset="utf-8">
+<title>Zotijean — ${titre}</title><style>
+  body { margin:0; min-height:100vh; display:grid; place-items:center;
+         background:#0e1014; color:#e8ecf2; font:15px/1.6 -apple-system,
+         BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif; padding:24px; }
+  .boite { max-width:440px; text-align:center; }
+  .pastille { width:12px; height:12px; border-radius:50%; background:${accent};
+              margin:0 auto 20px; box-shadow:0 0 0 6px ${accent}22; }
+  h1 { font-size:20px; margin:0 0 10px; font-weight:640; letter-spacing:-.02em; }
+  p { color:#9aa4b2; margin:0; }
+</style></head><body><div class="boite">
+  <div class="pastille"></div><h1>${titre}</h1><p>${message}</p>
+</div></body></html>`;
+}
+
+async function servirRetourSpotify(url, réponse) {
+  const envoyer = (contenu, statut = 200) => {
+    réponse.writeHead(statut, {
+      ...ENTÊTES_SÉCURITÉ,
+      // La page se décrit elle-même en HTML : la politique par défaut
+      // interdirait son style intégré.
+      'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'",
+      'Content-Type': 'text/html; charset=utf-8',
+    });
+    réponse.end(contenu);
+  };
+
+  const erreur = url.searchParams.get('error');
+  if (erreur) {
+    return envoyer(pageRetour({
+      titre: 'Connexion annulée',
+      message: erreur === 'access_denied'
+        ? 'Vous avez refusé l’accès. Vous pouvez fermer cet onglet et réessayer quand vous voulez.'
+        : `Spotify a renvoyé : ${erreur}. Vous pouvez fermer cet onglet.`,
+      réussi: false,
+    }));
+  }
+
+  const résultat = await terminerConnexionSpotify(
+    url.searchParams.get('code'),
+    url.searchParams.get('state'),
+  );
+
+  return envoyer(pageRetour(résultat.réussi
+    ? {
+        titre: 'Compte Spotify connecté',
+        message: 'Vous pouvez fermer cet onglet et revenir à Zotijean.',
+        réussi: true,
+      }
+    : { titre: 'La connexion a échoué', message: résultat.raison, réussi: false }));
+}
+
+// ---------------------------------------------------------------------------
 // Serveur
 // ---------------------------------------------------------------------------
 
@@ -169,6 +229,11 @@ async function traiter(requête, réponse, port) {
   const chemin = url.pathname;
 
   if (chemin === '/api/evenements') return servirÉvénements(requête, réponse);
+
+  // La page de retour de Spotify est un cas à part : c'est le NAVIGATEUR que
+  // Spotify redirige ici, pas notre interface. Elle doit donc répondre en HTML
+  // lisible, et non en JSON.
+  if (chemin === '/api/spotify/retour') return servirRetourSpotify(url, réponse);
   if (!chemin.startsWith('/api/')) return servirStatique(chemin, réponse);
 
   const clé = `${requête.method} ${chemin}`;

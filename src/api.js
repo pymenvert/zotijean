@@ -19,6 +19,19 @@ import { modèleActif } from './organisation.js';
 import { exporterDepuisConfig } from './exports-dj.js';
 import { synthétiser } from './erreurs.js';
 import { lireContextePlateforme } from './energie.js';
+import * as spotify from './spotify.js';
+
+/**
+ * L'adresse que Spotify appellera après autorisation.
+ *
+ * Elle doit être recopiée à l'identique dans le tableau de bord développeur :
+ * Spotify refuse toute redirection qui ne correspond pas exactement, port
+ * compris. C'est la cause d'échec la plus fréquente, d'où son affichage dans
+ * l'interface plutôt que sa dissimulation dans le code.
+ */
+export function adresseRetourSpotify(c = config()) {
+  return `http://127.0.0.1:${c.général.port}/api/spotify/retour`;
+}
 
 const NOMS_VARIABLES = VARIABLES.map((v) => v.nom);
 
@@ -248,6 +261,55 @@ export const routes = {
   },
 
   'GET /api/diagnostic': async () => diagnostiquer(config()),
+
+  // ------------------------------------------------------------ Spotify
+
+  'GET /api/spotify/etat': async () => {
+    const c = config();
+    const base = {
+      actif: !!c.spotify?.actif,
+      clientIdRenseigné: !!c.spotify?.clientId,
+      connecté: spotify.estConnecté(),
+      redirection: adresseRetourSpotify(c),
+    };
+
+    if (!base.connecté) return base;
+
+    try {
+      return { ...base, profil: await spotify.profil() };
+    } catch (erreur) {
+      return { ...base, erreur: erreur.message, reconnexion: !!erreur.reconnexion };
+    }
+  },
+
+  'POST /api/spotify/connexion': (corps) => {
+    const clientId = String(corps?.clientId || '').trim();
+    if (!/^[0-9a-f]{32}$/i.test(clientId)) {
+      throw new ErreurRequête(
+        'L’identifiant d’application attendu est une suite de 32 caractères, ' +
+        'copiée depuis le tableau de bord développeur de Spotify.',
+      );
+    }
+
+    modifier({ spotify: { ...config().spotify, clientId, actif: true } });
+    return { url: spotify.préparerConnexion(clientId, adresseRetourSpotify(config())) };
+  },
+
+  'POST /api/spotify/deconnexion': () => {
+    spotify.oublierJetons();
+    modifier({ spotify: { ...config().spotify, actif: false } });
+    journal.info('Déconnexion de Spotify.');
+    return { déconnecté: true };
+  },
+
+  'GET /api/spotify/playlists': async () => {
+    if (!spotify.estConnecté()) {
+      throw new ErreurRequête('Connectez d’abord votre compte Spotify.', 409);
+    }
+    const suivies = new Set(config().playlists.map((p) => p.url));
+    const toutes = await spotify.mesPlaylists();
+    return { playlists: toutes.map((p) => ({ ...p, suivie: suivies.has(p.url) })) };
+  },
 
   'GET /api/simulation': async () => simuler(),
 

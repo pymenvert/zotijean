@@ -396,6 +396,15 @@ export function configParDéfaut() {
       commande: 'zotify', // remplacé par un chemin absolu si le diagnostic en trouve un
       argumentsSupplémentaires: '',
     },
+    // Connexion à l'API officielle de Spotify. Entièrement facultative :
+    // l'application fonctionne sans, avec moins de précision.
+    // Les jetons ne sont PAS ici mais dans un fichier séparé, pour qu'un
+    // rapport de diagnostic — qui reprend les réglages — ne puisse pas les
+    // divulguer.
+    spotify: {
+      actif: false,
+      clientId: '',
+    },
     qualité: {
       niveau: 'tres_elevee',
       format: 'copie',
