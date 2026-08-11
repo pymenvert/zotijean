@@ -373,7 +373,30 @@ jobs:
           else
             echo "::warning title=ffmpeg absent du paquet::L'application exigera un ffmpeg installé."
           fi
+          if [ -x ./ffmpeg/ffprobe ]; then
+            ./ffmpeg/ffprobe -version >/dev/null || { echo "ffprobe embarqué inutilisable"; exit 1; }
+            echo "ffprobe embarqué : opérationnel"
+          else
+            echo "::warning title=ffprobe absent du paquet::L'export Rekordbox ignorera la durée des morceaux."
+          fi
           test "$(ls -1 roues | wc -l)" -gt 0 || { echo "Aucun paquet zotify récupéré"; exit 1; }
+
+          # L'ARCHITECTURE, ET POURQUOI ELLE COMPTE. La cible est un Mac Apple
+          # Silicon. Un binaire Intel s'exécute sous Rosetta — que le Mac n'a pas
+          # forcément, et qu'on ne peut pas demander d'installer sans renier le
+          # « rien à installer ». C'est un piège réel : evermeet.cx, la source la
+          # plus connue de ffmpeg pour macOS, annonce ne pas fournir d'arm64.
+          # Ici on ne fait que constater et signaler ; c'est la publication qui
+          # refuse de sortir un paquet non natif.
+          for outil in node/node python/bin/python3 ffmpeg/ffmpeg ffmpeg/ffprobe; do
+            [ -x "$outil" ] || continue
+            ARCHS=$(lipo -archs "$outil" 2>/dev/null || echo inconnu)
+            echo "  $outil : $ARCHS"
+            case "$ARCHS" in
+              *arm64*) ;;
+              *) echo "::warning title=Binaire non Apple Silicon::$outil est en « $ARCHS » et exigera Rosetta.";;
+            esac
+          done
           echo "Outils embarqués vérifiés."
 
       - name: Monter zotify hors ligne, comme au premier lancement

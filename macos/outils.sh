@@ -82,9 +82,40 @@ echo "  3/4  ffmpeg"
 rm -rf "$OUTILS/ffmpeg"
 mkdir -p "$OUTILS/ffmpeg"
 
-if telecharger "https://evermeet.cx/ffmpeg/getrelease/zip" "ffmpeg.zip" 2>/dev/null; then
+# ffprobe compte autant que ffmpeg : c'est lui qui lit la durée des morceaux
+# pour l'export Rekordbox.
+#
+# LE PIÈGE : evermeet.cx, la source la plus connue, annonce explicitement ne pas
+# fournir de binaire Apple Silicon. Son ffmpeg est Intel — il exige Rosetta, que
+# le Mac n'a pas forcément. Un paquet construit avec lui tiendrait mal sa
+# promesse de « rien à installer ». osxexperts.net publie des versions arm64
+# natives ; on les prend en priorité sur une machine Apple Silicon.
+if [ "$ARCH" = "arm64" ]; then
+  # Les adresses portent le numéro de version (ffmpeg9arm.zip) : elles changeront.
+  # On lit la page d'accueil pour trouver celle du moment plutôt que d'en figer
+  # une qui expirera en silence.
+  PAGE=$(curl -fsSL --retry 2 --max-time 30 "https://www.osxexperts.net/" 2>/dev/null || true)
+
+  for outil in ffmpeg ffprobe; do
+    LIEN=$(printf '%s' "$PAGE" \
+      | grep -oE "https://www\.osxexperts\.net/${outil}[0-9]*arm\.zip" \
+      | sort -u | tail -1)
+    [ -z "$LIEN" ] && continue
+
+    if telecharger "$LIEN" "$outil-arm64.zip" 2>/dev/null; then
+      unzip -qo "$CACHE/$outil-arm64.zip" -d "$OUTILS/ffmpeg" 2>/dev/null || true
+      chmod +x "$OUTILS/ffmpeg/$outil" 2>/dev/null || true
+    fi
+  done
+
+  [ -x "$OUTILS/ffmpeg/ffmpeg" ] && echo "       arm64 natif"
+fi
+
+if [ ! -x "$OUTILS/ffmpeg/ffmpeg" ] \
+   && telecharger "https://evermeet.cx/ffmpeg/getrelease/zip" "ffmpeg.zip" 2>/dev/null; then
   unzip -qo "$CACHE/ffmpeg.zip" -d "$OUTILS/ffmpeg"
   chmod +x "$OUTILS/ffmpeg/ffmpeg" 2>/dev/null || true
+  [ "$ARCH" = "arm64" ] && echo "       ATTENTION : binaire Intel, il exigera Rosetta."
 fi
 
 if [ ! -x "$OUTILS/ffmpeg/ffmpeg" ]; then
@@ -98,7 +129,16 @@ if [ ! -x "$OUTILS/ffmpeg/ffmpeg" ]; then
     echo "       INTROUVABLE — le paquet exigera un ffmpeg installé."
   fi
 fi
+
+# ffprobe a pu manquer à l'appel alors que ffmpeg est là : evermeet ne livre que
+# ffmpeg. Sans lui, l'export Rekordbox ne connaît pas la durée des morceaux.
+if [ ! -x "$OUTILS/ffmpeg/ffprobe" ] && command -v ffprobe >/dev/null 2>&1; then
+  cp "$(command -v ffprobe)" "$OUTILS/ffmpeg/ffprobe" && chmod +x "$OUTILS/ffmpeg/ffprobe"
+  echo "       ffprobe : repli sur la copie du système"
+fi
+
 [ -x "$OUTILS/ffmpeg/ffmpeg" ] && echo "       $("$OUTILS/ffmpeg/ffmpeg" -version 2>/dev/null | head -1 | cut -c1-40)"
+[ -x "$OUTILS/ffmpeg/ffprobe" ] || echo "       ffprobe ABSENT — l'export Rekordbox sera incomplet."
 
 # ---------------------------------------------------------------- zotify
 

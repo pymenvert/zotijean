@@ -52,14 +52,39 @@ jobs:
       - name: Vérifier que le paquet est autonome
         run: |
           APP="macos/build/Zotijean.app"
+          OUTILS="$APP/Contents/Resources/outils"
+
           # Un paquet publié qui exigerait une installation trahirait sa
           # promesse : on refuse de publier plutôt que de décevoir.
-          test -x "$APP/Contents/MacOS/Zotijean"                      || { echo "Binaire absent"; exit 1; }
-          test -x "$APP/Contents/Resources/outils/node/node"          || { echo "Node absent"; exit 1; }
-          test -x "$APP/Contents/Resources/outils/python/bin/python3" || { echo "Python absent"; exit 1; }
-          test -d "$APP/Contents/Resources/outils/roues"              || { echo "Téléchargeur absent"; exit 1; }
-          test -f "$APP/Contents/Resources/moteur/public/index.html"  || { echo "Interface absente"; exit 1; }
-          echo "Paquet autonome, $(du -sh "$APP" | cut -f1)."
+          manque() { echo "::error title=Paquet incomplet::$1"; exit 1; }
+
+          test -x "$APP/Contents/MacOS/Zotijean"                     || manque "Le binaire de l'application est absent."
+          test -f "$APP/Contents/Resources/moteur/server.js"         || manque "Le moteur est absent."
+          test -f "$APP/Contents/Resources/moteur/public/index.html" || manque "L'interface est absente."
+          test -x "$OUTILS/node/node"                                || manque "Node est absent : l'app exigerait une installation."
+          test -x "$OUTILS/python/bin/python3"                       || manque "Python est absent : l'app exigerait une installation."
+          test -d "$OUTILS/roues"                                    || manque "Le téléchargeur (zotify) est absent."
+          ls "$OUTILS"/roues/*.whl >/dev/null 2>&1                   || manque "Le dossier des paquets zotify est vide."
+
+          # ffmpeg est le seul outil dont l'absence DÉTRUIT des morceaux : zotify
+          # renomme le fichier avant de constater qu'il manque, et ne le restaure
+          # jamais. Il ne sort pas d'ici sans lui. ffprobe l'accompagne, c'est lui
+          # qui lit la durée des morceaux pour l'export Rekordbox.
+          test -x "$OUTILS/ffmpeg/ffmpeg"                            || manque "ffmpeg est absent. Sans lui, zotify détruit les morceaux en silence."
+          test -x "$OUTILS/ffmpeg/ffprobe"                           || manque "ffprobe est absent : l'export Rekordbox serait incomplet."
+
+          # La cible est un Mac Apple Silicon. Un binaire Intel fonctionnerait
+          # sous Rosetta -- que le Mac n'a pas forcément, et qu'on ne peut pas
+          # demander d'installer sans renier le « rien à installer ».
+          for outil in node/node python/bin/python3 ffmpeg/ffmpeg ffmpeg/ffprobe; do
+            ARCHS=$(lipo -archs "$OUTILS/$outil" 2>/dev/null || echo inconnu)
+            case "$ARCHS" in
+              *arm64*) ;;
+              *) echo "::error title=Binaire non Apple Silicon::$outil est en « $ARCHS ». Il exigerait Rosetta."; exit 1;;
+            esac
+          done
+
+          echo "Paquet autonome et natif Apple Silicon, $(du -sh "$APP" | cut -f1)."
 
       - name: Emballer
         run: |
@@ -69,35 +94,59 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent Zotijean.app Zotijean.zip
 
       - name: Publier la version
-        uses: softprops/action-gh-release@v2
-        with:
-          files: macos/build/Zotijean.zip
-          fail_on_unmatched_files: true
-          body: |
-            ## Installation
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Un tag donne son nom à la version ; un déclenchement manuel produit
+          # un brouillon, pour ne jamais publier par accident depuis un bouton.
+          TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+        run: |
+          # gh est préinstallé sur les runners : pas d'action tierce à qui
+          # confier un jeton d'écriture sur le dépôt.
+          NOTES=$(mktemp)
+          cat > "$NOTES" <<'TEXTE'
+## Installation
 
-            1. Téléchargez **Zotijean.zip** ci-dessous et décompressez-le.
-            2. Glissez **Zotijean.app** dans votre dossier Applications.
-            3. **Clic droit sur l'app, puis Ouvrir.** macOS affiche un
-               avertissement pour toute application qui ne vient pas de
-               l'App Store — une seule fois, ensuite le double-clic suffit.
+1. Téléchargez **Zotijean.zip** ci-dessous et décompressez-le.
+2. Glissez **Zotijean.app** dans votre dossier Applications.
+3. **Clic droit sur l'app, puis Ouvrir.** macOS affiche un avertissement pour
+   toute application qui ne vient pas de l'App Store — une seule fois, ensuite
+   le double-clic suffit.
 
-            Une icône apparaît en haut à droite de l'écran, dans la barre des
-            menus. Tout se pilote de là.
+Une icône apparaît en haut à droite de l'écran, dans la barre des menus.
+Tout se pilote de là.
 
-            ## Il n'y a rien à installer
+## Il n'y a rien à installer
 
-            L'application contient le moteur, Python, ffmpeg et le téléchargeur.
-            Elle ne demande rien à votre Mac.
+L'application contient le moteur, Python, ffmpeg et le téléchargeur, tous en
+version Apple Silicon native. Elle ne demande rien à votre Mac.
 
-            Restent deux choses qu'aucun paquet ne peut éviter : l'avertissement
-            macOS ci-dessus, et la connexion de votre compte Spotify. L'onglet
-            **Diagnostic** vérifie chaque pièce au démarrage et dit précisément
-            quoi faire si quelque chose manque.
+Restent deux choses qu'aucun paquet ne peut éviter : l'avertissement macOS
+ci-dessus, et la connexion de votre compte Spotify. L'onglet **Diagnostic**
+vérifie chaque pièce au démarrage et dit précisément quoi faire s'il manque
+quelque chose.
 
-            ## Avant de lancer un gros rattrapage
+## Avant de lancer un gros rattrapage
 
-            Comptez environ **17 heures pour 2 000 titres** : Zotijean attend une
-            trentaine de secondes entre chaque morceau, volontairement. Le bouton
-            **Simuler** vous montre la durée et la place nécessaires avant de
-            vous engager.
+Comptez environ **17 heures pour 2 000 titres** : Zotijean attend une trentaine
+de secondes entre chaque morceau, volontairement — c'est ce qui évite les
+erreurs de clé audio et limite le risque pour votre compte. Le bouton
+**Simuler** vous montre la durée et la place nécessaires avant de vous engager.
+TEXTE
+
+          # Le journal des versions détaille le reste ; on l'ajoute plutôt que
+          # de le recopier, pour qu'il n'y ait qu'un seul texte à maintenir.
+          if [ -f CHANGELOG.md ]; then
+            printf '\n---\n\n' >> "$NOTES"
+            sed -n '/^## /,$p' CHANGELOG.md | sed -n '2,/^## /p' | sed '$d' >> "$NOTES"
+          fi
+
+          if [ -n "$TAG" ]; then
+            gh release create "$TAG" macos/build/Zotijean.zip \
+              --title "Zotijean $TAG" --notes-file "$NOTES"
+            echo "Version $TAG publiée."
+          else
+            # Sans tag (déclenchement manuel), on prépare sans rendre public.
+            gh release create "brouillon-${GITHUB_RUN_NUMBER}" macos/build/Zotijean.zip \
+              --draft --title "Brouillon $GITHUB_RUN_NUMBER" --notes-file "$NOTES"
+            echo "Brouillon créé : rien n'est public tant qu'il n'est pas publié à la main."
+          fi
