@@ -299,9 +299,18 @@ export function écarterIncomplet(chemin, dossierRacine) {
 
     fs.renameSync(chemin, cible);
     return cible;
-  } catch {
-    // Un échec ici ne doit pas faire tomber la synchronisation. Le fichier reste
-    // en place, et le journal l'aura signalé.
+  } catch (erreur) {
+    // Un échec ici ne doit pas faire tomber la synchronisation — mais il ne doit
+    // pas non plus passer inaperçu. Le fichier tronqué reste en place, donc le
+    // téléchargeur continuera de sauter ce morceau à chaque fois. C'est
+    // exactement le genre de panne silencieuse qu'on cherche à supprimer : sans
+    // cette ligne, l'utilisateur verrait un titre manquer indéfiniment sans
+    // qu'aucun message n'existe pour l'expliquer.
+    journal.avertir(
+      `Impossible d’écarter un téléchargement interrompu (${erreur.code || erreur.message}). ` +
+        `Le fichier « ${path.basename(chemin)} » reste en place, et ce morceau continuera ` +
+        'd’être sauté. Supprimez-le à la main pour qu’il soit retéléchargé.',
+    );
     return null;
   }
 }
