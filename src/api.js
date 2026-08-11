@@ -16,6 +16,7 @@ import { évaluer, prochaineÉchéance, formaterÉchéance, duréeEnFrançais } 
 import { simuler } from './simulation.js';
 import { exporterDepuisConfig } from './exports-dj.js';
 import { synthétiser } from './erreurs.js';
+import { lireContextePlateforme } from './energie.js';
 
 const NOMS_VARIABLES = VARIABLES.map((v) => v.nom);
 
@@ -136,7 +137,10 @@ export class ErreurRequête extends Error {
 }
 
 export const routes = {
-  'GET /api/tableau-de-bord': () => tableauDeBord(),
+  // Le contexte système est passé ici aussi, sinon le panneau afficherait
+  // « prêt à synchroniser » pendant que le planificateur reporte pour cause de
+  // batterie ou de partage de connexion.
+  'GET /api/tableau-de-bord': async () => tableauDeBord(await lireContextePlateforme()),
 
   'GET /api/catalogue': () => ({
     ...catalogueComplet(),

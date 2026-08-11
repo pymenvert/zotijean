@@ -138,6 +138,47 @@ test('chaque refus porte une raison lisible en français', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Conditions d'alimentation et de réseau
+// ---------------------------------------------------------------------------
+
+test('sur batterie, la synchronisation est reportée si l’option l’exige', () => {
+  // Branche restée longtemps inatteignable : rien ne fournissait le contexte,
+  // donc l'interrupteur « seulement sur secteur » n'avait aucun effet.
+  const config = configTest({ planification: { uniquementSurSecteur: true } });
+  const décision = évaluer(config, { surSecteur: false });
+  assert.equal(décision.lancer, false);
+  assert.equal(décision.code, 'batterie');
+  assert.match(décision.raison, /secteur/i);
+});
+
+test('branché sur secteur, l’option ne bloque rien', () => {
+  const config = configTest({ planification: { uniquementSurSecteur: true } });
+  assert.equal(évaluer(config, { surSecteur: true }).lancer, true);
+});
+
+test('sur réseau facturé, la synchronisation est reportée si l’option l’exige', () => {
+  const config = configTest({ planification: { uniquementEnWifi: true } });
+  const décision = évaluer(config, { réseauDisponible: false });
+  assert.equal(décision.lancer, false);
+  assert.equal(décision.code, 'reseau');
+  assert.match(décision.raison, /Wi-Fi|Ethernet/i);
+});
+
+test('sans les options, ni la batterie ni le réseau ne bloquent', () => {
+  // Les conditions sont facultatives : ne pas les cocher doit tout laisser passer.
+  const décision = évaluer(configTest(), { surSecteur: false, réseauDisponible: false });
+  assert.equal(décision.lancer, true);
+});
+
+test('une condition non remplie ne consomme pas l’échéance', () => {
+  // Un report doit repartir dès que la condition redevient vraie, pas attendre
+  // 48 heures de plus.
+  const config = configTest({ planification: { uniquementSurSecteur: true } });
+  assert.equal(évaluer(config, { surSecteur: false }).code, 'batterie');
+  assert.equal(évaluer(config, { surSecteur: true }).lancer, true);
+});
+
+// ---------------------------------------------------------------------------
 // Garde anti-recul d'horloge
 // ---------------------------------------------------------------------------
 

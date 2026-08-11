@@ -14,6 +14,7 @@ import { config } from './src/config.js';
 import { journal } from './src/journal.js';
 import { routes, ErreurRequête } from './src/api.js';
 import { refuser, ENTÊTES_SÉCURITÉ } from './src/securite.js';
+import { lireContextePlateforme } from './src/energie.js';
 import { diagnostiquer } from './src/diagnostic.js';
 import * as synchro from './src/synchronisation.js';
 import * as planificateur from './src/planificateur.js';
@@ -251,9 +252,20 @@ export function démarrer() {
       );
     }
 
+    // L'alimentation et le type de connexion sont relus périodiquement et
+    // gardés en cache : sans eux, les réglages « seulement sur secteur » et
+    // « seulement en Wi-Fi » n'auraient aucun effet.
+    let contexteSystème = await lireContextePlateforme();
+    setInterval(async () => {
+      contexteSystème = await lireContextePlateforme();
+    }, 60_000).unref();
+
     planificateur.démarrer({
       obtenirConfig: () => config(),
-      obtenirContexte: () => ({ enCours: !!synchro.exécutionEnCours() }),
+      obtenirContexte: () => ({
+        enCours: !!synchro.exécutionEnCours(),
+        ...contexteSystème,
+      }),
       lancerSynchronisation: (déclencheur) => synchro.synchroniser(déclencheur),
     });
 

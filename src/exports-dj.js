@@ -321,6 +321,25 @@ export async function seratoOuvert() {
  * lui-même dans les dossiers.
  */
 export async function exporterDepuisConfig(c, { surProgrès = () => {} } = {}) {
+  // Sortie anticipée AVANT tout balayage disque. Sans elle, l'app lisait les
+  // métadonnées de toute la bibliothèque avec ffprobe, n'écrivait rien puisque
+  // aucun format n'était coché, et affichait « Export terminé » en vert. Le seul
+  // indice visible désignait la mauvaise cause : il faisait croire à une
+  // bibliothèque vide alors qu'il manquait juste une case.
+  const veutRekordbox = c.exportsDJ?.rekordbox === true;
+  const veutSerato = c.exportsDJ?.serato === true;
+
+  if (!veutRekordbox && !veutSerato) {
+    return {
+      rekordbox: null,
+      serato: null,
+      avertissements: [
+        'Aucun format d’export n’est coché. Cochez Rekordbox ou Serato DJ ci-dessus, ' +
+        'puis relancez l’export.',
+      ],
+    };
+  }
+
   const { configPourPlaylist } = await import('./config.js');
   const { listerAudio, dossierCommun } = await import('./bibliotheque.js');
   const { cheminRelatif } = await import('./organisation.js');
@@ -404,8 +423,8 @@ export async function exporterDepuisConfig(c, { surProgrès = () => {} } = {}) {
   return exporter({
     playlists,
     racineBibliothèque: c.général.dossierMusique,
-    rekordbox: c.exportsDJ?.rekordbox !== false,
-    serato: c.exportsDJ?.serato === true,
+    rekordbox: veutRekordbox,
+    serato: veutSerato,
   });
 }
 

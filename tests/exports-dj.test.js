@@ -200,6 +200,32 @@ test('un fichier disparu ne fait pas échouer l’export', () => {
 });
 
 // ---------------------------------------------------------------------------
+// La décision d'écrire
+// ---------------------------------------------------------------------------
+
+test('sans format coché, l’export le dit au lieu de prétendre avoir réussi', async () => {
+  // Régression : les deux formats sont décochés par défaut. L'app lisait alors
+  // les métadonnées de TOUTE la bibliothèque avec ffprobe, n'écrivait rien, et
+  // affichait « Export terminé » en vert. Le seul indice visible — « Rien à
+  // exporter » — désignait la mauvaise cause : il faisait croire à une
+  // bibliothèque vide alors qu'il manquait une case.
+  const { exporterDepuisConfig } = await import('../src/exports-dj.js');
+
+  const résultat = await exporterDepuisConfig({
+    exportsDJ: { rekordbox: false, serato: false },
+    playlists: [{ id: '1', url: 'u', actif: true }],
+    général: { dossierMusique: '/musique' },
+    qualité: { format: 'copie' },
+    organisation: { schéma: 'par_playlist' },
+  });
+
+  assert.equal(résultat.rekordbox, null);
+  assert.equal(résultat.serato, null);
+  assert.ok(résultat.avertissements.length > 0, 'le refus doit être annoncé');
+  assert.match(résultat.avertissements[0], /coché/);
+});
+
+// ---------------------------------------------------------------------------
 // Format binaire Serato
 // ---------------------------------------------------------------------------
 

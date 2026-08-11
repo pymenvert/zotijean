@@ -102,11 +102,20 @@ $$('.onglet').forEach((onglet) =>
 
 // ------------------------------------------------------------- Tableau de bord
 
-async function rafraîchirTableau() {
+/** Identifiants des playlists dont le panneau de réglages est ouvert. */
+const panneauxOuverts = new Set();
+
+async function rafraîchirTableau({ reconstruirePlaylists = true } = {}) {
   état.tableau = await appeler('GET', '/api/tableau-de-bord');
   rendreHéros();
   rendreTuiles();
-  rendrePlaylists();
+
+  // On ne reconstruit jamais la liste pendant que l'utilisateur y saisit
+  // quelque chose : le nœud remplacé emporterait le texte tapé et l'événement
+  // « change » ne partirait jamais.
+  const saisieEnCours = $('#gestion-playlists')?.contains(document.activeElement);
+  if (reconstruirePlaylists && !saisieEnCours) rendrePlaylists();
+
   rendreHistorique();
 }
 
@@ -198,7 +207,14 @@ function fabriquerLignePlaylist(playlist, avecActions) {
     déplier.className = 'icone-bouton';
     déplier.title = 'Réglages propres à cette playlist';
     déplier.innerHTML = '<svg class="ic chevron"><use href="#i-chevron"/></svg>';
-    déplier.addEventListener('click', () => ligne.classList.toggle('deplie'));
+    // L'état d'ouverture vit hors du DOM : sinon il disparaîtrait à la première
+    // reconstruction de la liste.
+    if (panneauxOuverts.has(playlist.id)) ligne.classList.add('deplie');
+    déplier.addEventListener('click', () => {
+      const ouvert = ligne.classList.toggle('deplie');
+      if (ouvert) panneauxOuverts.add(playlist.id);
+      else panneauxOuverts.delete(playlist.id);
+    });
 
     const supprimer = document.createElement('button');
     supprimer.className = 'icone-bouton';
@@ -344,7 +360,11 @@ async function enregistrerConfig(patch) {
     fusion[section] = { ...fusion[section], ...valeurs };
   }
   état.config = await appeler('PUT', '/api/config', fusion);
-  rafraîchirTableau();
+
+  // On rafraîchit les chiffres du tableau de bord, PAS la liste des playlists :
+  // la reconstruire refermerait le panneau de réglages qu'on est en train
+  // d'utiliser, et perdrait la saisie en cours du champ Dossier.
+  rafraîchirTableau({ reconstruirePlaylists: false });
   return état.config;
 }
 
@@ -525,11 +545,17 @@ function rendrePlanification() {
   $('#bascule-secteur').checked = !!planif.uniquementSurSecteur;
   $('#bascule-wifi').checked = !!planif.uniquementEnWifi;
 
+  // Ce texte affirmait auparavant que l'état était lu par la coquille macOS.
+  // C'était faux : rien ne le lisait, et les deux bascules n'avaient aucun
+  // effet. Il est désormais lu par le moteur, et la phrase dit ce qui se passe
+  // réellement sur chaque système.
   $('#note-conditions').textContent =
-    'Une condition non remplie reporte la vérification, elle ne la saute pas : ' +
-    'dès que la condition redevient vraie, le téléchargement part. L’état du secteur ' +
-    'et du réseau est lu par la coquille macOS ; lancée seule depuis le Terminal, ' +
-    'l’app considère les deux comme disponibles.';
+    'Une condition non remplie reporte la vérification, elle ne la saute pas : dès ' +
+    'qu’elle redevient vraie, le téléchargement part. Sur Mac, Zotijean lit ' +
+    'l’alimentation et le type de connexion toutes les minutes ; un partage de ' +
+    'connexion depuis un iPhone est reconnu comme réseau facturé. Sur les autres ' +
+    'systèmes, ces informations ne sont pas lisibles et les deux conditions sont ' +
+    'considérées comme remplies.';
 
   remplir($('#choix-retrait'), politiquesRetrait.map((p) =>
     fabriquerOption({
@@ -726,8 +752,32 @@ function écouterÉvénements() {
     }
   });
 
+  // Perte du moteur. EventSource retente seul toutes les 3 secondes, donc on
+  // n'alarme qu'après une dizaine de secondes d'échec continu — sans quoi un
+  // simple redémarrage ferait clignoter un message inquiétant. Mais rester
+  // muet serait pire : l'interface afficherait indéfiniment un état figé,
+  // en laissant croire que tout va bien.
+  let minuteurPerte = null;
+
+  const signalerPerte = () => {
+    const héros = $('#heros');
+    héros.dataset.ton = 'erreur';
+    $('#heros-titre').textContent = 'Connexion au moteur perdue';
+    $('#heros-detail').textContent =
+      'Zotijean ne répond plus. Relancez-le depuis la barre des menus, ou en ' +
+      'double-cliquant son lanceur, puis rechargez cette page.';
+    $('#progression').hidden = true;   // ne plus animer un travail qui n'existe plus
+    $('#btn-arreter').hidden = true;   // un bouton sans effet ne doit pas s'afficher
+  };
+
+  source.addEventListener('open', () => {
+    clearTimeout(minuteurPerte);
+    minuteurPerte = null;
+    rafraîchirTableau().catch(() => {});
+  });
+
   source.addEventListener('error', () => {
-    // EventSource se reconnecte tout seul ; inutile d'alarmer l'utilisateur.
+    if (!minuteurPerte) minuteurPerte = setTimeout(signalerPerte, 10000);
   });
 }
 
@@ -1213,7 +1263,9 @@ async function démarrer() {
 
     // Le tableau de bord se rafraîchit doucement même sans événement, pour que
     // « vérifié il y a 2 h » reste juste sans recharger la page.
-    setInterval(rafraîchirTableau, 60000);
+    // Un échec ici ne doit rien casser : le flux d'événements signale déjà la
+    // perte du moteur, et une promesse rejetée non attrapée figerait la boucle.
+    setInterval(() => rafraîchirTableau().catch(() => {}), 60000);
   } catch (erreur) {
     $('#heros-titre').textContent = 'Impossible de contacter le moteur';
     $('#heros-detail').textContent = erreur.message;
