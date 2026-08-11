@@ -418,7 +418,22 @@ export const routes = {
   'GET /api/simulation': async () => simuler(),
 
   'POST /api/export-dj': async () => {
-    const résultat = await exporterDepuisConfig(config());
+    // Sonder deux mille fichiers un par un prend des minutes. Sans nouvelle
+    // pendant ce temps, l'utilisateur ne peut pas distinguer un export qui
+    // travaille d'un export bloqué — et il ferme l'app.
+    //
+    // Une nouvelle tous les vingt-cinq fichiers : assez pour voir bouger, pas
+    // assez pour noyer le canal d'événements de deux mille messages.
+    const résultat = await exporterDepuisConfig(config(), {
+      surProgrès: ({ examinés, fichier }) => {
+        if (examinés % 25 !== 0) return;
+        synchro.diffuserÉvénement({
+          type: 'export-progres',
+          examinés,
+          fichier,
+        });
+      },
+    });
     if (!résultat.rekordbox && !résultat.serato && résultat.avertissements.length) {
       throw new ErreurRequête(résultat.avertissements.join(' '));
     }

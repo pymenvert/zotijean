@@ -778,6 +778,19 @@ function écouterÉvénements() {
       return;
     }
 
+    if (événement.type === 'export-progres') {
+      // L'export sonde chaque fichier de la bibliothèque : sur une grosse
+      // collection, ça prend des minutes. Un compteur qui avance vaut mille
+      // fois mieux qu'un message figé.
+      const zone = $('#resultat-export-dj');
+      if (zone) {
+        zone.innerHTML =
+          `<p class="aide">Lecture des fichiers — ${événement.examinés} examiné(s)…<br>`
+          + `<code>${échapper(événement.fichier || '')}</code></p>`;
+      }
+      return;
+    }
+
     if (événement.type === 'synchro-fin') {
       rafraîchirTableau();
       const n = événement.bilan.nbFichiers;

@@ -111,6 +111,19 @@ export function abonner(rappel) {
   return () => abonnés.delete(rappel);
 }
 
+/**
+ * Diffuser un événement depuis un autre module.
+ *
+ * Le canal des événements en direct vit ici parce que la synchronisation en est
+ * la principale source, mais elle n'est pas la seule opération longue : un export
+ * DJ sonde chaque fichier de la bibliothèque un par un. Sans un signe de vie, il
+ * ressemble à un blocage — le même défaut que « Préparation… » affiché pendant
+ * dix-sept heures.
+ */
+export function diffuserÉvénement(événement) {
+  diffuser(événement);
+}
+
 export function exécutionEnCours() {
   if (!courante) return null;
   return {

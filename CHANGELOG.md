@@ -58,6 +58,13 @@ Un disque qui se remplit en cours de route, c'est un téléchargeur qui continue
 d'écrire dans le vide. Le seuil que vous avez fixé est désormais relu playlist
 après playlist.
 
+### Les crates Serato s'écrivent maintenant comme le reste
+
+L'export Rekordbox était protégé contre une coupure en pleine écriture, les
+crates Serato non. Une panne de courant au mauvais moment laissait un fichier
+tronqué, que Serato lisait tel quel au démarrage suivant. Elles passent
+désormais par le même chemin sûr.
+
 ### Et l'historique dit enfin pourquoi
 
 « Interrompue » tout court n'apprenait rien. Il donne maintenant la raison, et
