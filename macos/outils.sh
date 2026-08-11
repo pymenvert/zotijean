@@ -159,9 +159,30 @@ mkdir -p "$OUTILS/roues"
 # celles de toutes ses dépendances. Le résultat s'installe ensuite sans réseau.
 "$OUTILS/python/bin/python3" -m pip install --quiet --upgrade pip wheel setuptools
 
-"$OUTILS/python/bin/python3" -m pip wheel \
-  --wheel-dir "$OUTILS/roues" \
-  "git+https://github.com/Googolplexed0/zotify.git"
+# CETTE ÉTAPE PASSE PAR LE RÉSEAU, DONC ELLE ÉCHOUERA UN JOUR SANS RAISON.
+#
+# zotify s'installe depuis un dépôt git, et il déclare lui-même librespot par
+# une adresse git : impossible de s'en passer au moment de la construction. Une
+# publication a déjà échoué sur un « SSL certificate problem: self signed
+# certificate » en clonant depuis GitHub, DEPUIS UN SERVEUR GITHUB — un
+# incident réseau passager, sans rapport avec le code.
+#
+# Une construction qui dure vingt minutes ne doit pas repartir de zéro pour ça.
+# Trois tentatives espacées, puis on abandonne en le disant clairement.
+tentative=1
+until "$OUTILS/python/bin/python3" -m pip wheel \
+        --wheel-dir "$OUTILS/roues" \
+        "git+https://github.com/Googolplexed0/zotify.git"; do
+  if [ "$tentative" -ge 3 ]; then
+    echo "       Échec après 3 tentatives. Si le message parle de certificat ou"
+    echo "       de connexion, c'est le réseau : relancez. S'il parle de zotify"
+    echo "       lui-même, le dépôt amont a probablement changé."
+    exit 1
+  fi
+  echo "       Tentative $tentative échouée, nouvel essai dans 15 s…"
+  tentative=$((tentative + 1))
+  sleep 15
+done
 
 # Les outils de construction voyagent aussi. Certains paquets en ont besoin au
 # moment de l'installation, et un dossier hors ligne qui ne les contient pas
