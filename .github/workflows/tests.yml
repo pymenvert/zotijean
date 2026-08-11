@@ -172,66 +172,96 @@ jobs:
         env:
           ZOTIJEAN_DONNEES: ${{ runner.temp }}/zotijean
         run: |
-          node server.js --port 8799 --sans-navigateur &
+          # POURQUOI TOUT CE HARNAIS. Les journaux d'exécution exigent une
+          # connexion GitHub ; les annotations, non. Sans ce relais, un échec ici
+          # ne dit que « Process completed with exit code 1 » — ce qui a déjà
+          # coûté un aller-retour d'une heure pour rien. Chaque contrôle dit
+          # maintenant ce qu'il attendait, et la sortie du moteur est jointe.
+          echouer() {
+            {
+              echo "::error title=Démarrage réel en échec::$1"
+              if [ -s moteur.log ]; then
+                detail=$(tail -40 moteur.log | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+                echo "::error title=Sortie du moteur::${detail}"
+              else
+                echo "::error title=Sortie du moteur::Le moteur n'a rien écrit — il n'a probablement pas démarré."
+              fi
+            } >&2
+            kill $PID 2>/dev/null || true
+            exit 1
+          }
+
+          # La sortie du moteur part dans un fichier : sans elle, un plantage au
+          # démarrage est indiscernable d'un contrôle qui refuse.
+          node server.js --port 8799 --sans-navigateur > moteur.log 2>&1 &
           PID=$!
 
+          PRET=non
           for tentative in $(seq 1 30); do
             if curl -sf -o /dev/null "http://127.0.0.1:8799/api/tableau-de-bord"; then
+              PRET=oui
+              echo "Moteur joignable après ${tentative}s."
               break
             fi
+            # Un moteur mort ne répondra jamais : inutile d'attendre 30 s.
+            kill -0 $PID 2>/dev/null || echouer "Le moteur s'est arrêté pendant son démarrage."
             sleep 1
           done
+          [ "$PRET" = oui ] || echouer "Le moteur n'a pas répondu sur /api/tableau-de-bord après 30 secondes."
 
           echo "--- L'interface est servie ---"
-          curl -sf "http://127.0.0.1:8799/" | grep -q "Zotijean" || { echo "Interface absente"; exit 1; }
+          curl -sf "http://127.0.0.1:8799/" | grep -q "Zotijean" \
+            || echouer "La page d'accueil ne contient pas « Zotijean », ou n'est pas servie du tout."
 
           echo "--- L'API répond ---"
-          curl -sf "http://127.0.0.1:8799/api/catalogue" | node -e "
-            let d=''; process.stdin.on('data',c=>d+=c).on('end',()=>{
-              const c = JSON.parse(d);
-              if (!c.schémas?.length) { console.error('Catalogue vide'); process.exit(1); }
-              // Chaque option doit porter son explication : c'est une règle du
-              // projet, pas un détail cosmétique.
-              for (const groupe of ['schémas','formats','qualités','rythmes','politiquesRetrait']) {
-                for (const option of c[groupe]) {
-                  if (groupe !== 'intervalles' && !option.explication) {
-                    console.error('Option sans explication :', groupe, option.id); process.exit(1);
-                  }
+          curl -sf "http://127.0.0.1:8799/api/catalogue" > catalogue.json \
+            || echouer "/api/catalogue n'a pas répondu."
+          node -e "
+            const c = JSON.parse(require('fs').readFileSync('catalogue.json','utf8'));
+            if (!c.schémas?.length) { console.error('Catalogue vide'); process.exit(1); }
+            // Chaque option doit porter son explication : c'est une règle du
+            // projet, pas un détail cosmétique.
+            for (const groupe of ['schémas','formats','qualités','rythmes','politiquesRetrait']) {
+              if (!Array.isArray(c[groupe])) {
+                console.error('Groupe absent du catalogue :', groupe); process.exit(1);
+              }
+              for (const option of c[groupe]) {
+                if (!option.explication) {
+                  console.error('Option sans explication :', groupe, option.id); process.exit(1);
                 }
               }
-              console.log('Catalogue conforme :', c.schémas.length, 'schémas de rangement.');
-            });
-          "
+            }
+            console.log('Catalogue conforme :', c.schémas.length, 'schémas de rangement.');
+          " 2> catalogue.err || echouer "Catalogue non conforme : $(tr '\n' ' ' < catalogue.err)"
 
           echo "--- La notice et sa feuille de style sont servies ---"
           # Régression déjà rencontrée : la politique de sécurité du contenu
           # interdit les styles en ligne, donc la notice DOIT charger un fichier
           # CSS séparé. Sans ce contrôle, elle se réafficherait un jour en texte
           # brut sans que personne ne s'en aperçoive.
-          curl -sf "http://127.0.0.1:8799/notice.html" | grep -q 'rel="stylesheet"' \
-            || { echo "La notice n'utilise pas de feuille de style externe : la politique de sécurité la rendrait illisible."; exit 1; }
-          curl -sf "http://127.0.0.1:8799/notice.html" | grep -q '<style>' \
-            && { echo "La notice contient un bloc <style> en ligne, que la politique de sécurité bloque."; exit 1; }
+          curl -sf "http://127.0.0.1:8799/notice.html" > notice.html \
+            || echouer "/notice.html n'a pas répondu."
+          grep -q 'rel="stylesheet"' notice.html \
+            || echouer "La notice n'utilise pas de feuille de style externe : la politique de sécurité la rendrait illisible."
+          if grep -q '<style>' notice.html; then
+            echouer "La notice contient un bloc <style> en ligne, que la politique de sécurité bloque."
+          fi
           curl -sf -o /dev/null "http://127.0.0.1:8799/notice.css" \
-            || { echo "notice.css est introuvable."; exit 1; }
+            || echouer "notice.css est introuvable."
 
           echo "--- Une requête croisée est refusée ---"
           code=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
             -H "Origin: https://site-malveillant.example" \
             "http://127.0.0.1:8799/api/synchroniser")
-          if [ "$code" != "403" ]; then
-            echo "Attendu 403, obtenu $code — la protection contre les requêtes croisées ne fonctionne pas."
-            exit 1
-          fi
+          [ "$code" = "403" ] \
+            || echouer "Requête croisée : attendu 403, obtenu $code. La protection contre les requêtes croisées ne fonctionne pas."
 
           echo "--- Un faux en-tête Host est refusé ---"
           code=$(curl -s -o /dev/null -w "%{http_code}" \
             -H "Host: evil.example" \
             "http://127.0.0.1:8799/api/config")
-          if [ "$code" != "403" ]; then
-            echo "Attendu 403, obtenu $code — la protection contre le réattachement DNS ne fonctionne pas."
-            exit 1
-          fi
+          [ "$code" = "403" ] \
+            || echouer "Faux Host : attendu 403, obtenu $code. La protection contre le réattachement DNS ne fonctionne pas."
 
           kill $PID 2>/dev/null || true
           echo "Démarrage vérifié."
