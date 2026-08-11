@@ -210,8 +210,22 @@ jobs:
           [ "$PRET" = oui ] || echouer "Le moteur n'a pas répondu sur /api/tableau-de-bord après 30 secondes."
 
           echo "--- L'interface est servie ---"
-          curl -sf "http://127.0.0.1:8799/" | grep -q "Zotijean" \
-            || echouer "La page d'accueil ne contient pas « Zotijean », ou n'est pas servie du tout."
+          # JAMAIS « curl | grep -q ». « grep -q » sort à la première
+          # correspondance et ferme son entrée ; curl, qui a encore des
+          # kilo-octets à écrire dans un tuyau que plus personne ne lit, meurt
+          # sur EPIPE avec le code 23 — que « -s » rend muet. Avec « pipefail »,
+          # le tuyau prend ce 23 alors que grep a pourtant trouvé le motif : le
+          # contrôle échoue en affichant un message FAUX.
+          #
+          # Ça ne se déclenche qu'au-delà du tampon de tuyau du système, soit
+          # 16 384 octets sur macOS et bien plus sur Windows — d'où une panne qui
+          # ne frappe qu'un seul système. index.html fait aujourd'hui 16 375
+          # octets : NEUF de marge. Passer par un fichier supprime le mécanisme
+          # au lieu de courir après le seuil.
+          curl -sf "http://127.0.0.1:8799/" > accueil.html \
+            || echouer "La page d'accueil n'est pas servie : curl a échoué sur /."
+          grep -q "Zotijean" accueil.html \
+            || echouer "La page d'accueil ne contient pas « Zotijean » ($(wc -c < accueil.html) octets reçus)."
 
           echo "--- L'API répond ---"
           curl -sf "http://127.0.0.1:8799/api/catalogue" > catalogue.json \

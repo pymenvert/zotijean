@@ -96,6 +96,9 @@ function servirStatique(chemin, réponse) {
       ...ENTÊTES_SÉCURITÉ,
       'Content-Type': TYPES_MIME[path.extname(complet).toLowerCase()] || 'application/octet-stream',
       'Cache-Control': 'no-cache',
+      // Le contenu est déjà entièrement en mémoire : annoncer sa taille évite
+      // l'encodage par morceaux et permet au client de savoir où il va.
+      'Content-Length': contenu.length,
     });
     réponse.end(contenu);
   });
@@ -518,6 +521,26 @@ export function démarrer() {
 
   process.on('SIGINT', () => arrêterProprement('SIGINT'));
   process.on('SIGTERM', () => arrêterProprement('SIGTERM'));
+
+  // UNE PROMESSE REJETÉE NE DOIT PAS TUER LE MOTEUR EN SILENCE.
+  //
+  // Depuis Node 15, un rejet non rattrapé arrête le processus. Au milieu d'un
+  // rattrapage de dix-sept heures, ça veut dire un téléchargement qui s'arrête
+  // sans un mot et sans rien dans le journal — l'utilisateur retrouve une
+  // bibliothèque à moitié remplie et aucune explication.
+  //
+  // On préfère rester debout et le dire. Le verrou et l'état sont écrits de
+  // façon atomique : continuer est plus sûr que mourir.
+  process.on('unhandledRejection', (raison) => {
+    journal.erreur(
+      'Une opération a échoué sans être rattrapée. Le moteur continue, mais signalez-le.',
+      raison?.stack || String(raison),
+    );
+  });
+
+  process.on('uncaughtException', (erreur) => {
+    journal.erreur('Erreur inattendue dans le moteur.', erreur?.stack || String(erreur));
+  });
 
   surveillerParent(arrêterProprement);
 
