@@ -87,7 +87,17 @@ jobs:
         run: |
           cd macos
           chmod +x construire.sh
-          ./construire.sh
+
+          set +e
+          ./construire.sh 2>&1 | tee construction.log
+          CODE=${PIPESTATUS[0]}
+          set -e
+
+          if [ $CODE -ne 0 ]; then
+            detail=$(tail -40 construction.log | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            echo "::error title=Construction du paquet en échec::${detail}"
+            exit 1
+          fi
 
       - name: Vérifier que le paquet est autonome
         run: |

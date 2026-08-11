@@ -399,15 +399,18 @@ jobs:
 
           echo "Le moteur s'arrête bien avec son application hôte."
 
-      - name: Compiler la coquille de barre des menus
-        if: runner.os == 'macOS'
-        run: |
-          # Le développement se fait sur Windows : ce travail est le SEUL endroit
-          # où le code Swift est réellement compilé. Sans lui, une erreur d'API
-          # ne serait découverte que sur le Mac de l'utilisateur.
-          cd macos
-          swift build -c release
-          echo "Coquille macOS compilée."
+      # PAS D'ÉTAPE DE COMPILATION SÉPARÉE, ET C'EST VOULU.
+      #
+      # Il y en avait une, et elle a masqué un vrai défaut pendant des semaines :
+      # elle compilait pour l'architecture native, ce qui laissait un binaire là
+      # où construire.sh allait le chercher — même quand construire.sh l'avait en
+      # réalité produit ailleurs. Ici tout passait ; sur la machine qui publie,
+      # partie d'un dossier vierge, il n'y avait rien à copier.
+      #
+      # Une CI qui teste un chemin que personne n'emprunte ne prouve rien.
+      # construire.sh compile lui-même : on le laisse faire, exactement comme
+      # lors d'une publication. Une erreur Swift casse donc l'étape suivante,
+      # avec le message de compilation dans sa sortie.
 
       - name: Récupérer les outils à embarquer
         if: runner.os == 'macOS'
@@ -508,7 +511,20 @@ jobs:
         run: |
           cd macos
           chmod +x construire.sh
-          ./construire.sh
+
+          # C'est ici que Swift est compilé, donc ici qu'une erreur de compilation
+          # apparaîtra : elle doit être lisible sans se connecter à GitHub.
+          set +e
+          ./construire.sh 2>&1 | tee construction.log
+          CODE=${PIPESTATUS[0]}
+          set -e
+
+          if [ $CODE -ne 0 ]; then
+            detail=$(tail -40 construction.log | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            echo "::error title=Construction du paquet en échec::${detail}"
+            exit 1
+          fi
+
           APP="build/Zotijean.app"
           test -x "$APP/Contents/MacOS/Zotijean"       || { echo "Binaire absent"; exit 1; }
           test -f "$APP/Contents/Info.plist"           || { echo "Info.plist absent"; exit 1; }

@@ -28,12 +28,34 @@ fi
 
 echo "  1/4  Compilation…"
 cd "$ICI"
-swift build -c release --arch arm64 --arch x86_64 2>/dev/null \
-  || swift build -c release   # repli mono-architecture si l'autre échoue
 
-BINAIRE="$(swift build -c release --show-bin-path)/Zotijean"
+# LE CHEMIN DU BINAIRE DÉPEND DES OPTIONS DE COMPILATION. Demander « où est le
+# binaire ? » sans répéter exactement les options qui l'ont produit renvoie un
+# AUTRE dossier — celui de la compilation native, qui peut très bien être vide.
+#
+# Le piège ne se voyait pas tant qu'une compilation native avait eu lieu avant :
+# le binaire s'y trouvait, hérité d'une étape précédente, et tout paraissait
+# fonctionner. Sur une machine propre — celle qui publie — il n'y avait rien à
+# copier, et la construction s'arrêtait sur un « aucun binaire » incompréhensible.
+# On répète les options en toutes lettres dans les deux branches plutôt que de
+# les ranger dans une variable : macOS livre bash 3.2, où un tableau vide sous
+# « set -u » fait mourir le script. Deux lignes un peu redondantes valent mieux
+# qu'une élégance qui ne fonctionne que sur la machine du développeur.
+if swift build -c release --arch arm64 --arch x86_64 2>/dev/null; then
+  DOSSIER_BINAIRE="$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)"
+  echo "       binaire universel (Apple Silicon + Intel)"
+else
+  # Repli mono-architecture : celle de la machine qui compile.
+  swift build -c release
+  DOSSIER_BINAIRE="$(swift build -c release --show-bin-path)"
+  echo "       binaire natif de cette machine"
+fi
+
+BINAIRE="$DOSSIER_BINAIRE/Zotijean"
 if [ ! -f "$BINAIRE" ]; then
   echo "  La compilation n'a produit aucun binaire."
+  echo "  Cherché dans : $DOSSIER_BINAIRE"
+  ls -la "$DOSSIER_BINAIRE" 2>/dev/null | head -20
   exit 1
 fi
 
