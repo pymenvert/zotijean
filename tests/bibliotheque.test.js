@@ -361,3 +361,28 @@ test('dossierCommun n’accepte qu’un seul dossier', () => {
     path.resolve('/m/A'),
   );
 });
+
+test('les téléchargements mis de côté restent invisibles pour la bibliothèque', () => {
+  // CE QUE CE TEST PROTÈGE, ET POURQUOI IL EST MOINS ÉVIDENT QU'IL N'EN A L'AIR.
+  //
+  // Un morceau coupé en pleine écriture est déplacé dans « _incomplets ». Tout
+  // l'intérêt de l'opération est qu'il cesse d'être vu : s'il restait compté
+  // comme présent, l'analyse conclurait que le titre est déjà là et ne le
+  // redemanderait jamais. Le morceau serait perdu, en silence, alors même qu'on
+  // croit l'avoir sauvé.
+  //
+  // La protection tient à un détail : `listerAudio` ne descend pas dans les
+  // sous-dossiers. Rendre cette fonction récursive un jour — ce qui paraîtrait
+  // une amélioration — casserait la reprise sans qu'aucun autre test ne bronche.
+  const racine = bacÀSable();
+  try {
+    fs.writeFileSync(path.join(racine, 'Complet.ogg'), Buffer.alloc(5_000_000));
+    fs.mkdirSync(path.join(racine, '_incomplets'));
+    fs.writeFileSync(path.join(racine, '_incomplets', 'Tronqué.ogg'), Buffer.alloc(400_000));
+
+    const vus = listerAudio(racine).map((f) => path.basename(f));
+    assert.deepEqual(vus, ['Complet.ogg'], 'un fichier mis de côté est compté comme présent');
+  } finally {
+    fs.rmSync(racine, { recursive: true, force: true });
+  }
+});
