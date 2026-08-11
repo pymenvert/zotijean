@@ -16,6 +16,11 @@ jobs:
   tests:
     name: Tests — ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    # SANS CETTE LIMITE, un travail qui se fige tourne SIX HEURES avant que
+    # GitHub ne l'arrête — c'est le plafond par défaut. Six heures pendant
+    # lesquelles on croit que « ça compile » alors que rien n'avance. La suite
+    # complète prend moins d'une minute : dix, c'est déjà très large.
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
@@ -59,7 +64,12 @@ jobs:
       - name: Lancer les tests
         shell: bash
         run: |
-          if node --test --test-reporter=tap > resultat.tap 2>&1; then
+          # « --test-force-exit » : les tests d'intégration lancent de vrais
+          # sous-processus et ouvrent des fichiers de journal. Un descripteur
+          # qui traîne suffit à empêcher Node de rendre la main une fois tous
+          # les tests passés — le rapport est complet, mais le processus ne
+          # s'arrête jamais. C'est exactement ce qui bloquait Ubuntu.
+          if node --test --test-force-exit --test-reporter=tap > resultat.tap 2>&1; then
             tail -12 resultat.tap
 
             # GARDE-FOU. Les tests d'intégration ne s'exécutent que hors Windows.
@@ -92,6 +102,10 @@ jobs:
   demarrage:
     name: Démarrage réel — ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    # Ce travail télécharge les outils à embarquer (plusieurs centaines de
+    # mégaoctets) et compile la coquille Swift : il lui faut plus de marge que
+    # la suite de tests, mais pas six heures.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:

@@ -112,7 +112,25 @@ test('une synchronisation complète télécharge, range et recense', { skip: SAU
     const résultat = await synchroniser('manuelle');
 
     assert.equal(résultat.lancé, true, résultat.raison);
-    assert.equal(résultat.bilan.nbFichiers, 3, 'les trois pistes auraient dû être comptées');
+
+    // Un échec ici doit dire CE QU'IL A TROUVÉ, pas seulement un compte qui ne
+    // tombe pas juste : sans la liste des fichiers réellement écrits, le
+    // diagnostic demande un aller-retour d'une heure avec l'intégration continue.
+    const surDisque = [];
+    const parcourir = (dossier) => {
+      for (const entrée of fs.readdirSync(dossier, { withFileTypes: true })) {
+        const complet = path.join(dossier, entrée.name);
+        if (entrée.isDirectory()) parcourir(complet);
+        else surDisque.push(path.relative(musique, complet));
+      }
+    };
+    parcourir(musique);
+    const inventaire = `\nfichiers réellement écrits :\n  ${surDisque.join('\n  ')}`;
+
+    assert.equal(
+      résultat.bilan.nbFichiers, 3,
+      `trois pistes attendues, ${résultat.bilan.nbFichiers} comptée(s).${inventaire}`,
+    );
     assert.equal(résultat.bilan.interrompu, false);
 
     const dossier = path.join(musique, 'Été 2026');

@@ -70,23 +70,42 @@ const PISTES = [
   { artist: 'Édith Piaf', song_name: "Non, je ne regrette rien", album: 'À l’Olympia' },
 ];
 
-function rendre(gabarit, piste, index) {
-  return gabarit
-    .replaceAll('{playlist}', nomPlaylist)
-    .replaceAll('{playlist_num}', String(index + 1).padStart(3, '0'))
-    .replaceAll('{artist}', piste.artist)
-    .replaceAll('{song_name}', piste.song_name)
-    .replaceAll('{album}', piste.album)
-    .replaceAll('{album_artist}', piste.artist)
-    .replaceAll('{track_number}', String(index + 1).padStart(2, '0'))
-    .replaceAll('{disc_number}', '1')
-    .replaceAll('{release_year}', '1996')
-    .replaceAll('{genre}', 'French House');
+/**
+ * Nettoie une VALEUR avant de l'insérer dans le gabarit.
+ *
+ * L'ordre compte : nettoyer après substitution laisserait la barre oblique de
+ * « AC/DC » découper le chemin et créer un dossier parasite. Le vrai zotify
+ * nettoie chaque valeur, pas le résultat — le leurre doit faire pareil, sinon
+ * il teste un comportement qui n'existe pas.
+ */
+function nettoyerValeur(valeur) {
+  return String(valeur).replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').trim();
 }
 
-/** Le vrai zotify assainit ses noms ; on fait pareil, sinon on écrit hors du dossier. */
+function rendre(gabarit, piste, index) {
+  const valeurs = {
+    playlist: nomPlaylist,
+    playlist_num: String(index + 1).padStart(3, '0'),
+    artist: piste.artist,
+    song_name: piste.song_name,
+    album: piste.album,
+    album_artist: piste.artist,
+    track_number: String(index + 1).padStart(2, '0'),
+    disc_number: '1',
+    release_year: '1996',
+    genre: 'French House',
+  };
+
+  let résultat = gabarit;
+  for (const [nom, valeur] of Object.entries(valeurs)) {
+    résultat = résultat.replaceAll(`{${nom}}`, nettoyerValeur(valeur));
+  }
+  return résultat;
+}
+
+/** Dernier filet sur un segment de chemin déjà découpé. */
 function assainir(segment) {
-  return segment.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').replace(/[.\s]+$/, '').trim();
+  return segment.replace(/[<>:"\\|?*\x00-\x1f]/g, '_').replace(/[.\s]+$/, '').trim();
 }
 
 if (scénario === 'echec-total') {
