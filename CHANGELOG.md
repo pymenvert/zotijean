@@ -1,5 +1,40 @@
 # Journal des versions
 
+## 1.0.2 — 12 août 2026
+
+Lisibilité et honnêteté de l'affichage. Rien de dangereux ici, mais des choses
+qu'on ne voit pas quand on devrait les voir.
+
+### Le texte qui explique chaque choix était le moins lisible de l'app
+
+Sous chaque réglage, une ligne dit franchement ce qu'on gagne et ce qu'on perd.
+C'est le texte le plus utile de Zotijean, et c'était le plus pâle.
+
+Mesuré dans un vrai navigateur, dans les deux thèmes. En **thème clair**, deux
+couleurs n'étaient carrément pas prévues pour un fond blanc : l'orange des
+avertissements arrivait à 1,86 pour 1 de contraste — autant écrire en blanc sur
+blanc — et c'est justement la couleur de ce qu'il ne faut pas rater. En **thème
+sombre**, le texte d'aide était sous le seuil de lisibilité du texte courant.
+
+Toutes les couleurs des deux thèmes passent maintenant le seuil, sur fond de
+carte comme sur fond de page.
+
+### Une erreur de téléchargement ne se distinguait plus des lignes ordinaires
+
+Une piste indisponible dans votre pays, une clé audio refusée : ça défilait au
+milieu du reste. La ligne d'avancement change maintenant de couleur.
+
+### Deux précisions dans le manuel
+
+Ce que la mise en veille change vraiment, et à quoi sert le dossier
+`_incomplets` si vous tombez dessus.
+
+### Un échec silencieux de moins
+
+Quand un morceau tronqué ne peut pas être mis de côté — droits refusés, disque
+en lecture seule —, le journal le dit maintenant, avec quoi faire. Avant, le
+titre aurait manqué indéfiniment sans aucune explication.
+
 ## 1.0.1 — 12 août 2026
 
 Huit correctifs trouvés par un audit de la 1.0. Ils se déclenchent tous pendant un
