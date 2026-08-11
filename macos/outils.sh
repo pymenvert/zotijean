@@ -110,16 +110,35 @@ echo "  4/4  zotify et ses dépendances"
 rm -rf "$OUTILS/roues"
 mkdir -p "$OUTILS/roues"
 
-"$OUTILS/python/bin/python3" -m pip download \
-  --dest "$OUTILS/roues" \
-  --only-binary=:all: \
-  --quiet \
-  "git+https://github.com/Googolplexed0/zotify.git" 2>/dev/null \
-  || "$OUTILS/python/bin/python3" -m pip download \
-       --dest "$OUTILS/roues" --quiet \
-       "git+https://github.com/Googolplexed0/zotify.git"
+# `pip wheel` et surtout PAS `pip download`.
+#
+# Un dépôt git ne se télécharge pas sous forme de roue : `pip download` rapporte
+# alors des archives SOURCES, que l'installation hors ligne devrait compiler —
+# ce qui exige un réseau et une chaîne de compilation, exactement ce qu'on
+# cherche à éviter. `pip wheel` construit ici, maintenant, la roue de zotify ET
+# celles de toutes ses dépendances. Le résultat s'installe ensuite sans réseau.
+"$OUTILS/python/bin/python3" -m pip install --quiet --upgrade pip wheel setuptools
 
-echo "       $(ls -1 "$OUTILS/roues" | wc -l | tr -d ' ') paquet(s)"
+"$OUTILS/python/bin/python3" -m pip wheel \
+  --wheel-dir "$OUTILS/roues" \
+  "git+https://github.com/Googolplexed0/zotify.git"
+
+NB_ROUES=$(ls -1 "$OUTILS/roues"/*.whl 2>/dev/null | wc -l | tr -d ' ')
+echo "       $NB_ROUES roue(s)"
+
+if [ "$NB_ROUES" -eq 0 ]; then
+  echo "       AUCUNE ROUE PRODUITE — le paquet ne serait pas autonome."
+  exit 1
+fi
+
+# Vérification immédiate : la roue de zotify elle-même doit être là. Sans elle,
+# on n'aurait récupéré que des dépendances, et l'échec n'apparaîtrait qu'au
+# premier lancement chez l'utilisateur.
+if ! ls "$OUTILS/roues" | grep -qi '^zotify'; then
+  echo "       La roue de zotify est absente :"
+  ls -1 "$OUTILS/roues" | head -20
+  exit 1
+fi
 
 # ---------------------------------------------------------------- Bilan
 

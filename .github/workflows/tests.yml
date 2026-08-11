@@ -84,7 +84,15 @@ jobs:
           # Le lanceur de tests crée des processus enfants. Tuer le seul
           # superviseur les laisserait orphelins, à tourner en rond : on lance
           # donc dans une SESSION séparée pour pouvoir tuer tout le groupe.
-          setsid node --test --test-force-exit --test-reporter=tap > resultat.tap 2>&1 &
+          #
+          # `setsid` n'existe QUE sous Linux : l'appeler sans précaution faisait
+          # échouer l'étape sur macOS et Windows avant même d'avoir lancé un
+          # seul test.
+          if command -v setsid >/dev/null 2>&1; then
+            setsid node --test --test-force-exit --test-reporter=tap > resultat.tap 2>&1 &
+          else
+            node --test --test-force-exit --test-reporter=tap > resultat.tap 2>&1 &
+          fi
           TESTS=$!
           ( sleep 300; kill -9 -$TESTS 2>/dev/null || kill -9 $TESTS 2>/dev/null ) &
           GARDE=$!
