@@ -1,5 +1,68 @@
 # Journal des versions
 
+## 1.0.1 — 12 août 2026
+
+Six correctifs trouvés par un audit de la 1.0. Ils se déclenchent tous pendant un
+gros rattrapage — celui de la première utilisation, justement. **Mise à jour
+recommandée avant votre première grosse synchronisation.**
+
+### L'app avait l'air plantée pendant toute la nuit
+
+L'avancement n'atteignait jamais l'écran : ni le titre en cours, ni le
+pourcentage. L'interface affichait « Préparation… » pendant les dix-sept heures
+d'un rattrapage de 2 000 titres. Une application qui n'avance pas de la nuit
+passe pour bloquée, et on la force à quitter — en pleine écriture d'un fichier.
+
+C'est corrigé, et c'est le correctif le plus important : il évitait le suivant.
+
+### Un morceau coupé en pleine écriture restait sur le disque
+
+Si l'app était interrompue au milieu d'un téléchargement, le fichier tronqué
+restait là. Deux conséquences, toutes deux silencieuses :
+
+- Le téléchargeur voyait le fichier et **sautait le morceau à chaque
+  synchronisation suivante**. Le titre était définitivement absent, pendant que
+  l'app annonçait « aucune nouveauté ».
+- Un morceau coupé après dix secondes pèse assez pour passer pour un
+  téléchargement réussi : il était converti, ajouté aux listes de lecture et
+  **exporté vers Rekordbox et Serato**. On le découvrait en le jouant.
+
+Ces fichiers partent désormais dans un dossier `_incomplets`. Rien n'est jamais
+supprimé, et le morceau est retéléchargé tout seul. Le diagnostic vous dit
+combien il y en a et que vous pouvez vider ce dossier.
+
+### Le Mac s'endormait au milieu
+
+Rien n'empêchait la veille. Les dix-sept heures annoncées s'étalaient en réalité
+sur plusieurs jours, avec une interruption à chaque cycle de sommeil.
+
+Zotijean empêche maintenant le Mac de s'endormir tout seul pendant une
+synchronisation. **Fermer le couvercle l'endort quand même** — c'est écrit dans
+la simulation, à côté de la durée annoncée.
+
+### Vos réglages ne tenaient que la première seconde
+
+« Seulement sur secteur » et « seulement en Wi-Fi » n'étaient vérifiés qu'au
+moment de démarrer. On lance chez soi branché en Wi-Fi, on débranche trois heures
+plus tard et on part avec le partage de connexion du téléphone : le
+téléchargement continuait quatorze heures sur batterie et sur données mobiles.
+Une quinzaine de gigaoctets en itinérance, alors que la case était cochée.
+
+Ces conditions sont maintenant relues tout au long de l'exécution. Ce n'est pas
+un échec mais une **pause** : ça repart tout seul dès que vous rebranchez, sans
+refaire les playlists déjà traitées.
+
+### L'espace disque n'était vérifié qu'au départ
+
+Un disque qui se remplit en cours de route, c'est un téléchargeur qui continue
+d'écrire dans le vide. Le seuil que vous avez fixé est désormais relu playlist
+après playlist.
+
+### Et l'historique dit enfin pourquoi
+
+« Interrompue » tout court n'apprenait rien. Il donne maintenant la raison, et
+précise que la reprise sera automatique.
+
 ## 1.0.0 — 11 août 2026
 
 Première version publiée. Zotijean surveille des playlists Spotify, télécharge
