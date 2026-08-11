@@ -144,6 +144,13 @@ final class Moteur {
         environnement["PATH"] = (Moteur.dossiersNode + [cheminActuel])
             .filter { !$0.isEmpty }
             .joined(separator: ":")
+
+        // Le moteur surveille cet identifiant et s'arrête si nous disparaissons.
+        // Sans cela, un « forcer à quitter » ou un plantage laisserait un
+        // téléchargement tourner indéfiniment, invisible, en gardant le port
+        // occupé : macOS ne tue pas les enfants avec leur parent.
+        environnement["ZOTIJEAN_PARENT"] = String(ProcessInfo.processInfo.processIdentifier)
+
         tâche.environment = environnement
 
         // La sortie du moteur part dans un fichier plutôt que dans le vide :

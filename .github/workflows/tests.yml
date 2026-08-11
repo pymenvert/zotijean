@@ -236,6 +236,43 @@ jobs:
           kill $PID 2>/dev/null || true
           echo "Démarrage vérifié."
 
+      - name: Vérifier l'arrêt automatique quand l'application hôte disparaît
+        shell: bash
+        env:
+          ZOTIJEAN_DONNEES: ${{ runner.temp }}/zotijean-orphelin
+        run: |
+          # Un « forcer à quitter » ou un plantage de la coquille macOS n'envoie
+          # AUCUN signal, et macOS ne tue pas les enfants avec leur parent : sans
+          # cette surveillance, un téléchargement continuerait indéfiniment,
+          # invisible, en gardant le port occupé.
+          node -e "setTimeout(() => {}, 600000)" &
+          PARENT=$!
+
+          ZOTIJEAN_PARENT=$PARENT node server.js --port 8795 --sans-navigateur &
+          MOTEUR=$!
+
+          for i in $(seq 1 20); do
+            curl -sf -o /dev/null "http://127.0.0.1:8795/api/tableau-de-bord" && break
+            sleep 1
+          done
+          curl -sf -o /dev/null "http://127.0.0.1:8795/api/tableau-de-bord" \
+            || { echo "Le moteur n'a pas démarré."; exit 1; }
+
+          kill -9 $PARENT 2>/dev/null || true
+
+          for i in $(seq 1 20); do
+            kill -0 $MOTEUR 2>/dev/null || break
+            sleep 1
+          done
+
+          if kill -0 $MOTEUR 2>/dev/null; then
+            kill -9 $MOTEUR 2>/dev/null || true
+            echo "::error title=Moteur orphelin::Le moteur a survécu à la disparition de son application hôte. Un téléchargement continuerait en fond, invisible, et le port resterait occupé."
+            exit 1
+          fi
+
+          echo "Le moteur s'arrête bien avec son application hôte."
+
       - name: Compiler la coquille de barre des menus
         if: runner.os == 'macOS'
         run: |

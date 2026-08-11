@@ -329,6 +329,41 @@ function ouvrirNavigateur(adresse) {
   }
 }
 
+/**
+ * S'arrêter quand l'application qui nous a lancés disparaît.
+ *
+ * LE TROU QUE CELA COMBLE. À une fermeture normale, la coquille macOS nous
+ * envoie un signal et tout s'arrête proprement. Mais un « forcer à quitter » ou
+ * un plantage ne déclenche AUCUN signal, et macOS ne tue pas les processus
+ * enfants avec leur parent : ils sont rattachés au système et continuent.
+ *
+ * L'utilisateur croit alors avoir tout arrêté, pendant qu'un téléchargement
+ * poursuit sa route, invisible, et garde le port occupé — ce qui empêche le
+ * prochain démarrage.
+ *
+ * On surveille donc le parent nous-mêmes. Uniquement quand la coquille nous a
+ * transmis son identifiant : lancée depuis un terminal, l'app doit pouvoir
+ * survivre à la fermeture du shell.
+ */
+function surveillerParent(arrêter) {
+  const parent = Number(process.env.ZOTIJEAN_PARENT);
+  if (!Number.isInteger(parent) || parent <= 1) return;
+
+  const minuterie = setInterval(() => {
+    try {
+      // Le signal 0 ne tue rien : il teste seulement l'existence.
+      process.kill(parent, 0);
+    } catch (erreur) {
+      if (erreur.code === 'EPERM') return; // existe, mais ne nous appartient pas
+      clearInterval(minuterie);
+      journal.info('L’application hôte s’est fermée : arrêt du moteur.');
+      arrêter('parent disparu');
+    }
+  }, 5000);
+
+  minuterie.unref();
+}
+
 function lirePortDesArguments() {
   const index = process.argv.indexOf('--port');
   if (index === -1) return null;
@@ -413,6 +448,8 @@ export function démarrer() {
 
   process.on('SIGINT', () => arrêterProprement('SIGINT'));
   process.on('SIGTERM', () => arrêterProprement('SIGTERM'));
+
+  surveillerParent(arrêterProprement);
 
   return serveur;
 }
