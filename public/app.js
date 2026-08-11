@@ -804,6 +804,28 @@ $('#btn-arreter').addEventListener('click', async () => {
 
 $('#btn-diagnostic').addEventListener('click', chargerDiagnostic);
 
+$('#btn-rapport').addEventListener('click', async () => {
+  const bouton = $('#btn-rapport');
+  bouton.disabled = true;
+  try {
+    const { texte, nom } = await appeler('GET', '/api/rapport');
+
+    // Téléchargement côté navigateur : l'utilisateur choisit où le mettre et
+    // peut le transmettre tel quel. Aucun fichier n'est déposé à son insu.
+    const lien = document.createElement('a');
+    lien.href = URL.createObjectURL(new Blob([texte], { type: 'text/plain;charset=utf-8' }));
+    lien.download = nom;
+    lien.click();
+    URL.revokeObjectURL(lien.href);
+
+    noter('Diagnostic enregistré dans vos téléchargements.', 'succes');
+  } catch (erreur) {
+    noter(erreur.message, 'erreur');
+  } finally {
+    bouton.disabled = false;
+  }
+});
+
 $('#btn-simuler').addEventListener('click', async () => {
   const bouton = $('#btn-simuler');
   bouton.disabled = true;

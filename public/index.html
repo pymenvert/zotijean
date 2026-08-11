@@ -335,9 +335,14 @@
       <div class="carte">
         <div class="entete-carte">
           <h2>Journal</h2>
-          <label class="mini-bascule" title="Suivre automatiquement les nouvelles lignes">
-            <input type="checkbox" id="suivre-journal" checked><span>Suivre</span>
-          </label>
+          <div style="display:flex; gap:10px; align-items:center">
+            <label class="mini-bascule" title="Suivre automatiquement les nouvelles lignes">
+              <input type="checkbox" id="suivre-journal" checked><span>Suivre</span>
+            </label>
+            <button class="bouton mini" id="btn-rapport" title="Enregistrer un fichier texte contenant tout ce qu’il faut pour comprendre un problème">
+              <svg class="ic"><use href="#i-ouvrir"/></svg><span>Exporter le diagnostic</span>
+            </button>
+          </div>
         </div>
         <div id="journal" class="journal"></div>
       </div>

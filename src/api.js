@@ -14,6 +14,8 @@ import * as synchro from './synchronisation.js';
 import * as étatModule from './etat.js';
 import { évaluer, prochaineÉchéance, formaterÉchéance, duréeEnFrançais } from './planificateur.js';
 import { simuler } from './simulation.js';
+import { étatOutils } from './outils.js';
+import { modèleActif } from './organisation.js';
 import { exporterDepuisConfig } from './exports-dj.js';
 import { synthétiser } from './erreurs.js';
 import { lireContextePlateforme } from './energie.js';
@@ -267,6 +269,66 @@ export const routes = {
   'POST /api/arreter': () => ({ arrêté: synchro.demanderArrêt() }),
 
   'GET /api/journal': () => ({ entrées: journal.récent(300) }),
+
+  /**
+   * Rapport de diagnostic complet, en un seul fichier texte.
+   *
+   * Sans lui, signaler un problème obligeait à aller chercher un fichier dans
+   * une bibliothèque système cachée. Tout ce qu'il faut pour comprendre une
+   * panne tient ici : version, système, état des outils, réglages, dernières
+   * exécutions et journal.
+   */
+  'GET /api/rapport': async () => {
+    const c = config();
+    const rapport = await diagnostiquer(c);
+    const é = étatModule.état();
+
+    const ligne = (clé, valeur) => `${clé.padEnd(26)} ${valeur}`;
+    const section = (titre) => `\n${'─'.repeat(70)}\n${titre}\n${'─'.repeat(70)}`;
+
+    const morceaux = [
+      'RAPPORT DE DIAGNOSTIC ZOTIJEAN',
+      `Établi le ${new Date().toLocaleString('fr-FR')}`,
+      section('SYSTÈME'),
+      ligne('Plateforme', `${process.platform} ${process.arch}`),
+      ligne('Node.js', process.version),
+      ligne('Outils embarqués', étatOutils().embarqués ? 'oui' : 'non'),
+      section('INSTALLATION'),
+      ...rapport.contrôles.map((x) =>
+        `[${x.gravité.toUpperCase().padEnd(13)}] ${x.titre}\n    ${x.message}` +
+        (x.chemin ? `\n    → ${x.chemin}` : '') +
+        (x.version ? `\n    → version ${x.version}` : '')),
+      section('RÉGLAGES'),
+      ligne('Dossier de musique', c.général.dossierMusique),
+      ligne('Qualité', c.qualité.niveau),
+      ligne('Format', c.qualité.format),
+      ligne('Rangement', c.organisation.schéma),
+      ligne('Modèle', modèleActif(c.organisation)),
+      ligne('Intervalle', `${c.planification.intervalleHeures} h`),
+      ligne('Planification active', c.planification.actif ? 'oui' : 'non'),
+      ligne('Attente entre titres', `${attenteEffective(c)} s`),
+      ligne('Playlists surveillées', `${c.playlists.filter((p) => p.actif).length} active(s) sur ${c.playlists.length}`),
+      section('DERNIÈRES EXÉCUTIONS'),
+      ...(é.exécutions.slice(0, 10).map((e) =>
+        `${new Date(e.date).toLocaleString('fr-FR')} — ${e.déclencheur} — ` +
+        `${e.nbFichiers} titre(s), ${e.nbErreurs} erreur(s)` +
+        (e.échec ? `\n    ÉCHEC : ${e.échec}` : '')) || ['aucune']),
+      section('PROBLÈMES RENCONTRÉS'),
+      ...(synthétiser(é.exécutions.flatMap((e) => e.lignesErreur || [])).map((s) =>
+        `${s.nombre}× ${s.titre}\n    ${s.explication}` +
+        (s.geste ? `\n    À FAIRE : ${s.geste}` : '')) || ['aucun']),
+      section('JOURNAL (200 dernières lignes)'),
+      ...journal.récent(200).map((e) =>
+        `${new Date(e.date).toLocaleTimeString('fr-FR')} [${e.niveau}] ${e.message}` +
+        (e.détails ? ` — ${typeof e.détails === 'string' ? e.détails : JSON.stringify(e.détails)}` : '')),
+      '',
+      'Ce rapport ne contient aucun identifiant : Zotijean n’en manipule pas,',
+      'ils appartiennent à zotify. Il contient en revanche vos chemins de',
+      'dossiers et vos liens de playlists.',
+    ];
+
+    return { texte: morceaux.join('\n'), nom: `zotijean-diagnostic-${new Date().toISOString().slice(0, 10)}.txt` };
+  },
 
   'GET /api/historique': () => ({
     exécutions: étatModule.état().exécutions.slice(0, 20).map((e) => ({
