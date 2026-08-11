@@ -67,15 +67,57 @@ test('noyau ne vide pas un titre entièrement composé d’ornements', () => {
 // Empreintes
 // ---------------------------------------------------------------------------
 
-test('un morceau produit plusieurs empreintes, du plus sûr au plus tolérant', () => {
+test('les empreintes séparent le sûr du tolérant', () => {
+  // La séparation n'est pas cosmétique : les empreintes portant l'artiste sont
+  // épuisées AVANT le titre seul, sinon un rapprochement approximatif volerait
+  // le fichier d'une correspondance exacte traitée plus tard.
   const e = empreintes(piste('Daft Punk', 'Digital Love'));
-  assert.ok(e.includes('daft punk digital love'));
-  assert.ok(e.includes('digital love'));
+  assert.ok(e.sûres.includes('daft punk digital love'));
+  assert.deepEqual(e.laxistes, ['digital love']);
+  assert.ok(!e.sûres.includes('digital love'), 'le titre seul n’est pas une empreinte sûre');
+});
+
+test('les artistes en featuring produisent aussi des empreintes', () => {
+  const e = empreintes({
+    artiste: 'Justice', titre: 'Safe and Sound', artistes: ['Justice', 'Rick Rubin'],
+  });
+  assert.ok(e.sûres.some((f) => f.includes('rick rubin')));
 });
 
 test('un morceau sans titre ne produit aucune empreinte', () => {
   // Mieux vaut ne rien rapprocher que rapprocher n'importe quoi.
-  assert.deepEqual(empreintes(piste('Daft Punk', '')), []);
+  const e = empreintes(piste('Daft Punk', ''));
+  assert.deepEqual(e.sûres, []);
+  assert.deepEqual(e.laxistes, []);
+});
+
+test('un titre entièrement composé d’ornements reste identifiable', () => {
+  // « Edit » et « Deluxe » sont des mots retirés comme ornements : les vider
+  // rendrait ces morceaux introuvables à jamais, donc éternellement manquants
+  // et retéléchargés à chaque synchronisation.
+  assert.equal(noyau('Edit'), 'edit');
+  assert.equal(noyau('Deluxe'), 'deluxe');
+  assert.ok(empreintes(piste('Artiste', 'Edit')).sûres.length > 0);
+});
+
+test('un morceau présent deux fois dans la playlist n’est pas compté manquant', () => {
+  const doublon = { id: 'abc', artiste: 'A', titre: 'X' };
+  const bilan = confronter([doublon, { ...doublon }], ['/m/A - X.ogg']);
+  assert.equal(bilan.manquants.length, 0, 'le doublon est réclamé comme manquant');
+  assert.equal(bilan.présents.length, 1);
+});
+
+test('une correspondance exacte prime sur une correspondance par titre seul', () => {
+  // Piège concret : le morceau de B est traité en premier et ne colle que par
+  // le titre. S'il prenait le fichier, celui de A — pourtant exact — serait
+  // déclaré manquant.
+  const bilan = confronter(
+    [piste('B', 'Chanson'), piste('A', 'Chanson')],
+    ['/m/A - Chanson.ogg'],
+  );
+  assert.equal(bilan.présents.length, 1);
+  assert.equal(bilan.présents[0].piste.artiste, 'A', 'le fichier a été mal attribué');
+  assert.equal(bilan.manquants[0].artiste, 'B');
 });
 
 test('un nom de fichier est réduit aux mêmes empreintes', () => {

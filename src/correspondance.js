@@ -49,7 +49,13 @@ export function noyau(titre) {
   for (const ornement of ORNEMENTS) {
     texte = texte.replace(new RegExp(`\\b${ornement}\\b`, 'g'), ' ');
   }
-  return texte.replace(/\s+/g, ' ').trim();
+  const réduit = texte.replace(/\s+/g, ' ').trim();
+
+  // Un titre RÉELLEMENT nommé « Edit » ou « Deluxe » se viderait entièrement,
+  // et le morceau deviendrait introuvable à jamais — donc éternellement
+  // « manquant », donc retéléchargé à chaque synchronisation. On garde alors le
+  // titre normalisé tel quel.
+  return réduit || normaliser(titre);
 }
 
 /**
@@ -59,17 +65,30 @@ export function noyau(titre) {
  * ou le titre seul.
  */
 export function empreintes(piste) {
-  const artiste = normaliser(piste.artiste);
   const titre = noyau(piste.titre);
-  if (!titre) return [];
+  if (!titre) return { sûres: [], laxistes: [] };
 
-  const formes = [
-    `${artiste} ${titre}`,
-    `${titre} ${artiste}`,
-    titre,
-  ];
+  // Toutes les façons dont l'artiste peut apparaître : le principal, la liste
+  // complète — un fichier nommé d'après un morceau en featuring —, et chacun
+  // pris isolément.
+  const artistes = [
+    piste.artiste,
+    ...(piste.artistes || []),
+    (piste.artistes || []).join(' '),
+  ].map(normaliser).filter(Boolean);
 
-  return [...new Set(formes.map((f) => f.replace(/\s+/g, ' ').trim()).filter(Boolean))];
+  const propre = (f) => f.replace(/\s+/g, ' ').trim();
+
+  const sûres = [...new Set(
+    artistes.flatMap((a) => [propre(`${a} ${titre}`), propre(`${titre} ${a}`)]),
+  )].filter(Boolean);
+
+  // Le titre seul est une empreinte de dernier recours : deux morceaux
+  // homonymes d'artistes différents la partagent. Elle est donc séparée, et
+  // n'est essayée qu'après avoir épuisé les empreintes sûres — sinon un
+  // rapprochement approximatif volerait le fichier d'une correspondance exacte
+  // traitée plus tard.
+  return { sûres, laxistes: [titre] };
 }
 
 /**
@@ -83,7 +102,8 @@ export function empreintesFichier(chemin) {
 
   // Le nom complet, plus chaque moitié autour du tiret séparateur : un fichier
   // « Artiste - Titre » doit pouvoir correspondre au titre seul.
-  const formes = [normalisé];
+  // Une chaîne vide dans l'index ferait correspondre n'importe quoi.
+  const formes = normalisé ? [normalisé] : [];
   for (const morceau of sansNuméro.split(/\s+-\s+/)) {
     const propre = noyau(morceau);
     if (propre) formes.push(propre);
@@ -106,25 +126,42 @@ export function confronter(pistes, fichiers) {
     }
   }
 
+  // Un morceau peut figurer DEUX FOIS dans une playlist. Sans déduplication, le
+  // second exemplaire ne trouve plus de fichier libre et reste éternellement
+  // « manquant » — donc retéléchargé à chaque synchronisation.
+  const vues = new Set();
+  const uniques = pistes.filter((p) => {
+    const clé = p.id || `${normaliser(p.artiste)}|${noyau(p.titre)}`;
+    if (vues.has(clé)) return false;
+    vues.add(clé);
+    return true;
+  });
+
   const présents = [];
-  const manquants = [];
   const fichiersReconnus = new Set();
+  const disponible = (fichier) => fichier && !fichiersReconnus.has(fichier);
 
-  for (const piste of pistes) {
-    // Un fichier déjà attribué n'est plus disponible. Sans cette exclusion,
-    // deux morceaux au titre identique — un même titre repris par deux
-    // artistes, ou présent deux fois dans la playlist — se partageraient le
-    // même fichier, et le second serait déclaré présent alors qu'il manque.
-    const trouvé = empreintes(piste)
-      .map((e) => indexFichiers.get(e))
-      .find((fichier) => fichier && !fichiersReconnus.has(fichier));
+  const attribuer = (piste, formes) => {
+    const trouvé = formes.map((e) => indexFichiers.get(e)).find(disponible);
+    if (!trouvé) return false;
+    présents.push({ piste, fichier: trouvé });
+    fichiersReconnus.add(trouvé);
+    return true;
+  };
 
-    if (trouvé) {
-      présents.push({ piste, fichier: trouvé });
-      fichiersReconnus.add(trouvé);
-    } else {
-      manquants.push(piste);
-    }
+  // DEUX PASSES, et l'ordre compte. On épuise d'abord les correspondances qui
+  // portent l'artiste, donc fiables. Ne rapprocher que par le titre au premier
+  // tour laisserait un morceau approximatif voler le fichier d'une
+  // correspondance exacte traitée plus tard dans la liste.
+  const restantes = [];
+  for (const piste of uniques) {
+    const { sûres, laxistes } = empreintes(piste);
+    if (!attribuer(piste, sûres)) restantes.push({ piste, laxistes });
+  }
+
+  const manquants = [];
+  for (const { piste, laxistes } of restantes) {
+    if (!attribuer(piste, laxistes)) manquants.push(piste);
   }
 
   return {
@@ -134,7 +171,7 @@ export function confronter(pistes, fichiers) {
     // aussi bien des morceaux retirés de la playlist que des fichiers déposés à
     // la main, ou simplement nommés d'une façon qu'on n'a pas su rapprocher.
     nonReconnus: fichiers.filter((f) => !fichiersReconnus.has(f)),
-    fiabilité: fiabilité(pistes.length, présents.length, fichiers.length),
+    fiabilité: fiabilité(uniques.length, présents.length, fichiers.length),
   };
 }
 
@@ -149,14 +186,19 @@ function fiabilité(nbPistes, nbTrouvés, nbFichiers) {
   if (nbPistes === 0) return { sûre: false, raison: 'La playlist est vide ou illisible.' };
   if (nbFichiers === 0) return { sûre: true, raison: 'Aucun fichier : tout est à télécharger.' };
 
-  const taux = nbTrouvés / nbPistes;
-  if (taux < 0.5 && nbFichiers > nbPistes * 0.5) {
+  // On rapporte aux FICHIERS, pas aux pistes. Rapporté aux pistes, le garde-fou
+  // se neutralisait lui-même : 100 morceaux attendus et 40 fichiers illisibles
+  // donnaient « fiable », alors que pas un seul fichier n'avait été reconnu.
+  // Ce qui doit alerter, c'est qu'une part importante des fichiers présents
+  // reste orpheline.
+  const partRattachée = nbTrouvés / nbFichiers;
+  if (partRattachée < 0.5 && nbFichiers >= 5) {
     return {
       sûre: false,
       raison:
-        `Seuls ${nbTrouvés} morceaux sur ${nbPistes} ont pu être rapprochés des ` +
-        `${nbFichiers} fichiers présents. Le rapprochement n’est pas fiable : ` +
-        'aucun fichier ne sera déplacé.',
+        `Seuls ${nbTrouvés} des ${nbFichiers} fichiers présents ont pu être ` +
+        `rattachés aux ${nbPistes} morceaux de la playlist. Le rapprochement ` +
+        'n’est pas fiable : aucun fichier ne sera déplacé.',
     };
   }
 

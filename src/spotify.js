@@ -109,11 +109,27 @@ export function préparerConnexion(clientId, redirection) {
  * `état` est vérifié : sans ce contrôle, un tiers pourrait faire aboutir chez
  * vous une connexion qu'il a lui-même initiée.
  */
+/** Au-delà, une demande de connexion abandonnée n'a plus lieu d'aboutir. */
+const VALIDITÉ_DEMANDE_MS = 10 * 60 * 1000;
+
 export async function terminerConnexion(code, état) {
   if (!demandeEnCours) {
     return { réussi: false, raison: 'Aucune connexion n’était en cours. Recommencez.' };
   }
+
+  const âge = Date.now() - demandeEnCours.date;
+  if (âge > VALIDITÉ_DEMANDE_MS || âge < 0) {
+    demandeEnCours = null;
+    return {
+      réussi: false,
+      raison: 'La demande de connexion a expiré. Relancez-la depuis les réglages.',
+    };
+  }
+
   if (état !== demandeEnCours.état) {
+    // On efface aussi dans ce cas : une demande dont la réponse ne correspond
+    // pas ne doit pas rester disponible pour une tentative suivante.
+    demandeEnCours = null;
     return { réussi: false, raison: 'La réponse de Spotify ne correspond pas à la demande.' };
   }
 
@@ -164,6 +180,15 @@ function traduireErreurConnexion(données) {
   return données.error_description || 'Spotify a refusé la connexion.';
 }
 
+/**
+ * Rafraîchissement en cours, s'il y en a un.
+ *
+ * Sans ce partage, deux requêtes simultanées lancent deux rafraîchissements :
+ * le second consomme le jeton du premier, et le perdant écrit un jeton déjà
+ * périmé. L'utilisateur se retrouve déconnecté sans avoir rien fait.
+ */
+let rafraîchissementEnVol = null;
+
 /** Un jeton d'accès valable, rafraîchi si besoin. */
 async function jetonValable() {
   const jetons = lireJetons();
@@ -174,6 +199,21 @@ async function jetonValable() {
   if (jetons.access_token && jetons.expire_le > Date.now() + 60000) {
     return jetons.access_token;
   }
+
+  if (!rafraîchissementEnVol) {
+    rafraîchissementEnVol = rafraîchir().finally(() => {
+      rafraîchissementEnVol = null;
+    });
+  }
+  return rafraîchissementEnVol;
+}
+
+async function rafraîchir() {
+  // On RELIT le fichier ici : entre l'appel et l'exécution, un autre
+  // rafraîchissement a pu aboutir, ou l'utilisateur a pu se déconnecter — et
+  // ressusciter ses identifiants serait pire qu'un échec.
+  const jetons = lireJetons();
+  if (!jetons?.refresh_token) return null;
 
   const réponse = await fetch(JETON, {
     method: 'POST',
@@ -208,6 +248,30 @@ async function jetonValable() {
 // Requêtes
 // ---------------------------------------------------------------------------
 
+/**
+ * L'en-tête indiquant combien de temps patienter, en secondes.
+ * Il peut aussi être une date au format HTTP : la lire comme un nombre donnait
+ * alors `NaN`, et quatre requêtes partaient sans la moindre pause.
+ */
+export function lireRetryAfter(brut) {
+  // L'en-tête absent est le cas le plus fréquent, et le piège : `Number('')` et
+  // `Number(null)` valent ZÉRO — finis et positifs — donc un simple test de
+  // validité laisserait repartir la requête sans la moindre pause, ce qui
+  // aggrave précisément la limitation qu'on cherche à respecter.
+  const texte = String(brut ?? '').trim();
+  if (!texte) return 2;
+
+  // Une valeur numérique NÉGATIVE est malformée : la laisser filer vers
+  // l'analyse de date donnerait zéro, donc aucune attente.
+  const secondes = Number(texte);
+  if (Number.isFinite(secondes)) return secondes >= 0 ? secondes : 2;
+
+  const date = Date.parse(texte);
+  if (Number.isFinite(date)) return Math.max(0, (date - Date.now()) / 1000);
+
+  return 2;
+}
+
 export class ErreurSpotify extends Error {
   constructor(message, { reconnexion = false, statut = 0 } = {}) {
     super(message);
@@ -236,10 +300,23 @@ async function requête(chemin, { essaisRestants = 3 } = {}) {
     headers: { Authorization: `Bearer ${jeton}` },
   });
 
-  if (réponse.status === 429 && essaisRestants > 0) {
-    const attente = Number(réponse.headers.get('retry-after') || 2);
+  if (réponse.status === 429) {
+    const attente = lireRetryAfter(réponse.headers.get('retry-after'));
+
+    // Au-delà d'une minute, on n'attend PAS : on rend la main avec un message
+    // clair. Patienter une heure figerait la synchronisation, et attendre
+    // seulement soixante secondes comme avant revenait à ignorer la consigne de
+    // Spotify — ce qui aggrave la limitation.
+    if (attente > 60 || essaisRestants <= 0) {
+      throw new ErreurSpotify(
+        `Spotify limite temporairement les requêtes et demande d’attendre ` +
+        `${Math.round(attente / 60)} minute(s). Réessayez plus tard.`,
+        { statut: 429 },
+      );
+    }
+
     journal.avertir(`Spotify demande d’attendre ${attente} s avant de continuer.`);
-    await new Promise((r) => setTimeout(r, Math.min(attente, 60) * 1000));
+    await new Promise((r) => setTimeout(r, attente * 1000));
     return requête(chemin, { essaisRestants: essaisRestants - 1 });
   }
 
@@ -266,18 +343,49 @@ async function requête(chemin, { essaisRestants = 3 } = {}) {
     );
   }
 
-  return réponse.json();
+  try {
+    return await réponse.json();
+  } catch {
+    // Un portail Wi-Fi captif renvoie sa propre page HTML avec un code 200 :
+    // sans ce message, l'utilisateur lisait « Unexpected token '<' » et n'avait
+    // aucun moyen de comprendre.
+    throw new ErreurSpotify(
+      'La réponse reçue n’est pas celle de Spotify. Si vous êtes sur un réseau ' +
+      'public, une page de connexion Wi-Fi intercepte peut-être le trafic : ' +
+      'ouvrez votre navigateur pour vous y connecter, puis réessayez.',
+    );
+  }
 }
 
 /** Parcourt une ressource paginée jusqu'au bout. */
-async function toutesLesPages(chemin, { max = 5000 } = {}) {
+async function toutesLesPages(chemin, { max = 10000 } = {}) {
   const éléments = [];
   let suivant = chemin;
+  let pages = 0;
 
-  while (suivant && éléments.length < max) {
+  while (suivant && éléments.length < max && pages < 200) {
     const page = await requête(suivant);
     éléments.push(...(page.items || []));
     suivant = page.next;
+    pages += 1;
+
+    // On ne suit un lien de page suivante que s'il reste chez Spotify : il
+    // porte notre jeton en en-tête, et une réponse détournée l'enverrait
+    // ailleurs.
+    if (suivant && !String(suivant).startsWith('https://api.spotify.com/')) {
+      journal.avertir('Lien de pagination inattendu, ignoré par précaution.');
+      break;
+    }
+  }
+
+  // Une troncature silencieuse ferait croire à une playlist plus courte
+  // qu'elle n'est, donc à des morceaux absents qui n'existent pas.
+  if (suivant) {
+    journal.avertir(
+      `Playlist tronquée à ${éléments.length} éléments : elle dépasse ce que ` +
+      'Zotijean lit en une fois.',
+    );
+    éléments.tronquée = true;
   }
 
   return éléments;
@@ -340,7 +448,10 @@ export async function contenuPlaylist(idPlaylist) {
   );
 
   return items
-    .filter((i) => i?.track?.id && !i.is_local)
+    // Les épisodes de podcast n'ont pas de type « track » : zotify ne les
+    // télécharge pas, et les compter ferait apparaître des morceaux
+    // éternellement manquants.
+    .filter((i) => i?.track?.id && !i.is_local && (i.track.type ?? 'track') === 'track')
     .map((i, index) => {
       const t = i.track;
       return {
