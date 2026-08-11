@@ -2,8 +2,19 @@
 
 ## 1.0.2 — 12 août 2026
 
-Lisibilité et honnêteté de l'affichage. Rien de dangereux ici, mais des choses
-qu'on ne voit pas quand on devrait les voir.
+Lisibilité de l'affichage, et une panne de planification qui pouvait bloquer la
+synchronisation pendant des jours.
+
+### La synchronisation pouvait rester bloquée trois jours
+
+Zotijean note la date de sa dernière tentative. Si cette date se retrouve dans
+le futur — l'horloge du Mac a été corrigée, vous avez changé de fuseau, ou vos
+réglages viennent d'une autre machine —, le calcul de l'espacement après un
+échec partait en vrille et **reportait la synchronisation à chaque fois**.
+Mesuré : soixante-treize heures de blocage complet pour une avance de trois
+jours, sans le moindre message.
+
+Une date incohérente est maintenant simplement ignorée.
 
 ### Le texte qui explique chaque choix était le moins lisible de l'app
 
