@@ -315,6 +315,26 @@ function contrôlerReprise(zotify) {
 // ---------------------------------------------------------------------------
 
 /**
+ * Dernier rapport établi, gardé en mémoire.
+ *
+ * Le tableau de bord doit pouvoir annoncer « l'app ne peut pas fonctionner »
+ * sans relancer un diagnostic complet à chaque rafraîchissement — celui-ci
+ * lance des sous-processus et lit le disque.
+ */
+let dernierRapport = null;
+
+/** Ce que le tableau de bord a besoin de savoir, sans rien relancer. */
+export function étatConnu() {
+  if (!dernierRapport) return null;
+  const bloquants = dernierRapport.contrôles.filter((c) => c.gravité === GRAVITÉ.BLOQUANT);
+  return {
+    prêt: bloquants.length === 0,
+    date: dernierRapport.date,
+    bloquants: bloquants.map((b) => ({ titre: b.titre, message: b.message })),
+  };
+}
+
+/**
  * Lance tous les contrôles. Utilisé au démarrage, avant chaque synchronisation,
  * et par le bouton « Relancer le diagnostic » de l'interface.
  */
@@ -353,6 +373,7 @@ export async function diagnostiquer(config) {
         : 'Tout est en ordre.',
   };
 
+  dernierRapport = rapport;
   journal.info(`Diagnostic : ${rapport.résumé}`);
   for (const c of [...bloquants, ...avertissements]) {
     journal.avertir(`${c.titre} — ${c.message}`);

@@ -131,7 +131,15 @@ function rendreHéros() {
   }
   $('#heros-detail').textContent = détail;
 
+  // Un bouton qui ne peut rien faire ne doit pas rester engageant : tant qu'un
+  // point bloquant subsiste, on renvoie vers le diagnostic plutôt que de
+  // laisser cliquer sur Synchroniser pour rien.
+  const bloqué = phraseHéros.versDiagnostic === true;
   $('#btn-synchro').hidden = !!enCours;
+  $('#btn-synchro').disabled = bloqué;
+  $('#btn-synchro').title = bloqué
+    ? 'Impossible pour l’instant : réglez d’abord le point signalé dans Diagnostic.'
+    : 'Vérifier les playlists et télécharger les nouveaux titres maintenant';
   $('#btn-arreter').hidden = !enCours;
   $('#progression').hidden = !enCours;
 

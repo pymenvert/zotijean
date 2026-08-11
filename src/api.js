@@ -8,7 +8,7 @@ import crypto from 'node:crypto';
 import { config, enregistrer, modifier, attenteEffective } from './config.js';
 import { catalogueComplet, VARIABLES, trouver, FORMATS, RYTHMES } from './options.js';
 import { aperçu, validerModèle } from './organisation.js';
-import { diagnostiquer } from './diagnostic.js';
+import { diagnostiquer, étatConnu } from './diagnostic.js';
 import { journal } from './journal.js';
 import * as synchro from './synchronisation.js';
 import * as étatModule from './etat.js';
@@ -74,11 +74,14 @@ export function tableauDeBord(contexte = {}) {
 
   const dernier = résumé.dernierSuccès ? new Date(résumé.dernierSuccès) : null;
 
+  const installation = étatConnu();
+
   return {
     enCours,
     décision,
     résumé,
-    phraseHéros: phraseHéros({ enCours, décision, dernier, résumé }),
+    installation,
+    phraseHéros: phraseHéros({ enCours, décision, dernier, résumé, installation }),
     prochaineÉchéance: c.planification.actif
       ? formaterÉchéance(prochaineÉchéance(c, dernier))
       : null,
@@ -103,7 +106,20 @@ export function tableauDeBord(contexte = {}) {
  * Une seule métrique héros, pas un tableau de bord fourre-tout : c'est ce qui
  * distingue une app finie d'un panneau de contrôle.
  */
-function phraseHéros({ enCours, décision, dernier, résumé }) {
+function phraseHéros({ enCours, décision, dernier, résumé, installation }) {
+  // Un problème bloquant prime sur tout le reste : sans lui, l'accueil
+  // affichait « Tout est à jour » alors que rien ne pouvait être téléchargé, et
+  // le seul indice était une pastille rouge sur un onglet.
+  if (installation && !installation.prêt && !enCours) {
+    const premier = installation.bloquants[0];
+    return {
+      texte: premier ? `${premier.titre} — à régler avant de pouvoir synchroniser` : 'Installation incomplète',
+      détail: premier?.message ?? 'Ouvrez l’onglet Diagnostic.',
+      ton: 'erreur',
+      versDiagnostic: true,
+    };
+  }
+
   if (enCours) {
     const quoi = enCours.playlistActuelle ? ` — ${enCours.playlistActuelle}` : '';
     return {

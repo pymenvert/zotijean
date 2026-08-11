@@ -19,34 +19,47 @@
 <section>
   <div class="titre-section">
     <h2>Ce qu’il vous faut</h2>
-    <span class="label">Trois choses</span>
+    <span class="label">Rien à installer</span>
   </div>
   <p>
-    Zotijean ne télécharge rien lui-même : il pilote zotify, que vous utilisez déjà.
-    C’est voulu — vous n’avez rien à réinstaller ni à reconnecter.
+    Zotijean contient tout ce dont il a besoin : le moteur, Python, ffmpeg et
+    zotify voyagent dans l’application. Vous n’installez rien, vous ne tapez
+    aucune commande.
   </p>
   <div class="prerequis">
     <div class="item">
-      <span class="label">zotify</span>
-      <p>Déjà installé et connecté à votre compte Spotify. Vérifiez en tapant <kbd>zotify --version</kbd> dans le Terminal.</p>
+      <span class="label">Un Mac</span>
+      <p>Apple Silicon ou Intel, macOS 13 ou plus récent.</p>
     </div>
     <div class="item">
-      <span class="label">ffmpeg</span>
-      <p>Indispensable. <kbd>brew install ffmpeg</kbd> si vous ne l’avez pas.</p>
+      <span class="label">Un compte Spotify</span>
+      <p>Premium pour la meilleure qualité. Sans Premium, Spotify plafonne à 160 kb/s sans le dire.</p>
     </div>
     <div class="item">
-      <span class="label">Node.js 20 ou plus</span>
-      <p>Le moteur de Zotijean. <kbd>brew install node</kbd>, ou l’installeur sur nodejs.org.</p>
+      <span class="label">De la place</span>
+      <p>Environ 10 Mo par titre, 25 en FLAC. L’onglet Rangement vous le chiffre avant de lancer.</p>
     </div>
+  </div>
+
+  <div class="encadre">
+    <span class="label">Zotijean vérifie tout, tout seul</span>
+    <p>
+      L’onglet <strong>Diagnostic</strong> contrôle chaque pièce à chaque
+      démarrage : le téléchargeur, ffmpeg, votre connexion Spotify, le dossier de
+      destination et la place disponible. Si quelque chose manque,
+      <strong>l’accueil vous le dit en toutes lettres</strong> et le bouton
+      Synchroniser reste grisé — l’app ne vous laissera pas lancer un
+      téléchargement qui ne peut pas aboutir.
+    </p>
   </div>
 
   <div class="encadre cue">
     <span class="label">Pourquoi ffmpeg n’est pas optionnel</span>
     <p>
-      Sans lui, zotify renomme le fichier téléchargé <strong>avant</strong> de
+      Sans lui, le téléchargeur renomme le fichier <strong>avant</strong> de
       s’apercevoir qu’il manque, et ne le remet jamais en place. Des morceaux
-      disparaissent sans le moindre message d’erreur. Zotijean refuse de
-      synchroniser tant qu’il ne l’a pas trouvé.
+      disparaissent sans le moindre message d’erreur. C’est pour cela qu’il est
+      embarqué, et que Zotijean refuse de travailler s’il ne le trouve pas.
     </p>
   </div>
 </section>
@@ -62,17 +75,22 @@
       <div class="voie-num">01</div>
       <div class="voie-corps">
         <h3>Lancer</h3>
-        <p>Double-cliquez <kbd>Zotijean - Mac.command</kbd>.</p>
+        <p>Double-cliquez <kbd>Zotijean.app</kbd>.</p>
         <p>
-          Au tout premier démarrage, Zotijean vous prend par la main : cinq écrans
-          qui vérifient votre installation, vous font choisir où ranger la musique
-          et ajoutent une première playlist. Les étapes ci-dessous décrivent la même
-          chose, si vous préférez la faire vous-même.
+          Une petite icône apparaît en haut à droite de l’écran, dans la barre
+          des menus. Cliquez dessus : c’est de là que tout se pilote, et
+          « Ouvrir le tableau de bord » affiche l’interface dans votre navigateur.
         </p>
         <p>
-          Une fenêtre noire s’ouvre : c’est le moteur, laissez-la tranquille.
-          L’interface apparaît toute seule dans votre navigateur. Pour arrêter
-          Zotijean plus tard, il suffira de fermer cette fenêtre.
+          Au tout premier démarrage, Zotijean prépare son téléchargeur — quelques
+          secondes, une seule fois — puis vous prend par la main : cinq écrans qui
+          vérifient l’installation, vous font choisir où ranger la musique et
+          ajoutent une première playlist.
+        </p>
+        <p>
+          macOS affichera un avertissement, comme pour toute application qui ne
+          vient pas de l’App Store. <strong>Clic droit sur l’app, puis
+          Ouvrir</strong> — une seule fois.
         </p>
       </div>
     </div>
@@ -83,10 +101,15 @@
         <h3>Passer au diagnostic</h3>
         <p>Onglet <span class="touche">Diagnostic</span>, tout de suite.</p>
         <p>
-          Il contrôle zotify, ffmpeg, votre connexion Spotify et le dossier de
-          destination. Chaque point en rouge vous dit précisément quoi faire.
-          Tant qu’il en reste un, la synchronisation ne démarrera pas — c’est
-          une protection, pas un caprice.
+          Il contrôle le téléchargeur, ffmpeg, votre connexion Spotify, le
+          dossier de destination et la place disponible. Chaque point en rouge
+          dit précisément quoi faire.
+        </p>
+        <p>
+          Vous n’avez pas à y penser : s’il manque quelque chose,
+          <strong>l’accueil vous l’annonce</strong> et le bouton Synchroniser
+          reste grisé. L’app ne vous laissera pas lancer un téléchargement qui ne
+          peut pas aboutir.
         </p>
       </div>
     </div>
@@ -145,7 +168,8 @@
   </p>
   <p>
     Vous pouvez fermer l’onglet du navigateur pendant une synchronisation, elle
-    continue. Ne fermez pas la fenêtre noire.
+    continue : elle tourne dans l’application, pas dans la page. Ne quittez pas
+    Zotijean depuis son icône dans la barre des menus.
   </p>
 </section>
 
@@ -245,6 +269,72 @@
 
 <section>
   <div class="titre-section">
+    <h2>Connecter votre compte Spotify</h2>
+    <span class="label">Facultatif, mais ça change beaucoup</span>
+  </div>
+
+  <p>
+    Sans connexion, Zotijean fonctionne : il passe vos liens au téléchargeur et
+    regarde ce qui apparaît sur le disque. Avec, il sait trois choses de plus.
+  </p>
+
+  <div class="voies">
+    <div class="voie">
+      <div class="voie-num">→</div>
+      <div class="voie-corps">
+        <h3>Quelles playlists n’ont pas bougé</h3>
+        <p>
+          Une seule question à Spotify suffit à conclure « rien de neuf » et à
+          passer à la suivante, au lieu de tout revérifier titre par titre. Sur
+          dix playlists dont deux ont changé, la synchronisation passe de
+          plusieurs heures à quelques minutes.
+        </p>
+      </div>
+    </div>
+    <div class="voie">
+      <div class="voie-num">→</div>
+      <div class="voie-corps">
+        <h3>Quels morceaux manquent exactement</h3>
+        <p>
+          Le bouton <span class="touche">Voir ce qui manque</span> compare le
+          contenu réel de chaque playlist à vos fichiers et liste les absents,
+          sans rien télécharger.
+        </p>
+      </div>
+    </div>
+    <div class="voie">
+      <div class="voie-num">→</div>
+      <div class="voie-corps">
+        <h3>Vos playlists en liste, à cocher</h3>
+        <p>
+          Plus besoin de coller des liens un par un. Vos albums et liens ajoutés
+          à la main ne sont pas touchés par cette sélection.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <p style="margin-top:1.4rem">
+    Onglet <span class="touche">Playlists</span>, carte du haut. Zotijean vous
+    donne l’adresse à recopier et les trois étapes à suivre chez Spotify. Il ne
+    demande que des permissions de <strong>lecture</strong> : il ne modifie
+    jamais rien sur votre compte.
+  </p>
+
+  <div class="encadre cue">
+    <span class="label">Ce que ça coûte, franchement</span>
+    <p>
+      Il faut créer une application dans l’espace développeur de Spotify, dont
+      les conditions <strong>interdisent d’alimenter un téléchargeur</strong>.
+      Les accepter expose un second compte en plus de votre compte d’écoute.
+      C’est un arbitrage qui vous appartient : tout marche sans, avec moins de
+      précision.
+    </p>
+  </div>
+</section>
+
+<section>
+  <div class="titre-section">
     <h2>Deux vérités qu’il vaut mieux connaître</h2>
     <span class="label">Sans détour</span>
   </div>
@@ -284,36 +374,40 @@
       </thead>
       <tbody>
         <tr>
-          <td>« Node.js est introuvable »</td>
-          <td>Installez-le depuis nodejs.org, version LTS, puis relancez le fichier. C’est le moteur : sans lui, rien ne démarre.</td>
+          <td>macOS refuse d’ouvrir l’application</td>
+          <td>Normal au premier lancement, pour toute app hors App Store. <strong>Clic droit sur Zotijean.app, puis Ouvrir</strong>. Une seule fois.</td>
         </tr>
         <tr>
-          <td>« zotify est introuvable »</td>
-          <td>Zotijean pilote votre zotify, il ne l’embarque pas. Tapez <kbd>zotify --version</kbd> dans le Terminal : si ça ne répond pas, réinstallez zotify avant de revenir.</td>
+          <td>L’accueil affiche un point rouge</td>
+          <td>Il vous dit exactement quoi régler, et le bouton Synchroniser reste grisé tant que ce n’est pas fait. L’onglet Diagnostic donne le détail.</td>
         </tr>
         <tr>
-          <td>« ffmpeg est introuvable »</td>
-          <td><kbd>brew install ffmpeg</kbd>, puis relancez le diagnostic. Ne synchronisez pas avant : des morceaux seraient détruits en silence.</td>
+          <td>« Le téléchargeur est introuvable »</td>
+          <td>Zotijean l’installe tout seul au premier lancement. Si le message persiste, relancez l’application ; en cas d’échec répété, exportez le diagnostic (onglet Journal).</td>
+        </tr>
+        <tr>
+          <td>Connexion Spotify refusée</td>
+          <td>Neuf fois sur dix, l’adresse de retour n’a pas été recopiée à l’identique dans l’espace développeur — port compris. Zotijean l’affiche : copiez-la telle quelle.</td>
+        </tr>
+        <tr>
+          <td>Aucune playlist dans le sélecteur</td>
+          <td>Si votre application Spotify est en mode développement, votre compte doit être ajouté à sa liste d’utilisateurs, dans l’espace développeur.</td>
         </tr>
         <tr>
           <td>Rien ne se télécharge, aucune erreur</td>
-          <td>Normal si tout est déjà là. Ouvrez le Journal : il indique combien de titres ont été examinés et ignorés.</td>
+          <td>Normal si tout est déjà là. Le bouton « Voir ce qui manque » vous le confirmera, et le Journal indique combien de titres ont été examinés.</td>
         </tr>
         <tr>
-          <td>La fenêtre s’ouvre puis se referme</td>
-          <td>Node.js manque ou est trop ancien. La fenêtre affiche la raison une seconde avant de disparaître — relancez et lisez la première ligne.</td>
-        </tr>
-        <tr>
-          <td>« Le port 8787 est déjà utilisé »</td>
-          <td>Zotijean tourne déjà. Ouvrez <kbd>http://127.0.0.1:8787</kbd> plutôt que de le relancer.</td>
+          <td>C’est beaucoup plus lent qu’annoncé</td>
+          <td>Vérifiez le point « Éviter les retéléchargements » du Diagnostic. Si le téléchargeur ne sait pas ignorer l’existant, chaque synchronisation reprend tout.</td>
         </tr>
         <tr>
           <td>La page reste sur « Chargement… »</td>
-          <td>Le moteur s’est arrêté. Regardez la fenêtre noire : le message d’erreur y est.</td>
+          <td>L’application s’est arrêtée. Relancez-la depuis son icône dans la barre des menus, puis rechargez la page.</td>
         </tr>
         <tr>
-          <td>Les accents s’affichent bizarrement dans les noms</td>
-          <td>Signalez-le. Zotijean normalise les accents à l’écriture ; un affichage cassé indique un cas non prévu.</td>
+          <td>Les accents s’affichent bizarrement</td>
+          <td>Signalez-le avec le diagnostic exporté. Zotijean normalise les accents à l’écriture ; un affichage cassé indique un cas non prévu.</td>
         </tr>
       </tbody>
     </table>
@@ -323,6 +417,17 @@
     direct ce que fait l’app, et le <span class="touche">Diagnostic</span> dit
     ce qui manque.
   </p>
+  <div class="encadre">
+    <span class="label">Pour signaler un problème</span>
+    <p>
+      Onglet <span class="touche">Journal</span>, bouton <strong>Exporter le
+      diagnostic</strong>. Vous obtenez un fichier texte contenant tout ce qu’il
+      faut pour comprendre : système, état de chaque outil, réglages, dernières
+      exécutions et journal. Il ne contient aucun identifiant — Zotijean n’en
+      manipule pas — mais il contient vos chemins de dossiers et vos liens de
+      playlists.
+    </p>
+  </div>
 </section>
 
 <section>
