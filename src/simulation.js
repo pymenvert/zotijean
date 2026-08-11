@@ -17,6 +17,7 @@ import { diagnostiquer, GRAVITÉ } from './diagnostic.js';
 import { cheminRelatif, modèleActif } from './organisation.js';
 import { trouver, FORMATS } from './options.js';
 import { listerAudio } from './bibliotheque.js';
+import { nécessiteConversion } from './conversion.js';
 import { inventorier } from './zotify.js';
 import { duréeEnFrançais } from './planificateur.js';
 
@@ -99,7 +100,21 @@ export async function simuler() {
 
   const attente = attenteEffective(c);
   const libre = espaceLibre(racineGlobale);
-  const poidsMoyen = POIDS_MOYEN_MO[c.qualité.format] ?? 10;
+
+  // Le poids réel n'est pas celui du seul fichier de destination : quand un
+  // format de conversion est choisi, l'Ogg d'origine reste à côté par défaut.
+  // Annoncer 25 Mo pour un FLAC alors qu'il en faut 35 conduisait à lancer un
+  // rattrapage qui sature le disque à mi-parcours.
+  const format = c.qualité.format;
+  const poidsMoyen = (POIDS_MOYEN_MO[format] ?? 10)
+    + (nécessiteConversion(format) && c.retrait?.sourcesAprèsConversion === 'conserver'
+      ? POIDS_MOYEN_MO.copie
+      : 0);
+
+  // Le diagnostic refuse de synchroniser en dessous de ce seuil : la simulation
+  // doit le prendre en compte, sinon elle annonce « ça tient » pour un cas que
+  // l'app refusera ensuite de lancer.
+  const réserve = (c.gardes?.espaceMinimumGo ?? 2) * Go;
 
   return {
     date: new Date().toISOString(),
@@ -128,12 +143,18 @@ export async function simuler() {
       attenteSecondes: attente,
       // On ne sait pas combien de titres seront téléchargés. On donne donc des
       // repères plutôt qu'une prévision.
+      poidsMoyenMo: poidsMoyen,
       repères: [100, 500, 1000, 2000].map((n) => ({
         titres: n,
         durée: duréeEnFrançais(n * attente * 1000),
         espace: `${((n * poidsMoyen) / 1024).toFixed(1)} Go`,
-        tientSurLeDisque: libre === null ? null : n * poidsMoyen * Mo < libre,
+        tientSurLeDisque: libre === null ? null : n * poidsMoyen * Mo + réserve < libre,
       })),
+      noteEspace: nécessiteConversion(format) && c.retrait?.sourcesAprèsConversion === 'conserver'
+        ? 'Les tailles comptent le fichier converti ET le fichier d’origine, que ' +
+          'Zotijean conserve par défaut pour ne pas avoir à tout retélécharger si ' +
+          'vous changez de format.'
+        : null,
     },
 
     // Formulé comme une limite assumée, pas comme une lacune cachée.

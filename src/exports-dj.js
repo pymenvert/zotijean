@@ -328,6 +328,7 @@ export async function exporterDepuisConfig(c, { surProgrès = () => {} } = {}) {
 
   const { modèleActif } = await import('./organisation.js');
   const { inventorier } = await import('./zotify.js');
+  const { sansSourcesConverties } = await import('./bibliotheque.js');
 
   const actives = (c.playlists || []).filter((p) => p.actif);
   const playlists = [];
@@ -359,7 +360,13 @@ export async function exporterDepuisConfig(c, { surProgrès = () => {} } = {}) {
       format?.extension ?? 'ogg',
     );
     const dossier = path.join(cp.général.dossierMusique, path.dirname(exemple));
-    const fichiers = listerAudio(dossier);
+    // Sans ce filtre, l'export proposerait deux pistes par morceau, dont une en
+    // Ogg — que Rekordbox refuse d'ouvrir. Une ligne sur deux en rouge, sans
+    // moyen de savoir laquelle supprimer.
+    const fichiers = sansSourcesConverties(
+      listerAudio(dossier),
+      cp.qualité.format === 'copie' ? null : format?.extension,
+    );
 
     if (!fichiers.length) continue;
 

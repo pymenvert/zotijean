@@ -68,6 +68,39 @@ export function listerAudio(dossier) {
     );
 }
 
+/**
+ * Écarte un fichier d'origine quand son converti est posé juste à côté.
+ *
+ * Quand on convertit, l'Ogg source reste dans le dossier par défaut — c'est
+ * volontaire, il permet de re-dériver n'importe quel format sans retélécharger.
+ * Mais tout ce qui lit le dossier voit alors DEUX fichiers par morceau : la
+ * liste de lecture en compte 400 pour 200 titres, et l'export Rekordbox propose
+ * 200 pistes en Ogg, format qu'il ne sait pas lire.
+ *
+ * On ne retire que les doublons avérés : un fichier déposé à la main par
+ * l'utilisateur, sans jumeau converti, reste listé. C'est ce qui distingue cette
+ * fonction d'un simple filtre sur l'extension.
+ */
+export function sansSourcesConverties(fichiers, extensionCible) {
+  if (!extensionCible) return fichiers;
+
+  const cible = `.${extensionCible}`.toLowerCase();
+  const sansExtension = (f) => path.basename(f, path.extname(f));
+
+  const convertis = new Set(
+    fichiers
+      .filter((f) => path.extname(f).toLowerCase() === cible)
+      .map((f) => cléComparaison(sansExtension(f))),
+  );
+
+  if (convertis.size === 0) return fichiers;
+
+  return fichiers.filter((fichier) => {
+    if (path.extname(fichier).toLowerCase() === cible) return true;
+    return !convertis.has(cléComparaison(sansExtension(fichier)));
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Archivage
 // ---------------------------------------------------------------------------

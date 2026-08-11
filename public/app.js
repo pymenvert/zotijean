@@ -962,9 +962,13 @@ function rendreSimulation(simu) {
         }</td>
       </tr>`).join('')}</tbody>`;
 
+  const notes = [tableau];
+  if (simu.rythme.noteEspace) notes.push(paragraphe(simu.rythme.noteEspace));
+  notes.push(paragraphe(simu.incertitude));
+
   blocs.push(bloc(
     `Repères — ${simu.rythme.attenteSecondes} s d’attente entre chaque titre`,
-    [tableau, paragraphe(simu.incertitude)],
+    notes,
   ));
 
   remplir(conteneur, blocs);

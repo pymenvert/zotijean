@@ -30,7 +30,7 @@ import { nécessiteConversion, convertirLot, PROFILS } from './conversion.js';
 import { exporterDepuisConfig } from './exports-dj.js';
 import {
   écrireListeLecture, listerAudio, dossierCommun, déduireNomPlaylist,
-  archiver, mettreÀLaCorbeille,
+  archiver, mettreÀLaCorbeille, sansSourcesConverties,
 } from './bibliotheque.js';
 import * as étatModule from './etat.js';
 
@@ -504,9 +504,13 @@ export async function finaliserPlaylist({
     if (dossier) {
       const nom = résultat.nom || playlist.nom || 'Playlist';
       try {
+        // Les sources d'origine restent à côté des fichiers convertis : sans ce
+        // filtre, la liste compterait deux entrées par morceau, dont une dans un
+        // format que le logiciel DJ ne lit pas.
+        const extensionCible = PROFILS[c.qualité.format]?.extension;
         résultat.listeLecture = écrireListeLecture({
           destination: path.join(dossier, `${nom}.m3u8`),
-          fichiers: listerAudio(dossier),
+          fichiers: sansSourcesConverties(listerAudio(dossier), extensionCible),
           titre: nom,
         });
       } catch (erreur) {

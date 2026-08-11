@@ -18,6 +18,7 @@ import {
   appliquerPolitiqueRetrait,
   déduireNomPlaylist,
   dossierCommun,
+  sansSourcesConverties,
 } from '../src/bibliotheque.js';
 
 function bacÀSable() {
@@ -96,6 +97,49 @@ test('listerAudio trie comme le Finder et ignore le reste', () => {
   } finally {
     fs.rmSync(racine, { recursive: true, force: true });
   }
+});
+
+// ---------------------------------------------------------------------------
+// Doublons source / converti
+// ---------------------------------------------------------------------------
+
+test('un fichier d’origine est écarté quand son converti est à côté', () => {
+  // Sans ce filtre, une bibliothèque de 200 titres convertis en FLAC produit
+  // une liste de 400 entrées, dont 200 en Ogg que Rekordbox refuse d'ouvrir.
+  const fichiers = [
+    '/m/001 - a.ogg', '/m/001 - a.flac',
+    '/m/002 - b.ogg', '/m/002 - b.flac',
+  ];
+  assert.deepEqual(
+    sansSourcesConverties(fichiers, 'flac'),
+    ['/m/001 - a.flac', '/m/002 - b.flac'],
+  );
+});
+
+test('un fichier sans jumeau converti reste listé', () => {
+  // Cas réel : le DJ dépose lui-même un morceau dans le dossier. Un filtre
+  // bête sur l'extension le ferait disparaître de sa playlist.
+  const fichiers = ['/m/a.ogg', '/m/a.flac', '/m/depose-a-la-main.mp3', '/m/autre.ogg'];
+  assert.deepEqual(
+    sansSourcesConverties(fichiers, 'flac'),
+    ['/m/a.flac', '/m/depose-a-la-main.mp3', '/m/autre.ogg'],
+  );
+});
+
+test('sans conversion, rien n’est écarté', () => {
+  const fichiers = ['/m/a.ogg', '/m/b.ogg'];
+  assert.deepEqual(sansSourcesConverties(fichiers, null), fichiers);
+});
+
+test('le filtre compare les accents indépendamment de leur écriture', () => {
+  const nfc = '/m/Crécy.ogg'.normalize('NFC');
+  const nfd = '/m/Crécy.flac'.normalize('NFD');
+  assert.deepEqual(sansSourcesConverties([nfc, nfd], 'flac'), [nfd]);
+});
+
+test('aucun converti présent : la liste passe intacte', () => {
+  const fichiers = ['/m/a.ogg', '/m/b.ogg'];
+  assert.deepEqual(sansSourcesConverties(fichiers, 'flac'), fichiers);
 });
 
 // ---------------------------------------------------------------------------
