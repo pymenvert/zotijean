@@ -122,9 +122,28 @@ Sur le Mac, `Zotijean - Mac.command` fait la même chose par double-clic.
 
 ## État du projet
 
-**Version 1.0.0 publiée** (11 août 2026). Le moteur, l'interface et la coquille de barre
+**Version 1.0.1 publiée** (12 août 2026). Le moteur, l'interface et la coquille de barre
 des menus macOS sont écrits ; le paquet embarque Node, Python, ffmpeg et zotify, tous en
 arm64. Voir `CHANGELOG.md`.
+
+### Ce qu'un audit de la 1.0 a appris, et qui vaut pour la suite
+
+Les huit défauts corrigés en 1.0.1 avaient tous le même profil : **invisibles en test
+unitaire, parce qu'ils ne se manifestent qu'à l'échelle d'un rattrapage de dix-sept
+heures.** Chaque pièce marchait ; leur assemblage perdait tout. Le pire d'entre eux —
+l'avancement qui n'atteignait jamais l'écran — tenait à un ordre de clés dans un objet
+étalé, et 264 tests verts ne l'ont pas vu.
+
+Trois réflexes à garder :
+
+- **Tester le chaînage, pas seulement les pièces.** Quand deux modules se parlent par un
+  contrat implicite (un champ `type`, un nom de dossier ignoré), écrire un test qui
+  rejoue la condition exacte du consommateur.
+- **Une opération longue doit prouver qu'elle avance.** Un écran figé est indiscernable
+  d'un blocage, et l'utilisateur force la fermeture — ce qui déclenche les dégâts
+  suivants.
+- **Un garde-fou vérifié une seule fois au démarrage n'est pas un garde-fou.** Secteur,
+  Wi-Fi, espace disque, volume monté : tout se relit pendant l'exécution.
 
 Publier une version : bumper `package.json` **et** `macos/Info.plist` (mêmes numéros),
 compléter `CHANGELOG.md`, commiter, **attendre la CI verte**, puis pousser le tag

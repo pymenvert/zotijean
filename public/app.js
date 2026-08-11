@@ -764,7 +764,12 @@ function écouterÉvénements() {
     }
 
     if (événement.type === 'ligne') {
-      $('#progression-ligne').textContent = événement.texte;
+      const ligne = $('#progression-ligne');
+      ligne.textContent = événement.texte;
+      // Une piste indisponible dans le pays, une clé audio refusée : ça défile
+      // au milieu de lignes anodines et personne ne le remarque. La ligne change
+      // de couleur pour ce qui est une erreur, et le journal garde la trace.
+      ligne.dataset.sousType = événement.sousType || 'info';
       if (typeof événement.pourcentage === 'number') {
         const jauge = $('#progression-jauge');
         jauge.parentElement.classList.remove('indetermine');
