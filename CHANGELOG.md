@@ -1,5 +1,39 @@
 # Journal des versions
 
+## 1.0.3 — 12 août 2026
+
+Deux défauts qui ne frappaient qu'au **tout premier lancement** — c'est-à-dire
+au pire moment possible. **Prenez cette version plutôt qu'une plus ancienne si
+vous installez Zotijean pour la première fois.**
+
+### L'installation pouvait se saboter elle-même
+
+Au premier démarrage, l'app prépare son téléchargeur. Cette préparation commence
+par faire table rase. Or deux vérifications de l'installation partaient presque
+en même temps — celle du moteur au lancement, celle de l'interface qui venait de
+s'ouvrir — et lançaient chacune leur préparation : l'une effaçait le dossier que
+l'autre était en train de remplir.
+
+L'installation échouait, ou restait à moitié faite, sur la seule opération qui
+doit réussir pour que l'app serve à quelque chose. Et le message parlait
+d'environnement Python plutôt que de la vraie cause.
+
+### Le premier double-clic ne montrait rien
+
+L'app n'affichait qu'une petite icône en haut de l'écran. Rien ne disait qu'elle
+avait démarré, et le premier lancement guidé — écrit précisément pour ce
+moment — pouvait ne jamais être vu.
+
+Le tableau de bord s'ouvre maintenant tout seul la **première fois**, une fois
+le moteur prêt. Pas les fois suivantes : une app censée se faire oublier n'a pas
+à s'imposer à chaque démarrage.
+
+### Vos réglages existent maintenant sur le disque
+
+Ils n'étaient écrits que le jour où vous changiez quelque chose. Ils sont posés
+dès le premier démarrage — consultables et modifiables même si l'interface
+refuse de s'ouvrir.
+
 ## 1.0.2 — 12 août 2026
 
 Lisibilité de l'affichage, et une panne de planification qui pouvait bloquer la
