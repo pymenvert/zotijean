@@ -72,12 +72,38 @@ jobs:
       - name: Lancer les tests
         shell: bash
         run: |
-          # « --test-force-exit » : les tests d'intégration lancent de vrais
-          # sous-processus et ouvrent des fichiers de journal. Un descripteur
-          # qui traîne suffit à empêcher Node de rendre la main une fois tous
-          # les tests passés — le rapport est complet, mais le processus ne
-          # s'arrête jamais. C'est exactement ce qui bloquait Ubuntu.
-          if node --test --test-force-exit --test-reporter=tap > resultat.tap 2>&1; then
+          # GARDE-TEMPS PROPRE À L'ÉTAPE, indispensable pour diagnostiquer.
+          #
+          # Quand c'est le TRAVAIL entier qui atteint sa limite, GitHub le tue
+          # net : le code de remontée d'erreurs ci-dessous ne s'exécute jamais,
+          # et on ne sait rien de plus qu'« il s'est figé ». En surveillant
+          # nous-mêmes, on reprend la main et on peut dire OÙ ça s'est arrêté.
+          #
+          # `timeout` n'existe pas sur macOS : on surveille donc à la main, ce
+          # qui marche sur les deux systèmes.
+          node --test --test-force-exit --test-reporter=tap > resultat.tap 2>&1 &
+          TESTS=$!
+          ( sleep 300; kill -9 $TESTS 2>/dev/null ) &
+          GARDE=$!
+
+          set +e
+          wait $TESTS
+          CODE=$?
+          set -e
+          kill $GARDE 2>/dev/null || true
+
+          if [ $CODE -eq 137 ] || [ $CODE -eq 143 ]; then
+            echo "--- Les tests ne se sont pas terminés en 5 minutes ---"
+            cat resultat.tap
+            dernier=$(grep -E "^(ok|not ok) " resultat.tap | tail -1)
+            total=$(grep -cE "^(ok|not ok) " resultat.tap || echo 0)
+            message=$(printf 'Les tests ne rendent pas la main sur %s.%%0A%%0ADernier test terminé (%s au total) :%%0A%s%%0A%%0ALe blocage suit ce test, ou se produit après la fin de la suite.' \
+                      "${{ matrix.os }}" "$total" "$dernier")
+            echo "::error title=Suite de tests figée::${message}"
+            exit 1
+          fi
+
+          if [ $CODE -eq 0 ]; then
             tail -12 resultat.tap
 
             # GARDE-FOU. Les tests d'intégration ne s'exécutent que hors Windows.
