@@ -991,6 +991,169 @@ $('#btn-enregistrer-dossier').addEventListener('click', async () => {
   chargerDiagnostic();
 });
 
+// ------------------------------------------------------------------ Spotify
+
+async function rendreSpotify() {
+  const zone = $('#spotify-contenu');
+  const état_ = await appeler('GET', '/api/spotify/etat');
+  $('#spotify-etat').textContent = état_.connecté
+    ? (état_.profil ? `connecté — ${état_.profil.nom}` : 'connecté')
+    : 'non connecté';
+
+  if (état_.connecté) {
+    zone.innerHTML = `
+      <p class="aide">Zotijean lit vos playlists pour savoir lesquelles ont changé
+      et quels morceaux manquent. Il ne modifie jamais rien chez Spotify.</p>
+      <div class="ligne-formulaire">
+        <button class="bouton" id="btn-choisir-playlists">Choisir mes playlists</button>
+        <button class="bouton" id="btn-voir-manquants">Voir ce qui manque</button>
+        <button class="bouton danger" id="btn-deconnecter-spotify">Déconnecter</button>
+      </div>
+      <div id="spotify-resultat"></div>`;
+
+    $('#btn-choisir-playlists').addEventListener('click', afficherSélecteurPlaylists);
+    $('#btn-voir-manquants').addEventListener('click', afficherManquants);
+    $('#btn-deconnecter-spotify').addEventListener('click', async () => {
+      if (!confirm('Déconnecter votre compte Spotify ?\n\nZotijean continuera de fonctionner, avec moins de précision.')) return;
+      await appeler('POST', '/api/spotify/deconnexion');
+      noter('Compte déconnecté.', 'succes');
+      rendreSpotify();
+    });
+    return;
+  }
+
+  // Non connecté : on explique ce que ça apporte ET ce que ça coûte, comme
+  // pour toute autre option de l'app.
+  zone.innerHTML = `
+    <p class="aide">Facultatif. Sans connexion, Zotijean fonctionne : il passe vos
+    liens à zotify et regarde ce qui apparaît sur le disque. Avec, il sait en plus
+    quelles playlists n’ont pas bougé — et les saute, ce qui fait gagner des
+    heures — quels morceaux manquent exactement, et lesquels ont été retirés.</p>
+    <p class="aide">En contrepartie, il faut créer une application dans le tableau
+    de bord développeur de Spotify, dont les conditions interdisent d’alimenter un
+    téléchargeur. Cela expose un second compte en plus de votre compte d’écoute.</p>
+    <ol class="aide" style="padding-left:20px; display:flex; flex-direction:column; gap:6px">
+      <li>Ouvrez <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener">developer.spotify.com/dashboard</a> et créez une application.</li>
+      <li>Dans <em>Redirect URI</em>, collez exactement : <code class="jeton" style="cursor:text">${échapper(état_.redirection)}</code></li>
+      <li>Cochez <em>Web API</em>, enregistrez, puis copiez l’<em>identifiant client</em> ci-dessous.</li>
+    </ol>
+    <div class="ligne-formulaire">
+      <input type="text" id="champ-client-id" placeholder="Identifiant client (32 caractères)" spellcheck="false" autocomplete="off">
+      <button class="bouton primaire" id="btn-connecter-spotify">Connecter</button>
+    </div>
+    <p class="erreur-champ" id="erreur-spotify" hidden></p>`;
+
+  $('#btn-connecter-spotify').addEventListener('click', async () => {
+    const erreur = $('#erreur-spotify');
+    erreur.hidden = true;
+    try {
+      const { url } = await appeler('POST', '/api/spotify/connexion', {
+        clientId: $('#champ-client-id').value.trim(),
+      });
+      window.open(url, '_blank', 'noopener');
+      noter('Autorisez Zotijean dans l’onglet qui vient de s’ouvrir, puis revenez ici.');
+      // On ne sait pas quand l'utilisateur aura terminé : on regarde
+      // régulièrement plutôt que de lui demander de cliquer une fois de plus.
+      const guet = setInterval(async () => {
+        const à_jour = await appeler('GET', '/api/spotify/etat');
+        if (à_jour.connecté) {
+          clearInterval(guet);
+          noter('Compte Spotify connecté.', 'succes');
+          rendreSpotify();
+        }
+      }, 2000);
+      setTimeout(() => clearInterval(guet), 180000);
+    } catch (problème) {
+      erreur.textContent = problème.message;
+      erreur.hidden = false;
+    }
+  });
+}
+
+async function afficherSélecteurPlaylists() {
+  const zone = $('#spotify-resultat');
+  zone.innerHTML = '<p class="aide">Lecture de vos playlists…</p>';
+
+  const { playlists } = await appeler('GET', '/api/spotify/playlists');
+  const choisies = new Map(playlists.filter((p) => p.suivie).map((p) => [p.url, p]));
+
+  zone.innerHTML = `
+    <div class="choix" id="liste-choix-playlists"></div>
+    <div class="ligne-formulaire" style="margin-top:10px">
+      <button class="bouton primaire" id="btn-valider-playlists">Enregistrer la sélection</button>
+      <span class="tuile-libelle" id="compte-choisies"></span>
+    </div>`;
+
+  const majCompte = () => {
+    $('#compte-choisies').textContent =
+      `${choisies.size} playlist(s) sur ${playlists.length}`;
+  };
+
+  remplir($('#liste-choix-playlists'), playlists.map((p) => {
+    const étiquette = document.createElement('label');
+    étiquette.className = `option${choisies.has(p.url) ? ' choisi' : ''}`;
+    étiquette.innerHTML = `
+      <span class="puce" style="border-radius:5px"></span>
+      <span class="option-corps">
+        <span class="option-titre">${échapper(p.nom)}</span>
+        <span class="option-explication">${p.nbTitres} titre(s) · ${échapper(p.propriétaire || '')}${p.collaborative ? ' · collaborative' : ''}</span>
+      </span>`;
+    étiquette.addEventListener('click', (événement) => {
+      événement.preventDefault();
+      if (choisies.has(p.url)) choisies.delete(p.url);
+      else choisies.set(p.url, p);
+      étiquette.classList.toggle('choisi');
+      majCompte();
+    });
+    return étiquette;
+  }));
+
+  majCompte();
+
+  $('#btn-valider-playlists').addEventListener('click', async () => {
+    await appeler('POST', '/api/spotify/suivre', { playlists: [...choisies.values()] });
+    noter(`${choisies.size} playlist(s) suivie(s).`, 'succes');
+    zone.innerHTML = '';
+    état.config = await appeler('GET', '/api/config');
+    rafraîchirTableau();
+  });
+}
+
+async function afficherManquants() {
+  const zone = $('#spotify-resultat');
+  zone.innerHTML = '<p class="aide">Comparaison avec vos fichiers…</p>';
+
+  try {
+    const { playlists } = await appeler('GET', '/api/spotify/manquants');
+    if (!playlists.length) {
+      zone.innerHTML = '<p class="aide">Aucune playlist suivie.</p>';
+      return;
+    }
+
+    zone.innerHTML = playlists.map((p) => {
+      if (!p.disponible) {
+        return `<div class="controle" data-gravite="avertissement">
+          <div><div class="controle-titre">${échapper(p.nom)}</div>
+          <div class="controle-message">${échapper(p.erreur || 'Analyse impossible : ce lien n’est pas une playlist.')}</div></div></div>`;
+      }
+      const gravité = p.avertissement ? 'avertissement' : p.nbManquants > 0 ? 'avertissement' : 'ok';
+      const liste = p.manquants.length
+        ? `<div class="controle-chemin">${p.manquants.slice(0, 12).map((m) =>
+            échapper(`${m.artiste} — ${m.titre}`)).join('<br>')}${
+            p.nbManquants > 12 ? `<br>…et ${p.nbManquants - 12} autre(s)` : ''}</div>`
+        : '';
+      return `<div class="controle" data-gravite="${gravité}">
+        <div><div class="controle-titre">${échapper(p.nom)}</div>
+        <div class="controle-message">${
+          p.avertissement ? échapper(p.avertissement)
+            : `${p.nbPrésents} présent(s), ${p.nbManquants} manquant(s) sur ${p.nbTitres}.`
+        }</div>${liste}</div></div>`;
+    }).join('');
+  } catch (erreur) {
+    zone.innerHTML = `<p class="erreur-champ">${échapper(erreur.message)}</p>`;
+  }
+}
+
 // ---------------------------------------------------------------- Simulation
 
 function rendreSimulation(simu) {
@@ -1298,6 +1461,9 @@ async function démarrer() {
     rendreRangement();
     rendrePlanification();
     rendreExportsDJ();
+    rendreSpotify().catch(() => {
+      $('#spotify-etat').textContent = 'indisponible';
+    });
     await chargerJournal();
     écouterÉvénements();
     chargerDiagnostic();

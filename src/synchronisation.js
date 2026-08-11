@@ -28,6 +28,7 @@ import { construireArguments, télécharger } from './zotify.js';
 import { modèleActif } from './organisation.js';
 import { nécessiteConversion, convertirLot, PROFILS } from './conversion.js';
 import { exporterDepuisConfig } from './exports-dj.js';
+import { analyserPlaylist } from './analyse.js';
 import {
   écrireListeLecture, listerAudio, dossierCommun, déduireNomPlaylist,
   archiver, mettreÀLaCorbeille, sansSourcesConverties,
@@ -233,7 +234,9 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
     const àReprendre = [];
 
     // --- Une playlist après l'autre --------------------------------------
-    for (const [index, playlist] of playlists.entries()) {
+    for (const [index, playlistInitiale] of playlists.entries()) {
+      let playlist = playlistInitiale;
+
       if (courante.contrôleur.signal.aborted) {
         bilan.interrompu = true;
         break;
@@ -252,7 +255,30 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
         break;
       }
 
-      courante.playlistActuelle = playlist.nom || playlist.url;
+      // --- Ce que l'API Spotify sait avant de lancer quoi que ce soit ------
+      const analyse = await analyserPlaylist(cp, playlist);
+
+      if (analyse.sauter) {
+        journal.info(analyse.raison);
+        bilan.playlists.push({
+          id: playlist.id, nom: analyse.nom, nbFichiers: 0, sautée: true, raison: analyse.raison,
+        });
+        étatModule.noterPlaylistTerminée(playlist.id);
+        diffuser({ type: 'playlist-sautee', nom: analyse.nom, raison: analyse.raison });
+        continue;
+      }
+
+      if (analyse.disponible) {
+        journal.info(analyse.raison);
+        étatModule.majPlaylist(playlist.id, {
+          versionSpotify: analyse.version,
+          nbTitresSpotify: analyse.nbTitres,
+          nbManquants: analyse.manquants?.length ?? null,
+        });
+        if (analyse.nom && !playlist.nom) playlist = { ...playlist, nom: analyse.nom };
+      }
+
+      courante.playlistActuelle = playlist.nom || analyse.nom || playlist.url;
       courante.indexPlaylist = index + 1;
       courante.pourcentage = null;
       diffuser({

@@ -20,6 +20,7 @@ import { exporterDepuisConfig } from './exports-dj.js';
 import { synthétiser } from './erreurs.js';
 import { lireContextePlateforme } from './energie.js';
 import * as spotify from './spotify.js';
+import { inventaireComplet } from './analyse.js';
 
 /**
  * L'adresse que Spotify appellera après autorisation.
@@ -300,6 +301,33 @@ export const routes = {
     modifier({ spotify: { ...config().spotify, actif: false } });
     journal.info('Déconnexion de Spotify.');
     return { déconnecté: true };
+  },
+
+  'GET /api/spotify/manquants': async () => {
+    if (!spotify.estConnecté()) {
+      throw new ErreurRequête('Connectez d’abord votre compte Spotify.', 409);
+    }
+    return inventaireComplet(config());
+  },
+
+  'POST /api/spotify/suivre': (corps) => {
+    const choisies = Array.isArray(corps?.playlists) ? corps.playlists : [];
+    const existantes = new Map(config().playlists.map((p) => [p.url, p]));
+
+    // On CONSERVE les entrées déjà là, avec leurs réglages propres et leur
+    // historique : décocher puis recocher une playlist ne doit pas faire perdre
+    // ses surcharges ni son compteur de titres.
+    const playlists = choisies.map((p) => existantes.get(p.url) || {
+      id: crypto.randomUUID(),
+      url: p.url,
+      nom: p.nom || null,
+      actif: true,
+      remplacements: {},
+    });
+
+    modifier({ playlists });
+    journal.info(`${playlists.length} playlist(s) suivie(s).`);
+    return { playlists };
   },
 
   'GET /api/spotify/playlists': async () => {

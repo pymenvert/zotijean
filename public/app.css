@@ -327,6 +327,12 @@ input[type="text"]::placeholder { color: var(--texte-3); }
 }
 .jeton:hover { border-color: var(--accent); color: var(--accent-fort); background: var(--accent-doux); }
 
+/* Une adresse de retour n'a aucun espace où se couper : sans cette règle, elle
+   pousse la page à défiler horizontalement. Le contenu large doit toujours
+   s'adapter, jamais élargir la fenêtre. */
+.jeton { max-width: 100%; word-break: break-all; white-space: normal; text-align: left; }
+code.jeton { user-select: all; }   /* un clic sélectionne toute l'adresse */
+
 /* ---------------------------------------------------------------- Aperçu */
 
 .apercu { border-top: 1px solid var(--bord); padding-top: 14px; display: flex; flex-direction: column; gap: 9px; }
