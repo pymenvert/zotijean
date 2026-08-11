@@ -123,6 +123,13 @@ mkdir -p "$OUTILS/roues"
   --wheel-dir "$OUTILS/roues" \
   "git+https://github.com/Googolplexed0/zotify.git"
 
+# Les outils de construction voyagent aussi. Certains paquets en ont besoin au
+# moment de l'installation, et un dossier hors ligne qui ne les contient pas
+# fait échouer l'opération sur un message qui parle d'autre chose.
+"$OUTILS/python/bin/python3" -m pip wheel \
+  --wheel-dir "$OUTILS/roues" \
+  setuptools wheel
+
 NB_ROUES=$(ls -1 "$OUTILS/roues"/*.whl 2>/dev/null | wc -l | tr -d ' ')
 echo "       $NB_ROUES roue(s)"
 
@@ -153,7 +160,14 @@ rm -rf "$BANC"
 
 "$OUTILS/python/bin/python3" -m venv "$BANC"
 
-if ! "$BANC/bin/pip" install --no-index --find-links "$OUTILS/roues" zotify > "$ICI/.essai.log" 2>&1; then
+# Installation PAR NOM DE FICHIER, sans résolution de dépendances.
+#
+# Le paquet de zotify déclare sa dépendance à librespot par une URL git directe
+# plutôt que par un numéro de version. Demander « installe zotify » pousse donc
+# pip à IGNORER la roue de librespot pourtant présente, à re-cloner le dépôt et
+# à vouloir le compiler — ce qui exige un réseau. On court-circuite en installant
+# les roues telles quelles : `pip wheel` a déjà fait toute la résolution en amont.
+if ! "$BANC/bin/pip" install --no-index --no-deps "$OUTILS"/roues/*.whl > "$ICI/.essai.log" 2>&1; then
   echo ""
   echo "  ÉCHEC de l'installation hors ligne. Sortie complète de pip :"
   echo "  ────────────────────────────────────────────────────────────"

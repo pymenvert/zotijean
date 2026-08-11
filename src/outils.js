@@ -129,12 +129,29 @@ export async function assurerZotify({ surProgrès = () => {} } = {}) {
   surProgrès({ étape: 'installation', message: 'Installation de zotify…' });
 
   const pip = path.join(dossierVenv(), 'bin', 'pip');
-  // « --no-index » interdit tout accès réseau : l'installation se fait
-  // uniquement depuis les roues du paquet, donc elle marche hors ligne et ne
-  // peut pas casser parce qu'un dépôt distant a changé.
+
+  // INSTALLATION PAR NOM DE FICHIER, SANS RÉSOLUTION DE DÉPENDANCES.
+  //
+  // Demander « installe zotify » ne marche pas hors ligne : son paquet déclare
+  // sa dépendance à librespot par une URL git directe plutôt que par un numéro
+  // de version. pip IGNORE alors la roue de librespot pourtant présente,
+  // re-clone le dépôt et veut le compiler — ce qui exige un réseau et une
+  // chaîne de compilation, exactement ce qu'un paquet autonome doit éviter.
+  //
+  // On installe donc les roues telles quelles. C'est sûr parce que la
+  // résolution a déjà été faite au moment de la construction, par `pip wheel` :
+  // le dossier contient l'ensemble complet et cohérent des dépendances.
+  const fichiersRoues = fs.readdirSync(roues)
+    .filter((f) => f.endsWith('.whl'))
+    .map((f) => path.join(roues, f));
+
+  if (fichiersRoues.length === 0) {
+    return { prêt: false, chemin: null, raison: 'Le paquet ne contient aucune roue installable.' };
+  }
+
   const installation = await exécuter(
     pip,
-    ['install', '--no-index', '--find-links', roues, '--quiet', 'zotify'],
+    ['install', '--no-index', '--no-deps', '--quiet', ...fichiersRoues],
     { délaiMs: 300000 },
   );
 
