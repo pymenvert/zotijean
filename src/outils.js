@@ -87,7 +87,37 @@ function empreinteRoues(dossierRoues) {
  * Ne lève jamais : un échec renvoie un message en français, et l'app retombe
  * sur le zotify du système s'il existe.
  */
-export async function assurerZotify({ surProgrès = () => {} } = {}) {
+/**
+ * Montage en cours, partagé par tous les appelants.
+ *
+ * POURQUOI C'EST INDISPENSABLE, ET PRÉCISÉMENT AU PREMIER LANCEMENT.
+ *
+ * Le montage commence par EFFACER l'environnement pour repartir de zéro. Or
+ * cinq endroits déclenchent un diagnostic, et le diagnostic appelle ce montage.
+ * Au tout premier démarrage, deux d'entre eux partent presque en même temps :
+ * le moteur diagnostique au lancement, et l'interface qui vient de s'ouvrir en
+ * demande un aussitôt.
+ *
+ * Sans garde, les deux constatent qu'il n'y a rien, les deux effacent, les deux
+ * installent — l'un dans le dossier que l'autre est en train de supprimer.
+ * L'installation échoue ou reste à moitié faite, sur la seule opération qui
+ * DOIT réussir pour que l'application serve à quelque chose.
+ *
+ * Les appelants suivants reçoivent donc la promesse du premier plutôt que d'en
+ * lancer une seconde.
+ */
+let montageEnCours = null;
+
+export async function assurerZotify(options = {}) {
+  if (montageEnCours) return montageEnCours;
+
+  montageEnCours = monterZotify(options).finally(() => {
+    montageEnCours = null;
+  });
+  return montageEnCours;
+}
+
+async function monterZotify({ surProgrès = () => {} } = {}) {
   const racine = dossierOutils();
   const python = outilEmbarqué('python3');
   const roues = racine ? path.join(racine, 'roues') : null;
