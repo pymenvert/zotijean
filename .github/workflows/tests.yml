@@ -65,6 +65,37 @@ jobs:
           done
           echo "Tous les modules se parsent."
 
+      # POURQUOI CONTRÔLER NOS PROPRES FICHIERS DE CI.
+      #
+      # Le workflow de publication ne s'exécute que sur un tag. Une erreur de
+      # syntaxe dedans peut donc dormir des semaines, et ne se révéler que le
+      # jour où on publie — GitHub refuse alors le fichier AVANT de lancer le
+      # moindre travail, ce qui produit une exécution en échec sans aucun
+      # travail, sans aucune annotation, et sans rien à lire.
+      #
+      # C'est arrivé : un texte collé dans un « run: | » avait une ligne en
+      # colonne 0, ce qui referme le bloc. Le fichier paraissait parfaitement
+      # normal à la relecture. Une machine, elle, le voit tout de suite.
+      - name: Vérifier la syntaxe des fichiers de CI
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          python3 - <<'CONTROLE'
+          import sys, pathlib, yaml
+
+          souci = False
+          for f in sorted(pathlib.Path('.github/workflows').glob('*.yml')):
+              try:
+                  yaml.safe_load(f.read_text(encoding='utf-8'))
+                  print(f'{f} : lisible')
+              except Exception as e:
+                  detail = str(e).replace('\n', ' ')[:300]
+                  print(f'::error title=Workflow illisible::{f} — {detail}')
+                  souci = True
+
+          sys.exit(1 if souci else 0)
+          CONTROLE
+
       # Les journaux d'exécution de GitHub exigent une connexion, même sur un
       # dépôt public. Les annotations, elles, sont lisibles par tout le monde et
       # par l'API. On y recopie donc le détail des échecs : sans ça, une CI rouge

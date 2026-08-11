@@ -142,36 +142,13 @@ jobs:
         run: |
           # gh est préinstallé sur les runners : pas d'action tierce à qui
           # confier un jeton d'écriture sur le dépôt.
+          # LE TEXTE VIT DANS UN FICHIER, PAS ICI. Un document collé dans un
+          # « run: | » doit rester indenté sous lui : la moindre ligne en
+          # colonne 0 ferme le bloc, et GitHub rejette le fichier entier avant
+          # d'avoir lancé le moindre travail. C'est arrivé, et ça ne se voit pas
+          # à la relecture — le YAML paraît parfaitement normal.
           NOTES=$(mktemp)
-          cat > "$NOTES" <<'TEXTE'
-## Installation
-
-1. Téléchargez **Zotijean.zip** ci-dessous et décompressez-le.
-2. Glissez **Zotijean.app** dans votre dossier Applications.
-3. **Clic droit sur l'app, puis Ouvrir.** macOS affiche un avertissement pour
-   toute application qui ne vient pas de l'App Store — une seule fois, ensuite
-   le double-clic suffit.
-
-Une icône apparaît en haut à droite de l'écran, dans la barre des menus.
-Tout se pilote de là.
-
-## Il n'y a rien à installer
-
-L'application contient le moteur, Python, ffmpeg et le téléchargeur, tous en
-version Apple Silicon native. Elle ne demande rien à votre Mac.
-
-Restent deux choses qu'aucun paquet ne peut éviter : l'avertissement macOS
-ci-dessus, et la connexion de votre compte Spotify. L'onglet **Diagnostic**
-vérifie chaque pièce au démarrage et dit précisément quoi faire s'il manque
-quelque chose.
-
-## Avant de lancer un gros rattrapage
-
-Comptez environ **17 heures pour 2 000 titres** : Zotijean attend une trentaine
-de secondes entre chaque morceau, volontairement — c'est ce qui évite les
-erreurs de clé audio et limite le risque pour votre compte. Le bouton
-**Simuler** vous montre la durée et la place nécessaires avant de vous engager.
-TEXTE
+          cat .github/notes-release.md > "$NOTES"
 
           # Le journal des versions détaille le reste ; on l'ajoute plutôt que
           # de le recopier, pour qu'il n'y ait qu'un seul texte à maintenir.
