@@ -237,6 +237,70 @@ test('une playlist supprimée ne peut pas ressusciter par un réglage', async ()
   assert.equal(config().playlists.length, 0, 'la playlist supprimée est revenue');
 });
 
+test('changer un réglage ne peut pas éteindre la connexion Spotify', async () => {
+  // RÉGRESSION. L'instantané renvoyé par l'interface est pris au chargement de
+  // la page, donc potentiellement AVANT la connexion. Sans reprise côté
+  // serveur, le premier format cliqué après s'être connecté réécrivait
+  // « actif: false » et coupait tout, pendant que la carte affichait toujours
+  // « connecté ».
+  const { routes } = await import('../src/api.js');
+
+  modifier({ spotify: { actif: true, clientId: 'a'.repeat(32) } });
+  const instantané = structuredClone(config());
+  instantané.spotify = { actif: false, clientId: '' }; // instantané périmé
+
+  await routes['PUT /api/config'](instantané);
+
+  assert.equal(config().spotify.actif, true, 'la connexion a été éteinte');
+  assert.equal(config().spotify.clientId.length, 32);
+});
+
+test('enregistrer une sélection de playlists n’efface pas les liens collés à la main', async () => {
+  // RÉGRESSION. Le sélecteur ne montre que les playlists du compte. Un album ou
+  // un lien collé n'y figure pas : le traiter comme « décoché » l'effaçait,
+  // avec ses réglages propres, au premier enregistrement.
+  const { routes } = await import('../src/api.js');
+
+  modifier({ playlists: [] });
+  const collée = await routes['POST /api/playlists']({
+    url: 'https://open.spotify.com/album/4aawyAB9vmqN3uQ7FjRGTy',
+  });
+  await routes['PATCH /api/playlists']({
+    id: collée.id, modifications: { remplacements: { format: 'flac' } },
+  });
+
+  // Le sélecteur ne propose QUE cette playlist-là, et elle est cochée.
+  await routes['POST /api/spotify/suivre']({
+    playlists: [{ url: 'https://open.spotify.com/playlist/4444444444444444444444', nom: 'Été' }],
+    proposées: ['https://open.spotify.com/playlist/4444444444444444444444'],
+  });
+
+  const urls = config().playlists.map((p) => p.url);
+  assert.ok(
+    urls.includes('https://open.spotify.com/album/4aawyAB9vmqN3uQ7FjRGTy'),
+    'l’album collé à la main a été effacé',
+  );
+  const survivante = config().playlists.find((p) => p.url.includes('/album/'));
+  assert.equal(survivante.remplacements.format, 'flac', 'ses réglages propres sont perdus');
+});
+
+test('décocher une playlist du sélecteur la retire bien', async () => {
+  // Le pendant du test précédent : protéger les données ne doit pas rendre le
+  // sélecteur inopérant.
+  const { routes } = await import('../src/api.js');
+  const url = 'https://open.spotify.com/playlist/5555555555555555555555';
+
+  modifier({ playlists: [] });
+  await routes['POST /api/spotify/suivre']({
+    playlists: [{ url, nom: 'À retirer' }],
+    proposées: [url],
+  });
+  assert.equal(config().playlists.length, 1);
+
+  await routes['POST /api/spotify/suivre']({ playlists: [], proposées: [url] });
+  assert.equal(config().playlists.length, 0, 'la playlist décochée est restée');
+});
+
 // ---------------------------------------------------------------------------
 // Surcharges par playlist
 // ---------------------------------------------------------------------------

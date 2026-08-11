@@ -270,8 +270,9 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
 
       if (analyse.disponible) {
         journal.info(analyse.raison);
+        // La version n'est PAS enregistrée ici : elle ne vaudra « déjà fait »
+        // qu'une fois le téléchargement réellement terminé, plus bas.
         étatModule.majPlaylist(playlist.id, {
-          versionSpotify: analyse.version,
           nbTitresSpotify: analyse.nbTitres,
           nbManquants: analyse.manquants?.length ?? null,
         });
@@ -387,10 +388,19 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
       }
 
       const infos = étatModule.infosPlaylist(playlist.id) || {};
+      const alléAuBout = !résultat.interrompu
+        && !résultat.expiré
+        && (résultat.erreurs?.length ?? 0) === 0;
+
       étatModule.majPlaylist(playlist.id, {
         dernierSuccès: new Date().toISOString(),
         nbFichiers: (infos.nbFichiers || 0) + nbNouveaux,
-        dernièreErreur: résultat.erreurs?.[0]?.texte ?? null,
+        dernièreErreur: résultat.erreurs?.[0]?.texte
+          ?? (résultat.expiré ? 'Arrêté après un long silence de zotify.' : null),
+        // La version Spotify ne s'enregistre que si le travail est terminé.
+        // L'inscrire plus tôt ferait sauter une playlist inachevée à toutes les
+        // synchronisations suivantes.
+        ...(alléAuBout && analyse.version ? { versionSpotify: analyse.version, nbManquants: 0 } : {}),
       });
 
       // Une playlist qui n'a RIEN produit alors qu'elle a signalé des erreurs
@@ -398,9 +408,11 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
       // limitation temporaire de Spotify se résorbent souvent en quelques
       // minutes. Une playlist sans nouveauté et sans erreur, elle, est
       // simplement à jour — la reprendre ne servirait à rien.
-      const mériteReprise = nbNouveaux === 0
-        && (résultat.erreurs?.length ?? 0) > 0
-        && !résultat.interrompu;
+      // Une playlist n'est « terminée » que si zotify est allé au bout. Une
+      // interruption — bouton Arrêter, veille du Mac — au milieu d'une playlist
+      // de 200 titres en laisse 160 non téléchargés : la marquer terminée
+      // ferait sauter ces 160 titres à la reprise.
+      const mériteReprise = !alléAuBout;
 
       if (mériteReprise) àReprendre.push(playlist);
       else étatModule.noterPlaylistTerminée(playlist.id);

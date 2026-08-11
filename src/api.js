@@ -190,7 +190,17 @@ export const routes = {
     //
     // Les playlists ont leurs propres routes (POST, PATCH, DELETE). Elles sont
     // donc reprises ici depuis l'état courant, quoi que le client ait envoyé.
-    return enregistrer({ ...corps, playlists: config().playlists });
+    // Même piège pour la section Spotify : l'instantané renvoyé par l'interface
+    // peut être antérieur à la connexion. Sans cette reprise, le premier
+    // réglage cliqué après s'être connecté réécrivait « actif: false » et
+    // éteignait la connexion en silence, pendant que la carte affichait
+    // toujours « connecté ». Cette section n'est pilotée que par ses propres
+    // routes.
+    return enregistrer({
+      ...corps,
+      playlists: config().playlists,
+      spotify: config().spotify,
+    });
   },
 
   'POST /api/apercu': (corps) => {
@@ -312,22 +322,48 @@ export const routes = {
 
   'POST /api/spotify/suivre': (corps) => {
     const choisies = Array.isArray(corps?.playlists) ? corps.playlists : [];
-    const existantes = new Map(config().playlists.map((p) => [p.url, p]));
+    const c = config();
 
-    // On CONSERVE les entrées déjà là, avec leurs réglages propres et leur
-    // historique : décocher puis recocher une playlist ne doit pas faire perdre
-    // ses surcharges ni son compteur de titres.
-    const playlists = choisies.map((p) => existantes.get(p.url) || {
-      id: crypto.randomUUID(),
-      url: p.url,
-      nom: p.nom || null,
-      actif: true,
-      remplacements: {},
-    });
+    // ON NE RETIRE QUE CE QUI A ÉTÉ RÉELLEMENT PROPOSÉ.
+    //
+    // Le sélecteur ne montre que les playlists du compte Spotify. Un album, un
+    // artiste ou une playlist publique collée à la main n'y figure pas : les
+    // considérer comme « décochés » les effaçait, avec leurs réglages propres,
+    // au premier enregistrement de sélection. Et un compte sans aucune playlist
+    // effaçait toute la surveillance d'un coup.
+    const proposées = new Set(
+      Array.isArray(corps?.proposées) && corps.proposées.length
+        ? corps.proposées
+        : choisies.map((p) => p.url),
+    );
+    const retenues = new Set(choisies.map((p) => p.url));
+
+    const conservées = c.playlists.filter(
+      (p) => !proposées.has(p.url) || retenues.has(p.url),
+    );
+    const connues = new Set(conservées.map((p) => p.url));
+
+    const ajoutées = choisies
+      .filter((p) => !connues.has(p.url))
+      .map((p) => ({
+        id: crypto.randomUUID(),
+        url: p.url,
+        nom: p.nom || null,
+        actif: true,
+        remplacements: {},
+      }));
+
+    const playlists = [...conservées, ...ajoutées];
+    const retirées = c.playlists.filter((p) => !playlists.some((q) => q.id === p.id));
 
     modifier({ playlists });
-    journal.info(`${playlists.length} playlist(s) suivie(s).`);
-    return { playlists };
+    for (const p of retirées) étatModule.oublierPlaylist(p.id);
+
+    journal.info(
+      `${playlists.length} playlist(s) suivie(s)` +
+        (retirées.length ? `, ${retirées.length} retirée(s).` : '.'),
+    );
+    return { playlists, retirées: retirées.length };
   },
 
   'GET /api/spotify/playlists': async () => {

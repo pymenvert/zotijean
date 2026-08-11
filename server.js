@@ -175,11 +175,15 @@ export function cheminSansSecret(url) {
 // Retour de Spotify après autorisation
 // ---------------------------------------------------------------------------
 
+const ÉCHAPPEMENTS_HTML = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+const échapperHTML = (texte) =>
+  String(texte ?? '').replace(/[&<>"']/g, (c) => ÉCHAPPEMENTS_HTML[c]);
+
 /** Page de fin de connexion, affichée dans le navigateur de l'utilisateur. */
 function pageRetour({ titre, message, réussi }) {
   const accent = réussi ? '#4ec98a' : '#f4685f';
   return `<!doctype html><html lang="fr"><head><meta charset="utf-8">
-<title>Zotijean — ${titre}</title><style>
+<title>Zotijean — ${échapperHTML(titre)}</title><style>
   body { margin:0; min-height:100vh; display:grid; place-items:center;
          background:#0e1014; color:#e8ecf2; font:15px/1.6 -apple-system,
          BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif; padding:24px; }
@@ -189,7 +193,7 @@ function pageRetour({ titre, message, réussi }) {
   h1 { font-size:20px; margin:0 0 10px; font-weight:640; letter-spacing:-.02em; }
   p { color:#9aa4b2; margin:0; }
 </style></head><body><div class="boite">
-  <div class="pastille"></div><h1>${titre}</h1><p>${message}</p>
+  <div class="pastille"></div><h1>${échapperHTML(titre)}</h1><p>${échapperHTML(message)}</p>
 </div></body></html>`;
 }
 
@@ -197,9 +201,16 @@ async function servirRetourSpotify(url, réponse) {
   const envoyer = (contenu, statut = 200) => {
     réponse.writeHead(statut, {
       ...ENTÊTES_SÉCURITÉ,
-      // La page se décrit elle-même en HTML : la politique par défaut
-      // interdirait son style intégré.
-      'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'",
+      // La page porte son style en ligne, ce que la politique globale interdit.
+      // On la réécrit donc EN ENTIER : « form-action » et « frame-ancestors »
+      // ne retombent pas sur « default-src », les omettre les désactiverait.
+      'Content-Security-Policy': [
+        "default-src 'none'",
+        "style-src 'unsafe-inline'",
+        "base-uri 'none'",
+        "form-action 'none'",
+        "frame-ancestors 'none'",
+      ].join('; '),
       'Content-Type': 'text/html; charset=utf-8',
     });
     réponse.end(contenu);
@@ -211,7 +222,11 @@ async function servirRetourSpotify(url, réponse) {
       titre: 'Connexion annulée',
       message: erreur === 'access_denied'
         ? 'Vous avez refusé l’accès. Vous pouvez fermer cet onglet et réessayer quand vous voulez.'
-        : `Spotify a renvoyé : ${erreur}. Vous pouvez fermer cet onglet.`,
+        // Borné en plus d'être échappé : ce paramètre vient de l'extérieur, et
+        // rien ne garantit qu'il ressemble à un code d'erreur.
+        : `Spotify a renvoyé : ${
+            /^[A-Za-z0-9_-]{1,64}$/.test(erreur) ? erreur : 'une erreur inattendue'
+          }. Vous pouvez fermer cet onglet.`,
       réussi: false,
     }));
   }

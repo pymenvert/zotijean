@@ -1111,8 +1111,18 @@ async function afficherSélecteurPlaylists() {
   majCompte();
 
   $('#btn-valider-playlists').addEventListener('click', async () => {
-    await appeler('POST', '/api/spotify/suivre', { playlists: [...choisies.values()] });
-    noter(`${choisies.size} playlist(s) suivie(s).`, 'succes');
+    // On transmet aussi l'univers réellement affiché : le serveur ne retirera
+    // que ce qui figurait dans cette liste. Vos albums et liens collés à la
+    // main n'y sont pas, donc ils ne peuvent pas être effacés par erreur.
+    const { retirées } = await appeler('POST', '/api/spotify/suivre', {
+      playlists: [...choisies.values()],
+      proposées: playlists.map((p) => p.url),
+    });
+    noter(
+      `${choisies.size} playlist(s) suivie(s)` +
+        (retirées ? `, ${retirées} retirée(s).` : '.'),
+      'succes',
+    );
     zone.innerHTML = '';
     état.config = await appeler('GET', '/api/config');
     rafraîchirTableau();

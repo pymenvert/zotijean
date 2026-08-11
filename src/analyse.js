@@ -63,7 +63,17 @@ export async function analyserPlaylist(c, playlist, { forcer = false } = {}) {
     // On n'ose sauter que si des fichiers sont RÉELLEMENT là. Un identifiant
     // de version inchangé sur un dossier vide signifie que le téléchargement
     // précédent a échoué, pas que le travail est fait.
-    if (!forcer && connue.versionSpotify === version && fichiers.length > 0) {
+    // Un identifiant de version inchangé ne prouve RIEN à lui seul : il ne
+    // vaut « déjà fait » que si le téléchargement précédent est allé au bout.
+    // Sans le contrôle des manquants, une playlist interrompue par une veille
+    // du Mac à 40 titres sur 200 serait sautée définitivement, en affichant un
+    // succès à chaque fois.
+    if (!forcer
+      && version
+      && connue.versionSpotify
+      && connue.versionSpotify === version
+      && fichiers.length > 0
+      && connue.nbManquants === 0) {
       return {
         disponible: true,
         sauter: true,
