@@ -191,6 +191,53 @@ test('le rythme personnalisé utilise la valeur brute', () => {
 });
 
 // ---------------------------------------------------------------------------
+// La route de réglages ne doit jamais toucher aux playlists
+// ---------------------------------------------------------------------------
+
+test('changer un réglage ne peut pas effacer les playlists', async () => {
+  // RÉGRESSION. L'interface renvoie la configuration entière à chaque
+  // modification, depuis un instantané pris au chargement de la page. Si cet
+  // instantané est antérieur à l'ajout d'une playlist, il ne la contient pas —
+  // et comme la fusion REMPLACE les tableaux, la liste du disque était écrasée.
+  // Concrètement : ajouter une playlist puis cliquer sur « FLAC » l'effaçait,
+  // sans le moindre message.
+  const { routes } = await import('../src/api.js');
+
+  modifier({ playlists: [] }); // point de départ propre, indépendant des autres tests
+  const instantané = structuredClone(config()); // sans playlist, comme au chargement
+
+  await routes['POST /api/playlists']({
+    url: 'https://open.spotify.com/playlist/2222222222222222222222',
+  });
+  assert.equal(config().playlists.length, 1);
+
+  // On rejoue le scénario : réglage modifié, instantané périmé renvoyé.
+  instantané.qualité.niveau = 'elevee';
+  await routes['PUT /api/config'](instantané);
+
+  assert.equal(config().playlists.length, 1, 'la playlist a été effacée');
+  assert.equal(config().qualité.niveau, 'elevee', 'le réglage n’a pas été appliqué');
+});
+
+test('une playlist supprimée ne peut pas ressusciter par un réglage', async () => {
+  // Le symétrique du bug : un instantané pris AVANT la suppression la
+  // réintroduisait, et le morceau se retéléchargeait.
+  const { routes } = await import('../src/api.js');
+
+  modifier({ playlists: [] });
+  const ajoutée = await routes['POST /api/playlists']({
+    url: 'https://open.spotify.com/playlist/3333333333333333333333',
+  });
+  const instantané = structuredClone(config()); // contient la playlist
+
+  await routes['DELETE /api/playlists']({ id: ajoutée.id });
+  assert.equal(config().playlists.length, 0);
+
+  await routes['PUT /api/config'](instantané);
+  assert.equal(config().playlists.length, 0, 'la playlist supprimée est revenue');
+});
+
+// ---------------------------------------------------------------------------
 // Surcharges par playlist
 // ---------------------------------------------------------------------------
 
