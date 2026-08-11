@@ -18,7 +18,7 @@ import path from 'node:path';
 
 import { trouverExécutable, exécuter } from './processus.js';
 import { assurerZotify, étatOutils } from './outils.js';
-import { volumeMonté, espaceLibre, assurerDossier } from './chemins.js';
+import { volumeMonté, espaceLibre, assurerDossier, version } from './chemins.js';
 import { journal } from './journal.js';
 
 export const GRAVITÉ = {
@@ -363,6 +363,9 @@ export async function diagnostiquer(config) {
 
   const rapport = {
     date: new Date().toISOString(),
+    // Un rapport de problème sans numéro de version oblige à deviner de quoi il
+    // parle. Il voyage avec le diagnostic exporté.
+    version: version(),
     duréeMs: Date.now() - début,
     contrôles,
     prêt: bloquants.length === 0,

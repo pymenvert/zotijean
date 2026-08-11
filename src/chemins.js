@@ -70,6 +70,25 @@ export function dossierOutils() {
   return null;
 }
 
+/**
+ * La version de Zotijean, lue dans package.json.
+ *
+ * Une seule source, jamais recopiée dans le code : deux versions qui divergent
+ * valent moins que pas de version du tout, parce qu'on croit la fausse. Elle
+ * apparaît dans le diagnostic et dans son export, pour qu'un rapport de
+ * problème dise toujours de quelle version il parle.
+ */
+let versionMémorisée = null;
+
+export function version() {
+  if (versionMémorisée) return versionMémorisée;
+
+  const ici = path.dirname(fileURLToPath(import.meta.url));
+  const paquet = lireJSON(path.resolve(ici, '..', 'package.json'), {});
+  versionMémorisée = typeof paquet.version === 'string' ? paquet.version : 'inconnue';
+  return versionMémorisée;
+}
+
 /** Les dossiers à placer EN TÊTE du PATH pour privilégier ce qui est embarqué. */
 export function dossiersEmbarqués() {
   const racine = dossierOutils();

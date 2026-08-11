@@ -1,0 +1,103 @@
+name: Publier une version
+
+# Pourquoi ce workflow existe, en plus de celui des tests.
+#
+# Les artefacts d'une exécution ordinaire exigent d'être connecté à GitHub pour
+# être téléchargés, et ils EXPIRENT au bout de 90 jours. C'est acceptable pour
+# vérifier une construction, pas pour installer une application.
+#
+# Une « release » n'a ni l'une ni l'autre de ces limites : lien permanent,
+# téléchargeable sans compte. C'est ce qu'on publie ici.
+#
+# Pour publier :   git tag v0.3.0 && git push origin v0.3.0
+# Attendre la CI verte AVANT de taguer : ce workflow ne rejoue pas les tests,
+# il construit et publie.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write   # nécessaire pour créer la release et y joindre le paquet
+
+jobs:
+  publier:
+    name: Construire et publier
+    runs-on: macos-latest
+    timeout-minutes: 40
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Lancer les tests
+        run: node --test --test-force-exit
+
+      - name: Récupérer les outils à embarquer
+        run: |
+          cd macos
+          chmod +x outils.sh
+          ./outils.sh
+
+      - name: Construire l'application
+        run: |
+          cd macos
+          chmod +x construire.sh
+          ./construire.sh
+
+      - name: Vérifier que le paquet est autonome
+        run: |
+          APP="macos/build/Zotijean.app"
+          # Un paquet publié qui exigerait une installation trahirait sa
+          # promesse : on refuse de publier plutôt que de décevoir.
+          test -x "$APP/Contents/MacOS/Zotijean"                      || { echo "Binaire absent"; exit 1; }
+          test -x "$APP/Contents/Resources/outils/node/node"          || { echo "Node absent"; exit 1; }
+          test -x "$APP/Contents/Resources/outils/python/bin/python3" || { echo "Python absent"; exit 1; }
+          test -d "$APP/Contents/Resources/outils/roues"              || { echo "Téléchargeur absent"; exit 1; }
+          test -f "$APP/Contents/Resources/moteur/public/index.html"  || { echo "Interface absente"; exit 1; }
+          echo "Paquet autonome, $(du -sh "$APP" | cut -f1)."
+
+      - name: Emballer
+        run: |
+          cd macos/build
+          # ditto préserve les bits d'exécution et les liens symboliques : un zip
+          # ordinaire produit une application que macOS refuse d'ouvrir.
+          ditto -c -k --sequesterRsrc --keepParent Zotijean.app Zotijean.zip
+
+      - name: Publier la version
+        uses: softprops/action-gh-release@v2
+        with:
+          files: macos/build/Zotijean.zip
+          fail_on_unmatched_files: true
+          body: |
+            ## Installation
+
+            1. Téléchargez **Zotijean.zip** ci-dessous et décompressez-le.
+            2. Glissez **Zotijean.app** dans votre dossier Applications.
+            3. **Clic droit sur l'app, puis Ouvrir.** macOS affiche un
+               avertissement pour toute application qui ne vient pas de
+               l'App Store — une seule fois, ensuite le double-clic suffit.
+
+            Une icône apparaît en haut à droite de l'écran, dans la barre des
+            menus. Tout se pilote de là.
+
+            ## Il n'y a rien à installer
+
+            L'application contient le moteur, Python, ffmpeg et le téléchargeur.
+            Elle ne demande rien à votre Mac.
+
+            Restent deux choses qu'aucun paquet ne peut éviter : l'avertissement
+            macOS ci-dessus, et la connexion de votre compte Spotify. L'onglet
+            **Diagnostic** vérifie chaque pièce au démarrage et dit précisément
+            quoi faire si quelque chose manque.
+
+            ## Avant de lancer un gros rattrapage
+
+            Comptez environ **17 heures pour 2 000 titres** : Zotijean attend une
+            trentaine de secondes entre chaque morceau, volontairement. Le bouton
+            **Simuler** vous montre la durée et la place nécessaires avant de
+            vous engager.

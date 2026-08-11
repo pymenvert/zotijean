@@ -639,6 +639,12 @@ function rendreDiagnostic() {
     return élément;
   }));
 
+  // Savoir quelle version on utilise n'a d'intérêt que le jour où quelque chose
+  // cloche — c'est précisément la page où on regarde ce jour-là.
+  const ligneVersion = $('#version-app');
+  ligneVersion.hidden = !rapport.version;
+  ligneVersion.textContent = rapport.version ? `Zotijean version ${rapport.version}` : '';
+
   const bloquants = rapport.contrôles.filter((c) => c.gravité === 'bloquant').length;
   $('#pastille-diagnostic').hidden = bloquants === 0;
 }
