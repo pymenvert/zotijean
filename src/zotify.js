@@ -176,6 +176,29 @@ export function classerLigne(ligne) {
   return { type: 'info', texte: ligne };
 }
 
+/**
+ * Transforme une ligne classée en événement destiné à l'interface.
+ *
+ * L'ORDRE DES CLÉS DÉCIDE ICI DE CE QUE VOIT L'UTILISATEUR, et il l'a déjà
+ * décidé une fois dans le mauvais sens. `classerLigne` rend déjà un `type` —
+ * « info », « progression » ou « erreur ». Écrire `{ type: 'ligne', ...classée }`
+ * le laisse écraser par l'étalement, et l'événement ressort en « progression ».
+ * Or les deux seuls consommateurs — le moteur et l'interface — testent
+ * `type === 'ligne'` : ils ne recevaient jamais rien.
+ *
+ * Conséquence, invisible en test unitaire : ni le titre en cours ni le
+ * pourcentage n'atteignaient l'écran. L'interface affichait « Préparation… »
+ * pendant les dix-sept heures d'un gros rattrapage. Une application qui n'avance
+ * pas de la nuit passe pour plantée, et on la force à quitter — en pleine
+ * écriture d'un fichier.
+ *
+ * Cette fonction existe pour que ce contrat soit vérifiable, plutôt que caché
+ * dans un rappel au milieu d'un pilote de sous-processus.
+ */
+export function événementDeLigne(classée) {
+  return { ...classée, type: 'ligne', sousType: classée.type };
+}
+
 // ---------------------------------------------------------------------------
 // Inventaire du disque — la seule source de vérité
 // ---------------------------------------------------------------------------
@@ -202,7 +225,14 @@ export function inventorier(dossier) {
       } else if (EXTENSIONS_AUDIO.has(path.extname(entrée.name).toLowerCase())) {
         try {
           const stat = fs.statSync(complet);
-          fichiers.set(cléComparaison(complet), { chemin: complet, taille: stat.size });
+          // La date d'écriture sert à reconnaître le fichier que zotify était en
+          // train de produire quand on l'a arrêté : c'est le seul qui soit
+          // presque sûrement tronqué.
+          fichiers.set(cléComparaison(complet), {
+            chemin: complet,
+            taille: stat.size,
+            modifiéLe: stat.mtimeMs,
+          });
         } catch {
           // Fichier disparu entre le listing et le stat : sans importance.
         }
@@ -230,6 +260,50 @@ export function nouveauxFichiers(avant, après, tailleMinimale = 32 * 1024) {
   }
 
   return { nouveaux, suspects };
+}
+
+/** Dossier où atterrissent les téléchargements interrompus. */
+export const DOSSIER_INCOMPLETS = '_incomplets';
+
+/**
+ * Écarte les fichiers d'un téléchargement interrompu, sans jamais les détruire.
+ *
+ * POURQUOI CE N'EST PAS UN DÉTAIL. Un fichier laissé sur place a deux effets, et
+ * les deux sont graves :
+ *
+ * 1. zotify est lancé avec « --skip-existing ». Il voit le fichier, saute le
+ *    morceau, et le fait à chaque synchronisation suivante. Le titre est
+ *    définitivement absent de la bibliothèque, sans un mot.
+ * 2. S'il dépasse le seuil de taille — un morceau coupé après dix secondes pèse
+ *    déjà quelques centaines de kilo-octets —, il est compté comme un
+ *    téléchargement RÉUSSI : converti, ajouté aux listes de lecture, exporté
+ *    vers Rekordbox et Serato. L'utilisateur le découvre en le jouant.
+ *
+ * On DÉPLACE, on ne supprime pas : c'est la règle du projet, et un fichier
+ * déplacé peut être récupéré. Le dossier commence par « _ », que l'inventaire
+ * ignore — le morceau sera donc bien retéléchargé.
+ */
+export function écarterIncomplet(chemin, dossierRacine) {
+  try {
+    const abri = path.join(dossierRacine, DOSSIER_INCOMPLETS);
+    fs.mkdirSync(abri, { recursive: true });
+
+    let cible = path.join(abri, path.basename(chemin));
+    // Un même morceau peut être interrompu plusieurs fois : on ne veut ni
+    // écraser la tentative précédente, ni échouer.
+    if (fs.existsSync(cible)) {
+      const ext = path.extname(cible);
+      const base = path.basename(cible, ext);
+      cible = path.join(abri, `${base}-${Date.now()}${ext}`);
+    }
+
+    fs.renameSync(chemin, cible);
+    return cible;
+  } catch {
+    // Un échec ici ne doit pas faire tomber la synchronisation. Le fichier reste
+    // en place, et le journal l'aura signalé.
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -301,12 +375,20 @@ export function télécharger({
     // d'identifiants, sur un réseau qui ne répond plus — fige le moteur
     // indéfiniment : c'était la seule exécution du projet sans aucun délai.
     let expiré = false;
+    // L'instant où l'on a coupé zotify, quelle qu'en soit la raison. Il sépare
+    // les fichiers terminés de celui qui était en cours d'écriture. Déclaré ici,
+    // avant le chien de garde qui s'en sert : plus bas, il serait dans sa zone
+    // morte au moment où la minuterie est armée.
+    let instantArrêt = null;
     let chien = null;
 
     const réarmerChien = () => {
       clearTimeout(chien);
       chien = setTimeout(() => {
         expiré = true;
+        // Même raison que pour un arrêt demandé : ce que zotify écrivait à cet
+        // instant est tronqué, et il faut pouvoir le reconnaître ensuite.
+        instantArrêt = Date.now();
         journal.erreur(
           `zotify n’a rien produit depuis ${Math.round(silenceMaximalMs / 60000)} minutes : ` +
             'il est considéré comme bloqué et arrêté. Les morceaux déjà téléchargés ' +
@@ -328,7 +410,7 @@ export function télécharger({
       const classée = classerLigne(ligne);
       lignes.push(classée);
       if (lignes.length > 2000) lignes.shift();
-      surÉvénement({ type: 'ligne', ...classée });
+      surÉvénement(événementDeLigne(classée));
       if (classée.type === 'erreur') journal.avertir(`zotify : ${ligne}`);
     };
 
@@ -346,6 +428,7 @@ export function télécharger({
     const arrêter = () => {
       if (arrêtDemandé) return;
       arrêtDemandé = true;
+      instantArrêt = Date.now();
       journal.info('Arrêt de zotify demandé.');
       surÉvénement({ type: 'arrêt-demandé' });
       processus.kill('SIGTERM');
@@ -385,9 +468,42 @@ export function télécharger({
       const après = inventorier(dossierRacine);
       const { nouveaux, suspects } = nouveauxFichiers(avant, après);
 
-      if (suspects.length) {
+      // ------------------------------------------------------------------
+      // Écarter ce qui a été coupé en pleine écriture
+      // ------------------------------------------------------------------
+
+      const écartés = [];
+
+      // Les trop petits, toujours : aucun morceau ne pèse moins de 32 Ko.
+      for (const suspect of suspects) {
+        if (écarterIncomplet(suspect.chemin, dossierRacine)) écartés.push(suspect);
+      }
+
+      // Et, quand on a coupé zotify, le fichier qu'il était en train d'écrire.
+      //
+      // Celui-là est le vrai piège : coupé après dix secondes, il pèse déjà
+      // quelques centaines de kilo-octets et passe donc pour un téléchargement
+      // réussi. On le reconnaît à sa date d'écriture, postérieure à l'instant où
+      // l'on a demandé l'arrêt. Les morceaux terminés AVANT ne bougent pas.
+      if ((arrêtDemandé || expiré) && instantArrêt && nouveaux.length) {
+        const marge = 2000; // horloges et systèmes de fichiers ne sont pas au millième
+        const encoreOuvert = nouveaux
+          .filter((f) => f.modifiéLe >= instantArrêt - marge)
+          .sort((a, b) => b.modifiéLe - a.modifiéLe)[0];
+
+        if (encoreOuvert && écarterIncomplet(encoreOuvert.chemin, dossierRacine)) {
+          écartés.push(encoreOuvert);
+          const index = nouveaux.indexOf(encoreOuvert);
+          if (index !== -1) nouveaux.splice(index, 1);
+        }
+      }
+
+      if (écartés.length) {
         journal.avertir(
-          `${suspects.length} fichier(s) trop petits ignorés : téléchargements interrompus.`,
+          `${écartés.length} téléchargement(s) interrompu(s) mis de côté dans « ` +
+            `${DOSSIER_INCOMPLETS} ». Ces morceaux seront repris à la prochaine ` +
+            'synchronisation ; sans ça, ils resteraient tronqués et ne seraient ' +
+            'jamais retéléchargés.',
         );
       }
 

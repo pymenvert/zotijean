@@ -15,9 +15,12 @@ import path from 'node:path';
 import {
   créerDécoupeur,
   classerLigne,
+  événementDeLigne,
   construireArguments,
   inventorier,
   nouveauxFichiers,
+  écarterIncomplet,
+  DOSSIER_INCOMPLETS,
 } from '../src/zotify.js';
 
 import { optionsDéclarées, extraireVersion } from '../src/diagnostic.js';
@@ -94,6 +97,45 @@ test('classerLigne extrait le pourcentage de progression', () => {
 
 test('classerLigne considère le reste comme informatif', () => {
   assert.equal(classerLigne('Preparing download of 12 tracks').type, 'info');
+});
+
+// ---------------------------------------------------------------------------
+// De la sortie de zotify jusqu'à l'écran
+// ---------------------------------------------------------------------------
+//
+// CES TESTS EXISTENT PARCE QUE LES PRÉCÉDENTS NE SUFFISAIENT PAS.
+//
+// Chaque pièce était vérifiée isolément et fonctionnait. Leur assemblage, lui,
+// perdait tout : l'événement sortait classé « progression » alors que le moteur
+// et l'interface n'écoutent que « ligne ». Résultat, « Préparation… » affiché
+// pendant les dix-sept heures d'un gros rattrapage, sans que rien ne soit
+// détecté par une suite verte.
+//
+// On teste donc le CHAÎNAGE, en rejouant la condition exacte des consommateurs.
+
+test('la sortie de zotify arrive jusqu’à l’interface sous le type qu’elle y attend', () => {
+  const reçus = [];
+  // Le vrai chaînage : découpage, classement, mise en forme de l'événement.
+  const absorber = créerDécoupeur((ligne) => reçus.push(événementDeLigne(classerLigne(ligne))));
+  absorber('Downloading Été à Dakar  45%\rDownloading Été à Dakar  90%\r');
+
+  assert.equal(reçus.length, 2);
+  for (const é of reçus) {
+    // La condition écrite noir sur blanc dans src/synchronisation.js et dans
+    // public/app.js. Si elle devient fausse, l'utilisateur ne voit plus rien.
+    assert.equal(é.type, 'ligne', 'le moteur et l’interface ignoreraient cet événement');
+  }
+  assert.equal(reçus[1].pourcentage, 90);
+  assert.equal(reçus[1].texte, 'Downloading Été à Dakar  90%');
+});
+
+test('l’événement conserve la nature de la ligne pour distinguer une erreur', () => {
+  const erreur = événementDeLigne(classerLigne('Failed fetching audio key!'));
+  assert.equal(erreur.type, 'ligne');
+  assert.equal(erreur.sousType, 'erreur');
+
+  const avancement = événementDeLigne(classerLigne('Downloading Prix Choc  42%'));
+  assert.equal(avancement.sousType, 'progression');
 });
 
 // ---------------------------------------------------------------------------
@@ -293,6 +335,84 @@ test('nouveauxFichiers écarte les téléchargements avortés', () => {
   const { nouveaux, suspects } = nouveauxFichiers(avant, après);
   assert.deepEqual(nouveaux.map((f) => f.chemin), ['/m/complet.ogg']);
   assert.deepEqual(suspects.map((f) => f.chemin), ['/m/avorte.ogg']);
+});
+
+// ---------------------------------------------------------------------------
+// Les téléchargements coupés en pleine écriture
+// ---------------------------------------------------------------------------
+//
+// Le scénario : la synchronisation dure dix-sept heures, l'utilisateur ferme son
+// Mac à la sixième. zotify est tué au milieu d'un fichier. Ce qui reste sur le
+// disque est un morceau tronqué — et comme zotify tourne avec
+// « --skip-existing », il le verra à chaque fois et sautera le titre. Le morceau
+// serait définitivement absent, et pire, un fichier coupé après dix secondes
+// pèse assez pour passer pour un succès et finir dans Rekordbox.
+
+test('un téléchargement interrompu est mis de côté, jamais supprimé', () => {
+  const racine = dossierTemporaire();
+  try {
+    const tronqué = path.join(racine, 'Été à Dakar.ogg');
+    fs.writeFileSync(tronqué, Buffer.alloc(400_000));
+
+    const abri = écarterIncomplet(tronqué, racine);
+
+    assert.ok(abri, 'le fichier n’a pas pu être mis de côté');
+    assert.equal(fs.existsSync(tronqué), false, 'le fichier tronqué est resté en place');
+    assert.equal(fs.existsSync(abri), true, 'le fichier a été détruit au lieu d’être déplacé');
+    assert.equal(path.basename(path.dirname(abri)), DOSSIER_INCOMPLETS);
+
+    // Il ne pèse rien de moins : on déplace, on ne tronque pas davantage.
+    assert.equal(fs.statSync(abri).size, 400_000);
+  } finally {
+    fs.rmSync(racine, { recursive: true, force: true });
+  }
+});
+
+test('le dossier des incomplets est invisible pour l’inventaire, donc le morceau est repris', () => {
+  const racine = dossierTemporaire();
+  try {
+    const tronqué = path.join(racine, 'Prix Choc.ogg');
+    fs.writeFileSync(tronqué, Buffer.alloc(400_000));
+    écarterIncomplet(tronqué, racine);
+
+    // C'est tout l'intérêt du préfixe « _ » : l'inventaire l'ignore, donc
+    // zotify ne verra pas le fichier et retéléchargera le morceau.
+    const vu = inventorier(racine);
+    assert.equal(vu.size, 0, 'le fichier écarté est encore compté comme présent');
+  } finally {
+    fs.rmSync(racine, { recursive: true, force: true });
+  }
+});
+
+test('deux interruptions du même morceau ne s’écrasent pas', () => {
+  const racine = dossierTemporaire();
+  try {
+    const nom = 'Même Titre.ogg';
+    fs.writeFileSync(path.join(racine, nom), Buffer.alloc(100_000));
+    const premier = écarterIncomplet(path.join(racine, nom), racine);
+
+    fs.writeFileSync(path.join(racine, nom), Buffer.alloc(200_000));
+    const second = écarterIncomplet(path.join(racine, nom), racine);
+
+    assert.ok(premier && second);
+    assert.notEqual(premier, second, 'la seconde tentative a écrasé la première');
+    assert.equal(fs.statSync(premier).size, 100_000);
+    assert.equal(fs.statSync(second).size, 200_000);
+  } finally {
+    fs.rmSync(racine, { recursive: true, force: true });
+  }
+});
+
+test('l’inventaire note la date d’écriture, seul moyen de reconnaître le fichier coupé', () => {
+  const racine = dossierTemporaire();
+  try {
+    fs.writeFileSync(path.join(racine, 'a.ogg'), Buffer.alloc(5_000_000));
+    const [info] = [...inventorier(racine).values()];
+    assert.equal(typeof info.modifiéLe, 'number');
+    assert.ok(info.modifiéLe > 0);
+  } finally {
+    fs.rmSync(racine, { recursive: true, force: true });
+  }
 });
 
 test('l’inventaire compare les accents indépendamment de leur écriture', () => {
