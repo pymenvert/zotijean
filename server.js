@@ -146,6 +146,31 @@ function servirÉvénements(requête, réponse) {
   requête.on('error', nettoyer);
 }
 
+/**
+ * Retire d'une URL les paramètres qui ne doivent jamais être écrits.
+ *
+ * Le retour de Spotify porte un code d'autorisation en clair dans son adresse.
+ * Journaliser l'URL brute d'une requête refusée l'inscrirait donc dans un
+ * fichier que l'utilisateur peut exporter et transmettre pour signaler un
+ * problème. Le code est à usage unique et de courte durée, mais un secret qui
+ * traîne dans un fichier partagé reste un secret qui traîne.
+ */
+const PARAMÈTRES_SENSIBLES = new Set(['code', 'state', 'access_token', 'refresh_token']);
+
+export function cheminSansSecret(url) {
+  try {
+    const analysée = new URL(url, 'http://127.0.0.1');
+    for (const clé of analysée.searchParams.keys()) {
+      if (PARAMÈTRES_SENSIBLES.has(clé)) analysée.searchParams.set(clé, '(masqué)');
+    }
+    return analysée.pathname + (analysée.search || '');
+  } catch {
+    // URL illisible : on ne garde que ce qui précède le premier « ? », pour ne
+    // pas recopier une chaîne inconnue dans le journal.
+    return String(url).split('?')[0];
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Retour de Spotify après autorisation
 // ---------------------------------------------------------------------------
@@ -216,7 +241,7 @@ async function traiter(requête, réponse, port) {
   if (refus) {
     journal.avertir(`Requête refusée par le contrôle d’origine : ${refus}`, {
       méthode: requête.method,
-      chemin: requête.url,
+      chemin: cheminSansSecret(requête.url),
     });
     return répondreJSON(
       réponse,
