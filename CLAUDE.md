@@ -122,6 +122,31 @@ Sur le Mac, `Zotijean - Mac.command` fait la même chose par double-clic.
 
 ## État du projet
 
-Le moteur est en cours de construction. La coquille de barre des menus macOS n'est pas
-commencée. Voir `docs/PLAN.md` pour le plan complet et `docs/RECHERCHE.md` pour les
-conclusions détaillées des 23 agents de recherche.
+**Version 1.0.0 publiée** (11 août 2026). Le moteur, l'interface et la coquille de barre
+des menus macOS sont écrits ; le paquet embarque Node, Python, ffmpeg et zotify, tous en
+arm64. Voir `CHANGELOG.md`.
+
+Publier une version : bumper `package.json` **et** `macos/Info.plist` (mêmes numéros),
+compléter `CHANGELOG.md`, commiter, **attendre la CI verte**, puis pousser le tag
+`vX.Y.Z` — `.github/workflows/publication.yml` construit et publie la release. Il refuse
+un paquet incomplet ou non natif Apple Silicon.
+
+### Ce qui n'a jamais été vérifié en conditions réelles
+
+Tout ce qui suit est testé contre des doublures, jamais contre le vrai service. C'est la
+frontière à garder en tête avant d'affirmer que quelque chose « marche » :
+
+- **zotify réel** — le format exact de sa sortie, ses codes d'erreur, son comportement
+  quand une piste est indisponible dans le pays.
+- **L'API Spotify réelle** — le flux OAuth complet dans un vrai navigateur, la
+  pagination sur de grosses playlists, les quotas.
+- **Un vrai Mac** — la CI construit le paquet et le démarre, mais personne n'a encore
+  double-cliqué dessus sur la machine de destination.
+
+### Reste à faire
+
+- **Écrire les ISRC dans les tags des fichiers** (le « pont sans perte »). Ils sont déjà
+  récupérés et affichés, mais pas écrits : réécrire un fichier détruirait les points de
+  repère et les grilles rythmiques que Serato stocke à l'intérieur. Il faut une passe qui
+  préserve les blocs de tags inconnus.
+- Quelques contrastes du thème clair, relevés lors de la revue visuelle.

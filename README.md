@@ -30,12 +30,12 @@ continue de fonctionner exactement comme avant.
 
 ## Installation
 
-**Rien à installer.** Téléchargez `Zotijean.zip` depuis l'onglet
-[Actions](https://github.com/pymenvert/zotijean/actions) du dépôt — dernière exécution
-réussie, section *Artifacts* —, décompressez, glissez `Zotijean.app` dans Applications, et
-double-cliquez.
+**Rien à installer.** Téléchargez `Zotijean.zip` depuis la
+[dernière version publiée](https://github.com/pymenvert/zotijean/releases/latest),
+décompressez, glissez `Zotijean.app` dans Applications, et double-cliquez.
 
-L'application embarque Node.js, Python, ffmpeg et zotify. Elle ne demande rien à votre Mac.
+L'application embarque Node.js, Python, ffmpeg et zotify, tous en version Apple Silicon
+native. Elle ne demande rien à votre Mac.
 
 Deux choses restent à faire, et aucun paquet ne peut les éviter :
 
