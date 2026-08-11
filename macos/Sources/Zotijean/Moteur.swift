@@ -172,6 +172,18 @@ final class Moteur {
         }
     }
 
+    /// L'application a-t-elle déjà tourné sur ce Mac ?
+    ///
+    /// On teste le fichier de RÉGLAGES, pas le dossier : celui-ci est créé dès
+    /// la première écriture du journal de démarrage, donc il existerait déjà au
+    /// moment où l'on pose la question. Le fichier de réglages, lui, n'apparaît
+    /// que lorsque le moteur a réellement démarré une fois.
+    func donnéesExistantes() -> Bool {
+        let réglages = NSHomeDirectory()
+            + "/Library/Application Support/Zotijean/config.json"
+        return FileManager.default.fileExists(atPath: réglages)
+    }
+
     static func cheminJournalDémarrage() -> String? {
         let base = NSHomeDirectory() + "/Library/Application Support/Zotijean"
         try? FileManager.default.createDirectory(

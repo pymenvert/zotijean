@@ -10,7 +10,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 
-import { config } from './src/config.js';
+import { config, assurerFichierConfig } from './src/config.js';
 import { journal } from './src/journal.js';
 import { routes, ErreurRequête, définirPortÉcoute } from './src/api.js';
 import { refuser, ENTÊTES_SÉCURITÉ } from './src/securite.js';
@@ -492,6 +492,11 @@ export function démarrer() {
     // L'alimentation et le type de connexion sont relus périodiquement et
     // gardés en cache : sans eux, les réglages « seulement sur secteur » et
     // « seulement en Wi-Fi » n'auraient aucun effet.
+    // Pose les réglages sur le disque s'ils n'y sont pas encore. C'est aussi ce
+    // fichier qui permet à la coquille macOS de reconnaître un premier
+    // lancement, et de montrer le tableau de bord à ce moment-là.
+    assurerFichierConfig();
+
     let contexteSystème = await lireContextePlateforme();
     setInterval(async () => {
       contexteSystème = await lireContextePlateforme();

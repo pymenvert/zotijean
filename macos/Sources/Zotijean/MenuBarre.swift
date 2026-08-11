@@ -28,8 +28,21 @@ final class MenuBarre: NSObject, NSMenuDelegate {
         menu.delegate = self
         élément.menu = menu
 
+        // AU TOUT PREMIER LANCEMENT, ON MONTRE QUELQUE CHOSE.
+        //
+        // Sans ça, double-cliquer sur l'application ne produit rien de visible
+        // qu'un petit glyphe en haut de l'écran. Pour quelqu'un qui découvre
+        // l'app, c'est indiscernable d'un échec — et le premier lancement guidé,
+        // qui existe justement pour ce moment-là, ne serait jamais vu.
+        //
+        // Uniquement la PREMIÈRE fois : ouvrir le navigateur à chaque démarrage
+        // serait envahissant pour une application censée se faire oublier.
+        let premierLancement = !moteur.donnéesExistantes()
+
         if let erreur = moteur.démarrer() {
             présenterErreurDémarrage(erreur)
+        } else if premierLancement {
+            ouvrirTableauQuandPrêt()
         }
 
         rafraîchir()
@@ -205,6 +218,30 @@ final class MenuBarre: NSObject, NSMenuDelegate {
 
     @objc private func ouvrirTableau() {
         NSWorkspace.shared.open(Moteur.adresse)
+    }
+
+    /// Ouvre le tableau de bord dès que le moteur répond, et pas avant.
+    ///
+    /// Le moteur met une à deux secondes à écouter — davantage au tout premier
+    /// lancement, où il monte son environnement de téléchargement. Ouvrir le
+    /// navigateur immédiatement afficherait « connexion refusée », c'est-à-dire
+    /// la pire première impression possible.
+    ///
+    /// On abandonne au bout de trente secondes plutôt que d'attendre sans fin :
+    /// si le moteur n'a pas démarré, une page d'erreur n'aiderait personne, et
+    /// le menu porte déjà de quoi consulter le journal de démarrage.
+    private func ouvrirTableauQuandPrêt(essai: Int = 0) {
+        guard essai < 30 else { return }
+
+        moteur.interroger { [weak self] état in
+            if état.joignable {
+                self?.ouvrirTableau()
+            } else {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                    self?.ouvrirTableauQuandPrêt(essai: essai + 1)
+                }
+            }
+        }
     }
 
     @objc private func ouvrirNotice() {

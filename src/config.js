@@ -6,6 +6,7 @@
 // migration, et un fichier corrompu ne bloque jamais le démarrage.
 
 import crypto from 'node:crypto';
+import fs from 'node:fs';
 import {
   configParDéfaut, trouver, RYTHMES, QUALITÉS, FORMATS, SCHÉMAS,
   POLITIQUES_RETRAIT, SOURCES_APRÈS_CONVERSION,
@@ -134,6 +135,38 @@ export function enregistrer(nouvelle) {
   écrireAtomique(fichierConfig(), JSON.stringify(cache, null, 2));
   journal.info('Réglages enregistrés.');
   return cache;
+}
+
+/**
+ * Écrit les réglages par défaut si aucun fichier n'existe encore.
+ *
+ * DEUX RAISONS, ET LA SECONDE N'EST PAS ÉVIDENTE.
+ *
+ * D'abord, l'honnêteté : tant que rien n'est écrit, les réglages n'existent que
+ * dans la mémoire du moteur. Les poser sur le disque les rend consultables et
+ * modifiables, y compris quand l'interface refuse de s'ouvrir.
+ *
+ * Ensuite, c'est ce fichier qui répond à la question « cette application a-t-elle
+ * déjà tourné sur ce Mac ? ». La coquille macOS s'en sert pour ouvrir le tableau
+ * de bord au tout premier lancement, et à ce moment-là seulement. Le dossier de
+ * données ne peut pas servir de repère : le journal de démarrage le crée avant
+ * même que la question ne se pose.
+ *
+ * Renvoie vrai si c'était bien un premier démarrage.
+ */
+export function assurerFichierConfig() {
+  if (fs.existsSync(fichierConfig())) return false;
+
+  try {
+    écrireAtomique(fichierConfig(), JSON.stringify(config(), null, 2));
+    journal.info('Premier démarrage : les réglages par défaut ont été écrits.');
+    return true;
+  } catch (erreur) {
+    // Un disque plein ou en lecture seule ne doit pas empêcher l'app de
+    // fonctionner : elle tournera avec les réglages par défaut en mémoire.
+    journal.avertir('Les réglages n’ont pas pu être écrits.', erreur.message);
+    return false;
+  }
 }
 
 /** Applique une modification partielle. Utilisé par l'API de réglages. */

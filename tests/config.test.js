@@ -15,7 +15,7 @@ import path from 'node:path';
 const DOSSIER = fs.mkdtempSync(path.join(os.tmpdir(), 'zotijean-config-'));
 process.env.ZOTIJEAN_DONNEES = DOSSIER;
 
-const { config, enregistrer, modifier, recharger, attenteEffective, configPourPlaylist } =
+const { config, enregistrer, modifier, recharger, attenteEffective, configPourPlaylist, assurerFichierConfig } =
   await import('../src/config.js');
 const { fichierConfig } = await import('../src/chemins.js');
 const { analyserLienSpotify } = await import('../src/api.js');
@@ -454,4 +454,29 @@ test('une surcharge de playlist conserve les garde-fous de sécurité', () => {
 
 test.after(() => {
   fs.rmSync(DOSSIER, { recursive: true, force: true });
+});
+
+test('le premier démarrage pose les réglages sur le disque, les suivants n’y touchent pas', () => {
+  // CE QUE CE FICHIER SIGNIFIE, AU-DELÀ DES RÉGLAGES. C'est lui qui répond à
+  // « cette application a-t-elle déjà tourné sur ce Mac ? ». La coquille macOS
+  // s'en sert pour ouvrir le tableau de bord au tout premier lancement — et à
+  // ce moment-là seulement, sinon l'app s'imposerait à chaque démarrage.
+  //
+  // Le dossier de données ne pourrait pas jouer ce rôle : le journal de
+  // démarrage le crée avant même que la question ne se pose. Vérifié en vrai,
+  // le fichier n'était pas écrit du tout avant cette correction.
+  const chemin = path.join(process.env.ZOTIJEAN_DONNEES, 'config.json');
+  fs.rmSync(chemin, { force: true });
+
+  assert.equal(assurerFichierConfig(), true, 'un premier démarrage n’a pas été reconnu');
+  assert.ok(fs.existsSync(chemin), 'les réglages n’ont pas été écrits');
+
+  // Le contenu doit être relisible : c'est aussi ce qui permet de dépanner
+  // quand l'interface refuse de s'ouvrir.
+  const relu = JSON.parse(fs.readFileSync(chemin, 'utf8'));
+  assert.equal(typeof relu.général.dossierMusique, 'string');
+  assert.equal(typeof relu.planification.intervalleHeures, 'number');
+
+  // Second appel : le fichier existe, on n'y touche pas et on le dit.
+  assert.equal(assurerFichierConfig(), false, 'un démarrage ordinaire a été pris pour le premier');
 });
