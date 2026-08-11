@@ -363,6 +363,22 @@ jobs:
           echo "Reprise du port sûre : le nôtre est remplacé, celui des autres est épargné."
 
       - name: Vérifier l'arrêt automatique quand l'application hôte disparaît
+        # SUR macOS SEULEMENT, ET CE N'EST PAS UN RENONCEMENT.
+        #
+        # La surveillance du parent n'existe que pour la coquille macOS : c'est
+        # elle, et elle seule, qui transmet ZOTIJEAN_PARENT. Sous Windows, le
+        # moteur est lancé par un fichier .bat qui ne transmet rien.
+        #
+        # Pire, ce contrôle y était FAUX. Git Bash numérote ses processus
+        # lui-même : le « $! » qu'il annonce est un petit numéro interne (209,
+        # par exemple), pas un identifiant de processus Windows. Le moteur
+        # interrogeait donc Windows sur un numéro sans rapport, et le resultat
+        # dependait de l'existence fortuite d'un processus portant ce numero --
+        # vert ou rouge au hasard, sans que le code ait change.
+        #
+        # Un test dont le verdict tient du tirage au sort est pire qu'aucun test :
+        # il apprend a ignorer le rouge.
+        if: runner.os == 'macOS'
         shell: bash
         env:
           ZOTIJEAN_DONNEES: ${{ runner.temp }}/zotijean-orphelin
