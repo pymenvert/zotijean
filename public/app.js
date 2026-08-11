@@ -541,7 +541,7 @@ function afficherAperçu(résultat) {
 function rendrePlanification() {
   const {
     intervalles, notePlanification, rythmes, politiquesRetrait,
-    noteRetrait, sourcesAprèsConversion,
+    noteRetrait, noteRetraitPourquoi, sourcesAprèsConversion,
   } = état.catalogue;
 
   remplir($('#choix-sources'), sourcesAprèsConversion.map((s) =>
@@ -556,6 +556,7 @@ function rendrePlanification() {
     })));
 
   $('#note-retrait').textContent = noteRetrait;
+  $('#note-retrait-pourquoi').textContent = noteRetraitPourquoi || '';
 
   $('#bascule-planif').checked = état.config.planification.actif;
   $('#note-planification').textContent = notePlanification;

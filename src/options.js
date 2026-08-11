@@ -259,11 +259,27 @@ export const POLITIQUES_RETRAIT = [
 /** Dit franchement pourquoi les deux dernières options ne s'appliquent pas encore. */
 export const NOTE_RETRAIT =
   "À ce jour, seule l'option « ne rien faire » a un effet, et c'est celle qui est " +
-  "active. Pour savoir qu'un titre a été retiré d'une playlist, il faudrait interroger " +
-  "l'API officielle de Spotify, ce que Zotijean ne fait pas encore : il se contente de " +
-  "piloter zotify, qui ne lui rapporte que ce qu'il télécharge. Les deux autres options " +
-  "sont écrites et testées, mais rien ne les déclenche — plutôt que de les masquer, " +
-  "autant dire où en est le sujet.";
+  "active : aucun de vos fichiers n'est jamais déplacé ni jeté. Les deux autres sont " +
+  "écrites et testées, mais rien ne les déclenche encore.";
+
+/**
+ * Précision affichée juste sous la note ci-dessus.
+ *
+ * Séparée pour une raison de fond : la première phrase dit ce que fait l'app
+ * aujourd'hui, celle-ci dit pourquoi. Le « pourquoi » a changé et se périmera
+ * encore ; la promesse, elle, ne bouge pas.
+ *
+ * L'ancienne version affirmait que la connexion Spotify manquait. Elle existe
+ * depuis, et elle donne bien la composition exacte des playlists — donc ce qui
+ * bloquait n'est plus ce qu'on annonçait. Ce qui reste est un choix, pas une
+ * limite technique.
+ */
+export const NOTE_RETRAIT_POURQUOI =
+  "Ce qui manquait — savoir quels titres ont réellement quitté une playlist — est " +
+  "désormais possible quand votre compte Spotify est connecté. Ce qui reste est " +
+  "délibéré : déplacer ou jeter des fichiers de votre bibliothèque doit être branché " +
+  "avec vous, en regardant ce que ça donne sur vos vrais morceaux, pas activé un soir " +
+  "dans votre dos. Les points de repère de Serato vivent dans ces fichiers.";
 
 // ---------------------------------------------------------------------------
 // Sort des fichiers d'origine après conversion
@@ -465,6 +481,7 @@ export function catalogueComplet() {
     variables: VARIABLES,
     politiquesRetrait: POLITIQUES_RETRAIT,
     noteRetrait: NOTE_RETRAIT,
+    noteRetraitPourquoi: NOTE_RETRAIT_POURQUOI,
     sourcesAprèsConversion: SOURCES_APRÈS_CONVERSION,
     rythmes: RYTHMES,
     intervalles: INTERVALLES,
