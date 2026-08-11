@@ -41,7 +41,47 @@ jobs:
         run: |
           cd macos
           chmod +x outils.sh
-          ./outils.sh
+
+          # Les journaux d'exécution exigent une connexion GitHub ; les
+          # annotations, non. On y recopie l'essentiel, sinon « exit code 1 »
+          # est tout ce qu'on saura d'une publication ratée.
+          set +e
+          ./outils.sh 2>&1 | tee recuperation.log
+          CODE=${PIPESTATUS[0]}
+          set -e
+
+          if [ $CODE -ne 0 ]; then
+            detail=$(tail -60 recuperation.log | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            echo "::error title=Récupération des outils en échec::${detail}"
+            exit 1
+          fi
+
+      - name: Vérifier que zotify s'installe vraiment, sans réseau
+        env:
+          ZOTIJEAN_DONNEES: ${{ runner.temp }}/zotijean-publication
+        run: |
+          # Le test décisif : l'installation doit réussir à partir des seules
+          # roues du paquet. Vérifier que le dossier n'est pas vide ne prouve
+          # rien — on publierait une app qui ne télécharge rien.
+          set +e
+          node -e "
+            import('./src/outils.js').then(async (m) => {
+              const r = await m.assurerZotify();
+              if (!r.prêt) { console.error('zotify n a pas pu etre monte'); process.exit(1); }
+              const { exécuter } = await import('./src/processus.js');
+              const v = await exécuter(r.chemin, ['--version'], { délaiMs: 60000 });
+              console.log('zotify embarqué :', (v.stdout + v.stderr).trim().split('\n')[0]);
+              if (v.code !== 0) { console.error('zotify ne repond pas'); process.exit(1); }
+            }).catch((e) => { console.error(e); process.exit(1); });
+          " 2>&1 | tee montage.log
+          CODE=${PIPESTATUS[0]}
+          set -e
+
+          if [ $CODE -ne 0 ]; then
+            detail=$(tail -25 montage.log | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            echo "::error title=zotify inutilisable dans le paquet::${detail}"
+            exit 1
+          fi
 
       - name: Construire l'application
         run: |
@@ -137,7 +177,11 @@ TEXTE
           # de le recopier, pour qu'il n'y ait qu'un seul texte à maintenir.
           if [ -f CHANGELOG.md ]; then
             printf '\n---\n\n' >> "$NOTES"
-            sed -n '/^## /,$p' CHANGELOG.md | sed -n '2,/^## /p' | sed '$d' >> "$NOTES"
+            # De la première section jusqu'à la suivante, sans son propre titre.
+            # Découper « du premier ## jusqu'à l'avant-dernière ligne » paraît
+            # équivalent et ne l'est pas : quand il n'y a qu'une seule section,
+            # ça ampute la dernière phrase du fichier.
+            awk '/^## /{n++; if (n==2) exit; if (n==1) next} n==1' CHANGELOG.md >> "$NOTES"
           fi
 
           if [ -n "$TAG" ]; then
