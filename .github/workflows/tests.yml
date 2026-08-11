@@ -12,6 +12,14 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Une nouvelle poussée annule l'exécution précédente sur la même branche. Sans
+# ça, plusieurs exécutions périmées continuent de tourner en parallèle — et si
+# l'une d'elles se fige, elle occupe un serveur pendant des heures pour un code
+# déjà remplacé.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   tests:
     name: Tests — ${{ matrix.os }}
