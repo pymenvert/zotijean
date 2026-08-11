@@ -268,6 +268,49 @@ function contrôlerDestination(dossierMusique, gardes) {
 }
 
 // ---------------------------------------------------------------------------
+// Ne pas retélécharger ce qui est déjà là
+// ---------------------------------------------------------------------------
+
+/**
+ * Vérifie que zotify sait sauter les morceaux déjà présents.
+ *
+ * C'est ce qui distingue une synchronisation de quelques minutes d'un
+ * rattrapage complet de dix-sept heures — à chaque fois. Sans cette option,
+ * l'app fonctionne mais retélécharge tout, indéfiniment, et le seul symptôme
+ * visible est une lenteur inexplicable.
+ */
+function contrôlerReprise(zotify) {
+  const options = new Set(zotify.options || []);
+  const connues = ['skip-existing', 'skip-previously-downloaded', 'no-overwrite'];
+  const trouvée = connues.find((o) => options.has(o));
+
+  if (!zotify.chemin) {
+    return contrôle(
+      'reprise', 'Éviter les retéléchargements', GRAVITÉ.AVERTISSEMENT,
+      'Impossible à vérifier tant que zotify n’est pas trouvé.',
+    );
+  }
+
+  if (trouvée) {
+    return contrôle(
+      'reprise', 'Éviter les retéléchargements', GRAVITÉ.OK,
+      `Votre version de zotify sait ignorer les morceaux déjà téléchargés ` +
+        `(option « --${trouvée} »). Les synchronisations suivantes ne prendront ` +
+        'que quelques minutes.',
+      { option: trouvée },
+    );
+  }
+
+  return contrôle(
+    'reprise', 'Éviter les retéléchargements', GRAVITÉ.AVERTISSEMENT,
+    'Votre version de zotify n’expose aucune option permettant d’ignorer les ' +
+      'morceaux déjà téléchargés. Chaque synchronisation reprendra donc toute la ' +
+      'playlist depuis le début, ce qui peut représenter des heures et augmente le ' +
+      'risque pour votre compte Spotify. Mettre zotify à jour résoudrait le problème.',
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Rapport complet
 // ---------------------------------------------------------------------------
 
@@ -289,6 +332,7 @@ export async function diagnostiquer(config) {
       plateforme: `${os.type()} ${os.release()} (${process.arch})`,
     }),
     zotify,
+    contrôlerReprise(zotify),
     ffmpeg,
     contrôlerIdentifiants(),
     contrôlerDestination(config.général.dossierMusique, config.gardes),

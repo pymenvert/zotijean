@@ -400,6 +400,35 @@ function rendreQualité() {
   $('#note-qualite').textContent = noteQualité;
 }
 
+/**
+ * Prévient avant un changement de rangement qui ferait tout retélécharger.
+ *
+ * zotify décide de sauter un morceau en regardant si LE FICHIER QU'IL ÉCRIRAIT
+ * existe déjà — au chemin exact. Changer le schéma ou le modèle change ce
+ * chemin : plus rien n'est reconnu, et toute la bibliothèque repart. À trente
+ * secondes par titre, c'est dix-sept heures pour deux mille morceaux.
+ *
+ * C'est le piège le plus coûteux de l'application, et le seul que l'utilisateur
+ * ne peut pas deviner.
+ */
+async function confirmerChangementDeRangement(nouveauSchéma) {
+  const déjàLà = état.tableau?.résumé?.totalFichiers ?? 0;
+  if (déjàLà === 0) return true;
+  if (nouveauSchéma === état.config.organisation.schéma) return true;
+
+  const heures = Math.round((déjàLà * (état.config.rythme?.attenteEntreTitres ?? 30)) / 3600);
+  return confirm(
+    `Changer le rangement va faire retélécharger vos ${déjàLà} titres.\n\n` +
+    'Zotijean reconnaît un morceau déjà pris en regardant son emplacement exact. ' +
+    'En changeant le classement, plus aucun fichier ne sera reconnu : tout sera ' +
+    `repris depuis le début, soit environ ${heures} heure${heures > 1 ? 's' : ''} ` +
+    'de téléchargement.\n\n' +
+    'Vos fichiers actuels ne seront ni supprimés ni déplacés : ils resteront à ' +
+    'leur place, à côté des nouveaux.\n\n' +
+    'Continuer quand même ?',
+  );
+}
+
 function rendreRangement() {
   const { schémas, variables } = état.catalogue;
 
@@ -410,6 +439,7 @@ function rendreRangement() {
       ...s,
       choisi: état.config.organisation.schéma === s.id,
       surChoix: async (id) => {
+        if (!(await confirmerChangementDeRangement(id))) return;
         await enregistrerConfig({ organisation: { schéma: id } });
         rendreRangement();
         rafraîchirAperçu();
