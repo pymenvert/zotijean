@@ -198,7 +198,14 @@ function ouvrirNavigateur(adresse) {
     : process.platform === 'win32' ? 'cmd' : 'xdg-open';
   const arguments_ = process.platform === 'win32' ? ['/c', 'start', '', adresse] : [adresse];
   try {
-    spawn(commande, arguments_, { detached: true, stdio: 'ignore' }).unref();
+    const processus = spawn(commande, arguments_, { detached: true, stdio: 'ignore' });
+    // L'événement « error » d'un exécutable absent arrive de façon asynchrone :
+    // le try/catch ne l'attrape pas, et sans écouteur il termine le processus.
+    // Le moteur s'arrêterait parce qu'il n'a pas su ouvrir un navigateur.
+    processus.on('error', () => {
+      journal.info(`Ouvrez ${adresse} dans votre navigateur.`);
+    });
+    processus.unref();
   } catch {
     // Pas grave : l'adresse est affichée dans le terminal.
   }

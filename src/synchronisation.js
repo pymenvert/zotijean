@@ -559,6 +559,19 @@ export function ouvrirDossierMusique() {
     ? 'open'
     : process.platform === 'win32' ? 'explorer' : 'xdg-open';
   import('node:child_process').then(({ spawn }) => {
-    spawn(commande, [path.resolve(dossier)], { detached: true, stdio: 'ignore' }).unref();
+    const processus = spawn(commande, [path.resolve(dossier)], {
+      detached: true, stdio: 'ignore',
+    });
+    // Un exécutable absent — xdg-open n'est pas garanti sous Linux — émet
+    // « error » de façon ASYNCHRONE. Sans écouteur, cet événement termine le
+    // processus Node : le moteur entier s'arrêterait parce qu'on n'a pas pu
+    // ouvrir un dossier dans l'explorateur de fichiers.
+    processus.on('error', (erreur) => {
+      journal.avertir(
+        'Le dossier n’a pas pu être ouvert dans l’explorateur de fichiers.',
+        erreur.message,
+      );
+    });
+    processus.unref();
   });
 }

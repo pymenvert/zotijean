@@ -18,7 +18,7 @@ import path from 'node:path';
 
 import { trouverExécutable, exécuter } from './processus.js';
 import { assurerZotify, étatOutils } from './outils.js';
-import { volumeMonté, espaceLibre } from './chemins.js';
+import { volumeMonté, espaceLibre, assurerDossier } from './chemins.js';
 import { journal } from './journal.js';
 
 export const GRAVITÉ = {
@@ -223,7 +223,10 @@ function contrôlerDestination(dossierMusique, gardes) {
   }
 
   try {
-    fs.mkdirSync(dossierMusique, { recursive: true });
+    // Surtout pas `fs.mkdirSync(..., { recursive: true })` : voir le commentaire
+    // d'assurerDossier. C'est précisément ici que le blocage se produisait,
+    // puisque cette fonction reçoit un chemin choisi par l'utilisateur.
+    assurerDossier(dossierMusique);
     const témoin = path.join(dossierMusique, '.zotijean-test-ecriture');
     fs.writeFileSync(témoin, 'ok');
     fs.unlinkSync(témoin);

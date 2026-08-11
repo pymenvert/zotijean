@@ -81,9 +81,12 @@ jobs:
           #
           # `timeout` n'existe pas sur macOS : on surveille donc à la main, ce
           # qui marche sur les deux systèmes.
-          node --test --test-force-exit --test-reporter=tap > resultat.tap 2>&1 &
+          # Le lanceur de tests crée des processus enfants. Tuer le seul
+          # superviseur les laisserait orphelins, à tourner en rond : on lance
+          # donc dans une SESSION séparée pour pouvoir tuer tout le groupe.
+          setsid node --test --test-force-exit --test-reporter=tap > resultat.tap 2>&1 &
           TESTS=$!
-          ( sleep 300; kill -9 $TESTS 2>/dev/null ) &
+          ( sleep 300; kill -9 -$TESTS 2>/dev/null || kill -9 $TESTS 2>/dev/null ) &
           GARDE=$!
 
           set +e

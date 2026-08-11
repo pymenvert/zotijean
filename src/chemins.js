@@ -93,9 +93,46 @@ export const fichierÉtat = () => path.join(dossierDonnées(), 'etat.json');
 export const fichierVerrou = () => path.join(dossierDonnées(), 'execution.lock');
 export const dossierJournaux = () => path.join(dossierDonnées(), 'journaux');
 
-/** Crée un dossier et ses parents. Ne se plaint pas s'il existe déjà. */
+/**
+ * Crée un dossier et ses parents. Ne se plaint pas s'il existe déjà.
+ *
+ * ON N'UTILISE PAS `{ recursive: true }`, et ce n'est pas une préférence de
+ * style.
+ *
+ * Sous Linux, cette option part en BOUCLE INFINIE quand un ancêtre du chemin
+ * existe mais refuse toute création. Le cas type est `/proc` : mkdir y répond
+ * « ENOENT » au lieu de « EACCES », Node en déduit qu'il manque un parent,
+ * remonte d'un cran, trouve ce parent déjà là, redescend, obtient de nouveau
+ * ENOENT — et recommence sans fin, à 100 % d'un cœur.
+ *
+ * L'appel étant SYNCHRONE, plus rien ne peut reprendre la main : ni une
+ * minuterie, ni le délai d'un test, ni le processus lui-même. Concrètement,
+ * pointer le dossier de musique sur un tel chemin figeait l'application.
+ *
+ * On remonte donc soi-même jusqu'au premier ancêtre existant, puis on crée les
+ * niveaux manquants un par un : la première erreur est levée immédiatement.
+ */
 export function assurerDossier(chemin) {
-  fs.mkdirSync(chemin, { recursive: true });
+  const résolu = path.resolve(chemin);
+  const manquants = [];
+
+  let courant = résolu;
+  while (!fs.existsSync(courant)) {
+    manquants.push(courant);
+    const parent = path.dirname(courant);
+    if (parent === courant) break; // remonté jusqu'à la racine
+    courant = parent;
+  }
+
+  for (const dossier of manquants.reverse()) {
+    try {
+      fs.mkdirSync(dossier);
+    } catch (erreur) {
+      // Créé entre-temps par quelqu'un d'autre : c'est le résultat voulu.
+      if (erreur.code !== 'EEXIST') throw erreur;
+    }
+  }
+
   return chemin;
 }
 
