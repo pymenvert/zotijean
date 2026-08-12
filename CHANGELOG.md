@@ -1,5 +1,43 @@
 # Journal des versions
 
+## 1.0.6 — 12 août 2026
+
+La suite du travail de la 1.0.5 : confronter chaque supposition au code réel —
+celui du téléchargeur, et celui de l'API Spotify.
+
+### Le pont vers votre logiciel DJ, sans toucher aux fichiers
+
+Nouvelle variable `{isrc}` dans le modèle personnalisé de rangement.
+L'identifiant international du morceau — le même sur toutes les plateformes —
+peut désormais figurer **dans le nom du fichier** :
+
+```
+{playlist}/{numéro} - {artiste} - {titre} [{isrc}]
+```
+
+C'est un repère fiable vers Rekordbox ou Serato qui ne réécrit **aucun octet**
+du fichier — donc ne touche jamais aux points de repère que Serato stocke
+dedans.
+
+### Un épisode de podcast ne deviendra plus un morceau fantôme
+
+Le filtre des épisodes testait un champ que la requête à Spotify ne demandait
+pas — et Spotify ne renvoie que ce qu'on demande. Un épisode glissé dans une
+playlist mixte serait devenu un morceau éternellement manquant, retenté à
+chaque synchronisation.
+
+### Les paroles deviennent votre choix
+
+Le téléchargeur écrivait d'office un fichier de paroles (.lrc) à côté de chaque
+morceau. C'est maintenant un réglage dans l'onglet Qualité — désactivé par
+défaut : Rekordbox et Serato ignorent ces fichiers.
+
+### Et le reste
+
+L'écran d'accueil en art ASCII du téléchargeur ne pollue plus l'affichage de
+progression ; le correctif majeur de la 1.0.5 est durci contre deux cas
+limites ; et les variables indisponibles le disent dans leur description.
+
 ## 1.0.5 — 12 août 2026
 
 **Prenez cette version. Les précédentes ne téléchargeaient rien.**
