@@ -45,6 +45,18 @@ littéralement `{genre}`. L'option le dit maintenant honnêtement.
 playlist restaient vides et produisaient le même dossier absurde. Ils reçoivent
 maintenant les bonnes variables — nom d'album, numéro de piste.
 
+### La conversion n'est plus jamais confiée au téléchargeur
+
+Quand vous choisissiez FLAC ou AIFF, Zotijean demandait la conversion au
+téléchargeur. Or celui-ci **ne connaît ni l'un ni l'autre** — le fichier serait
+sorti incohérent — et même pour les formats qu'il connaît, sa conversion est
+sommaire et **jette l'Ogg d'origine**, celui que Zotijean promet de conserver
+pour pouvoir changer de format sans tout retélécharger.
+
+Le téléchargeur livre désormais toujours l'Ogg tel quel ; la conversion passe
+par le module dédié de Zotijean, avec ses précautions (réduction propre en
+16 bits, étiquettes AIFF, contrôle de taille, écriture atomique).
+
 ### Des centaines de fausses erreurs en moins
 
 Le tableau de bord du téléchargeur répète en boucle une ligne contenant le mot

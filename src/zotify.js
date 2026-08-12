@@ -50,14 +50,22 @@ const VALEURS_QUALITÉ = {
   tres_elevee: 'very_high',
 };
 
-/** Valeurs de format. « copie » signifie : ne rien réencoder. */
-const VALEURS_FORMAT = {
-  copie: 'copy',
-  flac: 'flac',
-  aiff: 'aiff',
-  mp3_320: 'mp3',
-  aac_256: 'aac',
-};
+// PAS DE TABLE DE FORMATS, ET C'EST UNE DÉCISION.
+//
+// Une version précédente traduisait le format choisi (FLAC, AIFF…) en option
+// « --codec » pour zotify. Deux découvertes dans son code source l'interdisent :
+//
+// 1. Sa table d'extensions ne connaît QUE aac, mp3, ogg, opus et vorbis. Ni
+//    flac ni aiff. Lui demander « --codec flac » produit un fichier incohérent —
+//    l'extension retombe sur « ogg » par défaut.
+// 2. Même pour les formats qu'il connaît, sa conversion est naïve : pas de
+//    dither à la réduction en 16 bits, pas d'étiquettes ID3 pour l'AIFF, pas de
+//    contrôle de taille, et le fichier d'origine disparaît — ce qui rend
+//    inapplicable la politique « conserver l'Ogg pour changer de format plus
+//    tard sans retélécharger » que l'app promet.
+//
+// zotify livre donc toujours l'Ogg d'origine (« copy »), et la conversion reste
+// l'affaire du module dédié, qui fait tout cela correctement.
 
 /** Choisit le nom d'option réellement supporté, ou null. */
 function optionSupportée(clé, optionsDéclarées) {
@@ -80,7 +88,9 @@ export function construireArguments({ url, config, attente, capacités, modèle,
   const ajouter = (clé, valeur, libellé) => {
     const nom = optionSupportée(clé, déclarées);
     if (!nom) {
-      nonAppliqués.push(libellé);
+      // Un libellé absent signifie : la valeur par défaut de zotify convient,
+      // inutile d'inquiéter l'utilisateur si l'option n'existe pas.
+      if (libellé) nonAppliqués.push(libellé);
       return;
     }
     arguments_.push(`--${nom}`, String(valeur));
@@ -107,7 +117,10 @@ export function construireArguments({ url, config, attente, capacités, modèle,
   arguments_.push(`--${nomRacine}`, String(dossierRacine));
   ajouter('modèleSortie', modèle, "le modèle d'organisation des dossiers");
   ajouter('qualité', VALEURS_QUALITÉ[config.qualité.niveau] ?? 'very_high', 'la qualité audio');
-  ajouter('format', VALEURS_FORMAT[config.qualité.format] ?? 'copy', 'le format de fichier');
+  // Toujours « copy » : la conversion appartient au module dédié, jamais à
+  // zotify — voir le commentaire au-dessus de VALEURS_QUALITÉ. Libellé nul :
+  // « copy » est de toute façon sa valeur par défaut si l'option manque.
+  ajouter('format', 'copy', null);
   ajouter('attente', attente, "le rythme d'attente entre les titres");
 
   // LES OPTIONS BOOLÉENNES EXIGENT UNE VALEUR — LES PASSER EN DRAPEAU NU

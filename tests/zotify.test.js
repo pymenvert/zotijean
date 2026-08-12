@@ -488,10 +488,32 @@ test('construireArguments signale les réglages qu’il n’a pas pu appliquer',
 
   assert.ok(!args.some((a) => a.includes('quality')));
   assert.ok(!args.some((a) => a.includes('format')));
-  // Qualité, format, rythme — et la reprise des morceaux effacés, qui exige une
-  // option que cette vieille version n'a pas.
-  assert.equal(nonAppliqués.length, 4);
+  // Qualité, rythme, et la reprise des morceaux effacés — mais PAS le format :
+  // la conversion n'est plus déléguée à zotify du tout, donc l'absence de son
+  // option de codec ne prive l'utilisateur de rien.
+  assert.equal(nonAppliqués.length, 3);
   assert.ok(nonAppliqués.some((m) => m.includes('qualité')));
+  assert.ok(!nonAppliqués.some((m) => m.includes('format')));
+});
+
+test('la conversion n’est jamais déléguée à zotify, quel que soit le format choisi', () => {
+  // RELEVÉ DANS SON CODE SOURCE : sa table d'extensions ne connaît ni flac ni
+  // aiff — « --codec flac » produirait un fichier incohérent, extension « ogg »
+  // par défaut. Et même pour les formats qu'il connaît, sa conversion est
+  // naïve : pas de dither, pas d'étiquettes AIFF, et l'Ogg d'origine disparaît,
+  // ce qui rendrait inapplicable la politique « conserver la source pour
+  // changer de format plus tard sans retélécharger ».
+  //
+  // zotify livre l'Ogg (« copy ») ; le module de conversion fait le reste.
+  const capacités = { options: ['help', 'root-path', 'output', 'codec'] };
+  for (const format of ['copie', 'flac', 'aiff', 'mp3_320']) {
+    const { arguments: args } = construireArguments({
+      url: 'u', attente: 30, capacités, modèle: '{song_name}', dossierRacine: '/M',
+      config: { ...CONFIG, qualité: { niveau: 'tres_elevee', format } },
+    });
+    assert.equal(args[args.indexOf('--codec') + 1], 'copy',
+      `le format « ${format} » a été délégué à zotify`);
+  }
 });
 
 test('les options booléennes reçoivent une valeur, sinon l’URL se fait avaler', () => {
