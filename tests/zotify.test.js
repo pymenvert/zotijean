@@ -182,6 +182,60 @@ test('les vraies erreurs de zotify restent détectées', () => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Les variables que zotify ne sait pas remplacer
+// ---------------------------------------------------------------------------
+//
+// RELEVÉ DANS SON CODE SOURCE. Son moteur de nommage substitue une trentaine de
+// variables — titre, artiste, album, année, ISRC, numéro de piste — mais aucune
+// pour le genre. Le genre existe dans ses métadonnées, il l'écrit même dans les
+// étiquettes du fichier ; il n'est simplement pas disponible au moment de
+// composer le chemin.
+//
+// Laisser passer « {genre} » ferait atterrir toute la bibliothèque dans un
+// dossier appelé littéralement « {genre} » — sur un rattrapage de 2 000 titres,
+// c'est une bibliothèque entière à ranger à la main.
+
+test('une variable que zotify ne connaît pas est retirée du modèle', async () => {
+  const { retirerVariablesImpossibles } = await import('../src/synchronisation.js');
+
+  // Le séparateur part avec la variable : sinon le chemin commencerait par un
+  // dossier vide.
+  assert.equal(
+    retirerVariablesImpossibles('{genre}/{artist} - {song_name}'),
+    '{artist} - {song_name}',
+  );
+  assert.equal(
+    retirerVariablesImpossibles('{artist}/{genre}/{album}/{song_name}'),
+    '{artist}/{album}/{song_name}',
+  );
+});
+
+test('un modèle entièrement vidé retombe sur un nommage utilisable', async () => {
+  const { retirerVariablesImpossibles } = await import('../src/synchronisation.js');
+  // Sans ce filet, les fichiers n'auraient plus de nom du tout.
+  assert.equal(retirerVariablesImpossibles('{genre}'), '{artist} - {song_name}');
+});
+
+test('les modèles sans variable impossible ne sont pas touchés', async () => {
+  const { retirerVariablesImpossibles } = await import('../src/synchronisation.js');
+  const intact = '{playlist}/{playlist_num} - {artist} - {song_name}';
+  assert.equal(retirerVariablesImpossibles(intact), intact);
+});
+
+test('la perte est nommée pour pouvoir être annoncée à l’utilisateur', async () => {
+  const { variablesImpossibles } = await import('../src/synchronisation.js');
+  const pertes = variablesImpossibles({ organisation: { schéma: 'par_genre' } });
+  assert.equal(pertes.length, 1);
+  assert.match(pertes[0], /genre/);
+
+  assert.deepEqual(
+    variablesImpossibles({ organisation: { schéma: 'par_playlist' } }),
+    [],
+    'un rangement qui fonctionne ne doit rien signaler',
+  );
+});
+
 test('nettoyerLigne laisse intact ce qui n’a rien à nettoyer', () => {
   // Un nettoyage trop gourmand abîmerait les titres : accents, tirets, points
   // d'exclamation et parenthèses doivent survivre tels quels.

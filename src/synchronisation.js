@@ -369,6 +369,15 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
         }
       }
 
+      // Les variables que zotify ne sait pas remplacer passent par le même
+      // canal : l'utilisateur doit apprendre que son classement par genre n'a
+      // pas été appliqué, pas le déduire en fouillant son disque.
+      for (const perte of variablesImpossibles(cp)) {
+        if (!bilan.réglagesNonAppliqués.includes(perte)) {
+          bilan.réglagesNonAppliqués.push(perte);
+        }
+      }
+
       const résultat = await télécharger({
         commande: capacités.chemin,
         arguments: args,
@@ -709,14 +718,63 @@ export function modèleZotify(c = config()) {
     '{piste}': '{track_number}',
     '{disque}': '{disc_number}',
     '{année}': '{release_year}',
-    '{genre}': '{genre}',
+    // PAS DE CORRESPONDANCE POUR LE GENRE, ET CE N'EST PAS UN OUBLI.
+    //
+    // Relevé dans le code source de zotify : son moteur de nommage substitue
+    // une trentaine de variables — titre, artiste, album, année, ISRC, numéro
+    // de piste — mais AUCUNE pour le genre. Le genre existe bien dans ses
+    // métadonnées, il l'écrit même dans les étiquettes du fichier ; il n'est
+    // simplement pas disponible au moment de composer le chemin.
+    //
+    // Laisser passer « {genre} » ferait atterrir toute la bibliothèque dans un
+    // dossier appelé littéralement « {genre} ». Le segment est donc retiré, et
+    // l'utilisateur en est informé plutôt que de le découvrir sur son disque.
   };
 
   let modèle = modèleActif(c.organisation);
   for (const [français, zotify] of Object.entries(correspondances)) {
     modèle = modèle.split(français).join(zotify);
   }
-  return modèle;
+  return retirerVariablesImpossibles(modèle);
+}
+
+/** Les variables que Zotijean sait ne pas pouvoir faire honorer par zotify. */
+const VARIABLES_SANS_ÉQUIVALENT = {
+  '{genre}': 'le classement par genre',
+};
+
+/**
+ * Retire du modèle ce que zotify ne saura pas remplacer.
+ *
+ * On enlève la variable ET le séparateur qui l'accompagne : garder « /{artist} »
+ * après avoir retiré « {genre} » laisserait un dossier vide en tête de chemin.
+ *
+ * Renvoie le modèle nettoyé ; la liste des pertes est lisible par
+ * `variablesImpossibles()` pour être affichée.
+ */
+export function retirerVariablesImpossibles(modèle) {
+  let sortie = modèle;
+  for (const variable of Object.keys(VARIABLES_SANS_ÉQUIVALENT)) {
+    if (!sortie.includes(variable)) continue;
+    sortie = sortie
+      .split(`${variable}/`).join('')   // segment de dossier entier
+      .split(`/${variable}`).join('')
+      .split(variable).join('')
+      .replace(/\/{2,}/g, '/')
+      .replace(/^[\s/-]+/, '')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+  }
+  // Un modèle entièrement vidé donnerait des fichiers sans nom.
+  return sortie || '{artist} - {song_name}';
+}
+
+/** Ce que le modèle demandé contient d'impossible, en clair. */
+export function variablesImpossibles(c = config()) {
+  const modèle = modèleActif(c.organisation);
+  return Object.entries(VARIABLES_SANS_ÉQUIVALENT)
+    .filter(([variable]) => modèle.includes(variable))
+    .map(([, libellé]) => libellé);
 }
 
 /** Ouvre le dossier de musique dans le Finder ou l'Explorateur. */

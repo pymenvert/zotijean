@@ -163,10 +163,14 @@ export const SCHÉMAS = [
     id: 'par_genre',
     libellé: 'Par genre, puis par artiste',
     modèle: '{genre}/{artiste} - {titre}',
+    indisponible: true,
     explication:
-      "Range par style musical. Attention : le genre vient de Spotify, qui l'attribue " +
-      "à l'artiste et non au morceau — il est souvent large ou vide. Les morceaux sans " +
-      "genre atterrissent dans un dossier « Sans genre ».",
+      "INDISPONIBLE pour l'instant, et mieux vaut le dire que de vous laisser le " +
+      'découvrir sur votre disque. Le téléchargeur écrit bien le genre dans les ' +
+      "étiquettes du fichier, mais il ne sait pas s'en servir pour composer un chemin " +
+      '— vérifié dans son code. Si vous choisissez ce rangement, les morceaux ' +
+      'atterrissent à plat, sans dossier de genre, et Zotijean vous le signale après ' +
+      'la synchronisation. Les cinq autres rangements fonctionnent.',
     exemple: {
       genre: 'French House', artiste: 'Étienne de Crécy', titre: 'Prix Choc',
       playlist: 'Été 2026', album: 'Super Discount', année: '1996',
