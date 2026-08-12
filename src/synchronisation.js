@@ -265,7 +265,12 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
       // la qualité, le format et le schéma de rangement.
       const cp = configPourPlaylist(c, playlist);
       const racine = cp.général.dossierMusique;
-      const modèle = modèleZotify(cp);
+      // Le type peut manquer sur une source ajoutée par une vieille version :
+      // on le déduit alors de l'adresse, qui le porte toujours.
+      const typeSource = playlist.type
+        || (playlist.url?.includes('/album/') ? 'album'
+          : playlist.url?.includes('/artist/') ? 'artist' : 'playlist');
+      const modèle = modèleZotify(cp, typeSource);
 
       // Le disque peut être débranché en cours d'exécution.
       if (!volumeMonté(racine)) {
@@ -707,10 +712,22 @@ export async function finaliserPlaylist({
  * connaît la correspondance — et c'est le premier endroit à corriger si une
  * version de zotify renomme ses variables.
  */
-export function modèleZotify(c = config()) {
+export function modèleZotify(c = config(), typeSource = 'playlist') {
+  // LE TYPE DE LA SOURCE CHANGE LES VARIABLES DISPONIBLES, et l'ignorer
+  // reproduirait le bug du genre sous une autre forme. Relevé dans le code
+  // source de zotify : « {playlist} » et « {playlist_num} » ne sont substitués
+  // QUE lorsque le morceau vient d'une playlist. Pour un album ou un artiste —
+  // deux types de source que Zotijean accepte —, ces variables resteraient
+  // littérales dans le chemin : tout atterrirait dans un dossier « {playlist} ».
+  //
+  // Pour un album, l'équivalent naturel existe : le nom de l'album et le numéro
+  // de piste dans l'album. Un artiste télécharge sa discographie, donc des
+  // albums : même correspondance.
+  const horsPlaylist = typeSource === 'album' || typeSource === 'artist';
+
   const correspondances = {
-    '{playlist}': '{playlist}',
-    '{numéro}': '{playlist_num}',
+    '{playlist}': horsPlaylist ? '{album}' : '{playlist}',
+    '{numéro}': horsPlaylist ? '{album_num}' : '{playlist_num}',
     '{artiste}': '{artist}',
     '{titre}': '{song_name}',
     '{album}': '{album}',

@@ -223,6 +223,27 @@ test('les modèles sans variable impossible ne sont pas touchés', async () => {
   assert.equal(retirerVariablesImpossibles(intact), intact);
 });
 
+test('un album ou un artiste ne reçoit pas les variables réservées aux playlists', async () => {
+  // RELEVÉ DANS LE CODE SOURCE DE ZOTIFY : « {playlist} » et « {playlist_num} »
+  // ne sont substitués QUE lorsque le morceau vient d'une playlist. Pour un
+  // album ou un artiste — deux types de source que Zotijean accepte —, ces
+  // variables resteraient littérales : tout atterrirait dans un dossier
+  // « {playlist} », exactement comme le bug du genre.
+  //
+  // L'équivalent naturel existe : le nom de l'album, et le numéro de piste dans
+  // l'album. Un artiste télécharge sa discographie, donc des albums.
+  const { modèleZotify } = await import('../src/synchronisation.js');
+  const c = { organisation: { schéma: 'par_playlist' } };
+
+  assert.equal(modèleZotify(c, 'playlist'), '{playlist}/{playlist_num} - {artist} - {song_name}');
+  assert.equal(modèleZotify(c, 'album'), '{album}/{album_num} - {artist} - {song_name}');
+  assert.equal(modèleZotify(c, 'artist'), '{album}/{album_num} - {artist} - {song_name}');
+
+  // Sans type — vieille configuration —, on suppose une playlist : c'est le
+  // type le plus courant, et celui que l'ajout d'une source a toujours accepté.
+  assert.equal(modèleZotify(c), '{playlist}/{playlist_num} - {artist} - {song_name}');
+});
+
 test('la perte est nommée pour pouvoir être annoncée à l’utilisateur', async () => {
   const { variablesImpossibles } = await import('../src/synchronisation.js');
   const pertes = variablesImpossibles({ organisation: { schéma: 'par_genre' } });
