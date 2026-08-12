@@ -15,6 +15,7 @@ import path from 'node:path';
 import {
   créerDécoupeur,
   classerLigne,
+  nettoyerLigne,
   événementDeLigne,
   construireArguments,
   inventorier,
@@ -97,6 +98,49 @@ test('classerLigne extrait le pourcentage de progression', () => {
 
 test('classerLigne considère le reste comme informatif', () => {
   assert.equal(classerLigne('Preparing download of 12 tracks').type, 'info');
+});
+
+// ---------------------------------------------------------------------------
+// Les séquences d'échappement du terminal
+// ---------------------------------------------------------------------------
+//
+// CES CAS VIENNENT DU CODE SOURCE DE ZOTIFY, pas d'une supposition. Son module
+// d'affichage définit ses propres séquences — remonter d'une ligne, effacer la
+// ligne — et son tableau de bord les émet à chaque rafraîchissement. Sa barre de
+// progression passe par tqdm, qui masque et rétablit le curseur.
+//
+// Recopiés tels quels dans une page web, ces caractères s'affichent en charabia
+// au milieu du titre en cours. Après dix-sept heures à regarder cette ligne,
+// autant qu'elle soit lisible.
+
+const ÉCHAP = String.fromCharCode(27);
+
+test('le tableau de bord de zotify ne pollue pas la ligne affichée', () => {
+  const classée = classerLigne(`${ÉCHAP}[KDownloading Été à Dakar  45%${ÉCHAP}[A`);
+  assert.equal(classée.texte, 'Downloading Été à Dakar  45%');
+  assert.equal(classée.pourcentage, 45);
+});
+
+test('le masquage du curseur par tqdm est retiré', () => {
+  const classée = classerLigne(`${ÉCHAP}[?25lTrack 12/200  73%${ÉCHAP}[?25h`);
+  assert.equal(classée.texte, 'Track 12/200  73%');
+  assert.equal(classée.pourcentage, 73);
+});
+
+test('une erreur en couleur reste reconnue comme une erreur', () => {
+  // Le piège : si la couleur restait collée au texte, « Failed » deviendrait
+  // « [1;32mFailed » et le motif d'erreur ne correspondrait plus. Une piste
+  // perdue passerait alors pour une ligne d'information.
+  const classée = classerLigne(`${ÉCHAP}[1;32mFailed fetching audio key!${ÉCHAP}[0m`);
+  assert.equal(classée.type, 'erreur');
+  assert.equal(classée.texte, 'Failed fetching audio key!');
+});
+
+test('nettoyerLigne laisse intact ce qui n’a rien à nettoyer', () => {
+  // Un nettoyage trop gourmand abîmerait les titres : accents, tirets, points
+  // d'exclamation et parenthèses doivent survivre tels quels.
+  const propre = 'Été à Dakar (Mix) — Christine & les Alliés !';
+  assert.equal(nettoyerLigne(propre), propre);
 });
 
 // ---------------------------------------------------------------------------

@@ -163,8 +163,35 @@ const MOTIFS_ERREUR = [
 
 const MOTIF_POURCENTAGE = /(\d{1,3})\s?%/;
 
+/**
+ * Retire les séquences d'échappement du terminal.
+ *
+ * CE N'EST PAS UNE PRÉCAUTION THÉORIQUE. Le code de zotify définit ses propres
+ * séquences — remonter d'une ligne, effacer la ligne — et son tableau de bord
+ * les émet à chaque rafraîchissement. Sa barre de progression passe par tqdm,
+ * qui en ajoute encore.
+ *
+ * Ces caractères n'ont de sens que pour un terminal. Recopiés tels quels dans
+ * une page web, ils s'affichent en charabia au milieu du titre en cours : après
+ * dix-sept heures à regarder cette ligne, autant qu'elle soit lisible.
+ *
+ * On enlève aussi les retours arrière et le retour chariot résiduel, qu'un
+ * affichage HTML ne sait pas interpréter non plus.
+ */
+export function nettoyerLigne(brut) {
+  return String(brut)
+    // ESC [ ... lettre — déplacements du curseur, effacements, couleurs.
+    .replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '')
+    // ESC ] ... BEL — titres de fenêtre.
+    .replace(/\x1b\][^\x07]*\x07/g, '')
+    // Ce qu'il reste de séquences tronquées, plus les caractères de contrôle.
+    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '')
+    .trim();
+}
+
 /** Classe une ligne de sortie pour l'affichage et le journal. */
-export function classerLigne(ligne) {
+export function classerLigne(brute) {
+  const ligne = nettoyerLigne(brute);
   const pourcentage = ligne.match(MOTIF_POURCENTAGE);
 
   if (MOTIFS_ERREUR.some((motif) => motif.test(ligne))) {
