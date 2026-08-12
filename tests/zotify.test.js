@@ -236,6 +236,64 @@ test('la perte est nommée pour pouvoir être annoncée à l’utilisateur', asy
   );
 });
 
+// ---------------------------------------------------------------------------
+// Les fragments de téléchargement laissés par une interruption
+// ---------------------------------------------------------------------------
+//
+// CE QUE LE CODE SOURCE DE ZOTIFY APPREND, et qui corrige une supposition de ce
+// projet : zotify télécharge dans un fichier « .tmp » posé à côté de la
+// destination, et ne le renomme qu'une fois le morceau COMPLET.
+//
+// Deux conséquences. D'abord, un fichier portant une extension audio est
+// complet par construction — il ne faut donc pas l'écarter sous prétexte qu'une
+// interruption vient d'avoir lieu. Ensuite, le vrai reste d'une interruption est
+// un « .tmp », que zotify efface lui-même en fin d'exécution normale... mais pas
+// quand on l'a coupé au signal.
+//
+// Ces fragments sont invisibles pour tout le reste de l'app, qui ne compte que
+// les extensions audio. Ils s'accumuleraient en silence, plusieurs mégaoctets
+// chacun, dans la bibliothèque.
+
+test('les fragments de téléchargement sont supprimés, l’audio est épargné', async () => {
+  const { nettoyerRestesTemporaires } = await import('../src/zotify.js');
+  const racine = dossierTemporaire();
+  try {
+    fs.mkdirSync(path.join(racine, 'Été 2026'));
+    fs.writeFileSync(path.join(racine, 'Été 2026', 'Prix Choc.tmp'), Buffer.alloc(3_000_000));
+    fs.writeFileSync(path.join(racine, 'Été 2026', 'Été à Dakar.ogg'), Buffer.alloc(5_000_000));
+    fs.writeFileSync(path.join(racine, 'reste.tmp'), Buffer.alloc(1_000_000));
+
+    const supprimés = nettoyerRestesTemporaires(racine);
+
+    assert.equal(supprimés.length, 2, 'tous les fragments n’ont pas été retirés');
+    assert.equal(
+      fs.existsSync(path.join(racine, 'Été 2026', 'Été à Dakar.ogg')), true,
+      'un vrai morceau a été supprimé',
+    );
+    // La taille est rendue pour pouvoir dire à l'utilisateur ce qui a été libéré.
+    assert.ok(supprimés.every((s) => s.taille > 0));
+  } finally {
+    fs.rmSync(racine, { recursive: true, force: true });
+  }
+});
+
+test('le dossier des incomplets n’est pas balayé par ce nettoyage', async () => {
+  // Il contient des morceaux mis de côté volontairement : les effacer
+  // reviendrait à supprimer ce qu'on avait pris soin de sauver.
+  const { nettoyerRestesTemporaires } = await import('../src/zotify.js');
+  const racine = dossierTemporaire();
+  try {
+    fs.mkdirSync(path.join(racine, DOSSIER_INCOMPLETS));
+    const gardé = path.join(racine, DOSSIER_INCOMPLETS, 'ancien.tmp');
+    fs.writeFileSync(gardé, Buffer.alloc(500_000));
+
+    nettoyerRestesTemporaires(racine);
+    assert.equal(fs.existsSync(gardé), true, 'le dossier des incomplets a été touché');
+  } finally {
+    fs.rmSync(racine, { recursive: true, force: true });
+  }
+});
+
 test('nettoyerLigne laisse intact ce qui n’a rien à nettoyer', () => {
   // Un nettoyage trop gourmand abîmerait les titres : accents, tirets, points
   // d'exclamation et parenthèses doivent survivre tels quels.

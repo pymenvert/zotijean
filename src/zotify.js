@@ -325,6 +325,55 @@ export function nouveauxFichiers(avant, après, tailleMinimale = 32 * 1024) {
 export const DOSSIER_INCOMPLETS = '_incomplets';
 
 /**
+ * Supprime les fichiers de travail que zotify laisse derrière lui.
+ *
+ * CE QUE SON CODE SOURCE APPREND. zotify télécharge dans un fichier « .tmp »
+ * placé à côté de la destination finale, et ne le renomme qu'une fois le
+ * morceau complet. Il fait le ménage de ces « .tmp » à la fin d'une exécution
+ * NORMALE — mais nous le coupons parfois au signal, et ce ménage n'a alors
+ * jamais lieu.
+ *
+ * Ces restes sont invisibles pour tout le reste de l'application : l'inventaire
+ * ne compte que les extensions audio. Ils s'accumuleraient donc en silence dans
+ * la bibliothèque, à raison de plusieurs mégaoctets chacun, sans que rien ne les
+ * signale ni ne les efface.
+ *
+ * On les supprime plutôt que de les mettre à l'abri : ce ne sont pas des
+ * morceaux, seulement des fragments de téléchargement inachevés, et ils portent
+ * un nom qui ne désigne rien pour l'utilisateur.
+ */
+export function nettoyerRestesTemporaires(dossierRacine) {
+  const supprimés = [];
+
+  const parcourir = (courant) => {
+    let entrées;
+    try {
+      entrées = fs.readdirSync(courant, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entrée of entrées) {
+      const complet = path.join(courant, entrée.name);
+      if (entrée.isDirectory()) {
+        if (entrée.name.startsWith('.') || entrée.name.startsWith('_')) continue;
+        parcourir(complet);
+      } else if (entrée.name.toLowerCase().endsWith('.tmp')) {
+        try {
+          const taille = fs.statSync(complet).size;
+          fs.unlinkSync(complet);
+          supprimés.push({ chemin: complet, taille });
+        } catch {
+          // Occupé ou déjà disparu : sans importance.
+        }
+      }
+    }
+  };
+
+  parcourir(dossierRacine);
+  return supprimés;
+}
+
+/**
  * Écarte les fichiers d'un téléchargement interrompu, sans jamais les détruire.
  *
  * POURQUOI CE N'EST PAS UN DÉTAIL. Un fichier laissé sur place a deux effets, et
@@ -547,46 +596,36 @@ export function télécharger({
         if (écarterIncomplet(suspect.chemin, dossierRacine)) écartés.push(suspect);
       }
 
-      // Et, quand on a coupé zotify, le fichier qu'il était en train d'écrire.
+      // ON NE TOUCHE PAS AU DERNIER FICHIER ÉCRIT, ET C'EST UNE CORRECTION.
       //
-      // Celui-là est le vrai piège : coupé après dix secondes, il pèse déjà
-      // quelques centaines de kilo-octets et passe donc pour un téléchargement
-      // réussi. On le reconnaît à sa date d'écriture, postérieure à l'instant où
-      // l'on a demandé l'arrêt. Les morceaux terminés AVANT ne bougent pas.
-      if ((arrêtDemandé || expiré) && instantArrêt && nouveaux.length) {
-        // LA MARGE EST UN ARBITRAGE, PAS UNE PRÉCAUTION TECHNIQUE.
-        //
-        // Un morceau terminé une seconde avant l'arrêt et un morceau coupé une
-        // seconde après ont des dates d'écriture presque identiques : aucune
-        // marge ne les sépare parfaitement. Il faut donc choisir de quel côté se
-        // tromper.
-        //
-        // Se tromper en écartant un bon fichier coûte un retéléchargement — une
-        // trentaine de secondes, et le fichier est déplacé, pas détruit. Se
-        // tromper dans l'autre sens laisse un morceau tronqué entrer dans une
-        // bibliothèque DJ, où il sera découvert en le jouant. L'asymétrie est
-        // écrasante : on penche du côté prudent.
-        //
-        // Une seconde suffit à couvrir la granularité des dates de HFS+ sans
-        // ratisser large inutilement.
-        const marge = 1000;
-        const encoreOuvert = nouveaux
-          .filter((f) => f.modifiéLe >= instantArrêt - marge)
-          .sort((a, b) => b.modifiéLe - a.modifiéLe)[0];
-
-        if (encoreOuvert && écarterIncomplet(encoreOuvert.chemin, dossierRacine)) {
-          écartés.push(encoreOuvert);
-          const index = nouveaux.indexOf(encoreOuvert);
-          if (index !== -1) nouveaux.splice(index, 1);
-        }
-      }
+      // Une version précédente écartait, en cas d'interruption, le fichier dont
+      // la date d'écriture suivait l'arrêt — en supposant que zotify écrivait
+      // directement dans le fichier final. La lecture de son code source dit le
+      // contraire : il télécharge dans un « .tmp » et ne renomme qu'une fois
+      // terminé.
+      //
+      // Un fichier portant une extension audio est donc COMPLET par
+      // construction. L'heuristique ne pouvait déplacer que des morceaux
+      // parfaitement bons, pour les faire retélécharger ensuite. Elle est
+      // retirée : le seuil de taille ci-dessus suffit, et les vrais restes
+      // d'une interruption sont les « .tmp » traités juste après.
+      const restes = nettoyerRestesTemporaires(dossierRacine);
 
       if (écartés.length) {
         journal.avertir(
-          `${écartés.length} téléchargement(s) interrompu(s) mis de côté dans « ` +
+          `${écartés.length} fichier(s) trop petit(s) mis de côté dans « ` +
             `${DOSSIER_INCOMPLETS} ». Ces morceaux seront repris à la prochaine ` +
             'synchronisation ; sans ça, ils resteraient tronqués et ne seraient ' +
             'jamais retéléchargés.',
+        );
+      }
+
+      if (restes.length) {
+        const mo = restes.reduce((somme, r) => somme + r.taille, 0) / 1024 ** 2;
+        journal.info(
+          `${restes.length} fichier(s) de travail inachevé(s) supprimé(s) ` +
+            `(${mo.toFixed(0)} Mo). zotify les efface lui-même quand il se termine ` +
+            'normalement ; ceux-ci restaient d’une interruption.',
         );
       }
 
