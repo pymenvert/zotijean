@@ -122,9 +122,29 @@ Sur le Mac, `Zotijean - Mac.command` fait la même chose par double-clic.
 
 ## État du projet
 
-**Version 1.0.4 publiée** (12 août 2026). Le moteur, l'interface et la coquille de barre
+**Version 1.0.5 publiée** (12 août 2026). Le moteur, l'interface et la coquille de barre
 des menus macOS sont écrits ; le paquet embarque Node, Python, ffmpeg et zotify, tous en
-arm64. 289 tests. Voir `CHANGELOG.md`.
+arm64. 309 tests. Voir `CHANGELOG.md`.
+
+### La leçon de la 1.0.5 : confronter, pas supposer
+
+Dix suppositions sur zotify se sont révélées fausses en LISANT SON CODE SOURCE
+(`Googolplexed0/zotify`, dépôt clonable, fichiers `config.py`, `api.py`,
+`__main__.py`, `termoutput.py`). La pire : ses options booléennes exigent une valeur —
+`--skip-existing` passé en drapeau nu avalait l'URL de la playlist, et **aucune version
+publiée avant la 1.0.5 n'a jamais rien téléchargé**. Invisible par les 300 tests : la
+doublure acceptait tout.
+
+Avant d'écrire du code qui parle à zotify, vérifier dans sa source. Les acquis :
+- Options booléennes : style « à valeur » (fork vivant) ou « drapeau nu » (vieux fork),
+  détecté par le nom en capitales dans le texte d'aide.
+- Sa table d'extensions ignore flac et aiff → ne JAMAIS lui déléguer la conversion.
+- Il croit son archive interne, pas le disque → `--disable-directory-archives true`.
+- `{playlist}`/`{playlist_num}` ne sont substitués que pour une source playlist ;
+  `{genre}` n'existe pas du tout.
+- Sans identifiants, il affiche une URL de connexion et attend un rappel HTTP.
+- Il télécharge en `.tmp` puis renomme : un fichier à extension audio est complet.
+- Son tableau de bord répète « Last Encountered Error: None » — pas une erreur.
 
 ### Ce que l'audit de la 1.0 a appris, et qui vaut pour la suite
 
