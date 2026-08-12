@@ -42,6 +42,7 @@ const OPTIONS_CANDIDATES = {
   interfaceSimple: ['standard-interface', 'no-interactive', 'simple-output'],
   sansArchiveDossier: ['disable-directory-archives'],
   paroles: ['lyrics-to-file', 'download-lyrics'],
+  sansSplash: ['no-splash'],
 };
 
 /** Valeurs de qualité, telles que zotify les attend. */
@@ -140,29 +141,39 @@ export function construireArguments({ url, config, attente, capacités, modèle,
   // style se lit dans le texte d'aide : argparse affiche « --skip-existing
   // SKIP_EXISTING » quand une valeur est attendue, le nom seul sinon. Sans
   // texte d'aide, on suppose le style à valeur : c'est celui du fork embarqué.
-  const attendUneValeur = (nom) => {
+  // Le style par défaut vient du FORK EMBARQUÉ, et il n'est pas le même pour
+  // toutes : ses options de configuration attendent une valeur, mais ses
+  // drapeaux déclarés à la main (« --no-splash ») sont de purs drapeaux. Se
+  // tromper de sens est symétriquement destructeur — un drapeau nu avale
+  // l'argument suivant, une valeur collée à un pur drapeau devient une adresse
+  // à télécharger.
+  const attendUneValeur = (nom, parDéfaut) => {
     const aide = String(capacités.aide || '');
     // Une option ABSENTE du texte d'aide ne dit rien de son style : le texte
     // est tronqué par le diagnostic, et le fork vivant en produit assez pour
-    // atteindre la coupure. Conclure « drapeau nu » sur une absence ferait
-    // revenir le bug de l'URL avalée. Dans le doute : style à valeur, celui du
-    // fork embarqué.
-    if (!aide.includes(`--${nom}`)) return true;
+    // atteindre la coupure. Dans le doute, chaque option retombe sur le style
+    // qu'elle a chez le fork embarqué.
+    if (!aide.includes(`--${nom}`)) return parDéfaut;
     // Le nom en capitales exige au moins deux lettres : argparse n'en produit
     // jamais moins, et un seul « S » majuscule pourrait n'être que le début du
     // texte d'aide d'un pur drapeau (« Skip songs… »).
     return new RegExp(`--${nom}[ =][A-Z][A-Z_]+`).test(aide);
   };
 
-  const pousserBooléen = (clé) => {
+  const pousserBooléen = (clé, { valeurParDéfaut = true } = {}) => {
     const nom = optionSupportée(clé, déclarées);
     if (!nom) return false;
-    if (attendUneValeur(nom)) arguments_.push(`--${nom}`, 'true');
+    if (attendUneValeur(nom, valeurParDéfaut)) arguments_.push(`--${nom}`, 'true');
     else arguments_.push(`--${nom}`);
     return true;
   };
 
   pousserBooléen('ignorerExistants');
+
+  // L'écran d'accueil en art ASCII de zotify partirait dans le flux de
+  // progression et dans le journal. Chez le fork embarqué, c'est un PUR
+  // drapeau — d'où son style par défaut inversé.
+  pousserBooléen('sansSplash', { valeurParDéfaut: false });
 
   // LES PAROLES SONT UN CHOIX DE L'UTILISATEUR, PAS DU TÉLÉCHARGEUR.
   //
@@ -177,7 +188,7 @@ export function construireArguments({ url, config, attente, capacités, modèle,
   const parolesVoulues = config.qualité?.paroles === true;
   const nomParoles = optionSupportée('paroles', déclarées);
   if (nomParoles) {
-    if (attendUneValeur(nomParoles)) {
+    if (attendUneValeur(nomParoles, true)) {
       arguments_.push(`--${nomParoles}`, parolesVoulues ? 'true' : 'false');
     } else if (parolesVoulues) {
       arguments_.push(`--${nomParoles}`);

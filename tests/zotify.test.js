@@ -577,6 +577,24 @@ test('les paroles suivent le choix de l’utilisateur, jamais le défaut de zoti
   assert.equal(refus.arguments.includes('--lyrics-to-file'), false);
 });
 
+test('chaque option retombe sur SON style par défaut, pas sur un style unique', () => {
+  // Le fork embarqué mélange les deux styles : ses options de configuration
+  // attendent une valeur, ses drapeaux déclarés à la main (« --no-splash »)
+  // sont de purs drapeaux. Un défaut unique se tromperait forcément d'un côté —
+  // et les deux erreurs sont destructrices : un drapeau nu avale l'URL, une
+  // valeur collée à un pur drapeau devient une adresse à télécharger.
+  const capacités = { options: ['root-path', 'output', 'no-splash', 'skip-existing'] };
+  const { arguments: args } = construireArguments({
+    url: 'URL', config: CONFIG, attente: 30,
+    capacités, modèle: '{song_name}', dossierRacine: '/M',
+  });
+
+  assert.equal(args[args.indexOf('--skip-existing') + 1], 'true');
+  assert.notEqual(args[args.indexOf('--no-splash') + 1], 'true',
+    'une valeur collée à --no-splash serait téléchargée comme une adresse');
+  assert.equal(args.at(-1), 'URL');
+});
+
 test('une aide tronquée avant l’option ne fait pas revenir le drapeau nu', () => {
   // Le texte d'aide est tronqué par le diagnostic, et le fork vivant déclare
   // une centaine d'options : la coupure peut tomber avant « --skip-existing ».

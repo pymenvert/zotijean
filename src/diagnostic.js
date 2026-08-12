@@ -500,7 +500,3 @@ export async function diagnostiquer(config) {
   return rapport;
 }
 
-/** Le contrôle zotify seul, pour connaître les options supportées avant un lancement. */
-export async function capacitésZotify(config) {
-  return contrôlerZotify(config.zotify?.commande);
-}
