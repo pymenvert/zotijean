@@ -1,5 +1,63 @@
 # Journal des versions
 
+## 1.0.5 — 12 août 2026
+
+**Prenez cette version. Les précédentes ne téléchargeaient rien.**
+
+Toute cette version vient d'une seule démarche : lire le code source du
+téléchargeur (zotify) et le confronter, ligne par ligne, à ce que Zotijean
+supposait de lui. Huit suppositions étaient fausses. La pire rendait
+l'application inutilisable — proprement, sans un message.
+
+### Les versions précédentes ne téléchargeaient rien, et ne le disaient pas
+
+Une option que Zotijean passait sans valeur avalait l'argument suivant sur la
+ligne de commande : **l'adresse de votre playlist**. Le téléchargeur se lançait,
+ne trouvait rien à faire, se terminait sans erreur. L'app affichait « aucune
+nouveauté » à chaque synchronisation — indéfiniment, avec un bilan vert.
+
+Reproduit contre le vrai analyseur d'arguments, corrigé, et verrouillé dans les
+deux sens : la nouvelle version du téléchargeur exige une valeur, l'ancienne
+l'interdit, et Zotijean reconnaît maintenant les deux à leur texte d'aide.
+
+### La première connexion Spotify devient un lien cliquable
+
+Si le téléchargeur n'est pas encore connecté à votre compte, il affiche une
+adresse d'autorisation et attend. Avant : quinze minutes de silence, puis un
+message parlant de blocage. Maintenant : un bandeau avec un **lien cliquable**
+apparaît dans l'interface. Vous cliquez, vous autorisez, et le téléchargement
+reprend tout seul.
+
+### Le morceau supprimé revient, celui qui est là n'est plus compté deux fois
+
+Le téléchargeur tenait sa propre liste de morceaux « déjà pris » et la croyait
+plutôt que votre disque. Un morceau que vous effaciez restait inscrit : il ne
+revenait jamais. Zotijean lui impose désormais la règle de la maison — **le
+disque fait foi**.
+
+### Un rangement cassé, un rangement réparé
+
+« Par genre » ne pouvait pas fonctionner : le téléchargeur ne connaît pas cette
+variable, et tous vos morceaux seraient tombés dans un dossier nommé
+littéralement `{genre}`. L'option le dit maintenant honnêtement.
+
+À l'inverse, **les albums et les artistes étaient cassés** : leurs variables de
+playlist restaient vides et produisaient le même dossier absurde. Ils reçoivent
+maintenant les bonnes variables — nom d'album, numéro de piste.
+
+### Des centaines de fausses erreurs en moins
+
+Le tableau de bord du téléchargeur répète en boucle une ligne contenant le mot
+« Error » — même quand tout va bien. Chaque rafraîchissement comptait comme une
+erreur : le journal se remplissait, et le bilan annonçait des dizaines de
+morceaux « repris plus tard » alors que tout était là.
+
+### Et le ménage
+
+Les fragments de téléchargement interrompus (`.tmp`) sont supprimés, les codes
+de couleur du terminal ne polluent plus l'affichage, et une erreur en couleur
+est de nouveau reconnue comme une erreur.
+
 ## 1.0.4 — 12 août 2026
 
 Cette version ne change rien à ce que Zotijean fait. Elle change ce qu'il vous
