@@ -21,16 +21,26 @@ import { messageÉcritureRefusée } from '../src/diagnostic.js';
 const REFUS = { code: 'EACCES', message: 'EACCES: permission denied' };
 const DISQUE_PLEIN = { code: 'ENOSPC', message: 'ENOSPC: no space left on device' };
 
-/** Fait croire au module qu'il tourne sur un Mac, le temps d'un test. */
-function surUnMac(travail) {
+/**
+ * Exécute un test en faisant croire au module qu'il tourne sur tel système.
+ *
+ * LES DEUX SENS SONT NÉCESSAIRES, et l'oubli du second a fait rougir la CI :
+ * le test « hors macOS » se contentait de la plateforme réelle, ce qui marchait
+ * sur le poste de développement Windows et échouait sur le serveur macOS — où
+ * la plateforme réelle EST darwin. Un test dont le résultat dépend de la machine
+ * qui l'exécute ne teste pas le code.
+ */
+function sur(système, travail) {
   const original = Object.getOwnPropertyDescriptor(process, 'platform');
-  Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true });
+  Object.defineProperty(process, 'platform', { value: système, configurable: true });
   try {
     return travail();
   } finally {
     Object.defineProperty(process, 'platform', original);
   }
 }
+
+const surUnMac = (travail) => sur('darwin', travail);
 
 test('un dossier protégé par macOS est nommé, avec le réglage exact à ouvrir', () => {
   surUnMac(() => {
@@ -69,15 +79,22 @@ test('un refus ailleurs renvoie vers l’accès complet au disque', () => {
 test('hors macOS, on ne parle pas de Réglages Système', () => {
   // Le moteur tourne aussi depuis les sources sur Windows et Linux : lui faire
   // citer des menus qui n'existent pas serait pire que rester vague.
-  const message = messageÉcritureRefusée('/mnt/musique', REFUS);
-  assert.ok(!/Réglages Système/.test(message));
-  assert.ok(/lecture seule|droits/.test(message));
+  //
+  // Le système est IMPOSÉ, pas hérité de la machine : sans ça, ce test passait
+  // sur le poste Windows et échouait sur le serveur macOS.
+  for (const système of ['win32', 'linux']) {
+    const message = sur(système, () => messageÉcritureRefusée('/mnt/musique', REFUS));
+    assert.ok(!/Réglages Système/.test(message), `menus macOS cités sur ${système}`);
+    assert.ok(/lecture seule|droits/.test(message), `message inutile sur ${système}`);
+  }
 });
 
 test('une panne qui n’est pas une permission garde son message d’origine', () => {
   // Un disque plein n'a rien à voir avec une autorisation : là, changer de
-  // dossier est bel et bien le bon conseil.
-  const message = messageÉcritureRefusée('/Users/pym/Musique', DISQUE_PLEIN);
-  assert.ok(message.includes('no space left'));
-  assert.ok(/Choisissez un autre dossier/.test(message));
+  // dossier est bel et bien le bon conseil. Vrai sur les trois systèmes.
+  for (const système of ['darwin', 'win32', 'linux']) {
+    const message = sur(système, () => messageÉcritureRefusée('/Users/pym/Musique', DISQUE_PLEIN));
+    assert.ok(message.includes('no space left'), `cause perdue sur ${système}`);
+    assert.ok(/Choisissez un autre dossier/.test(message), `conseil manquant sur ${système}`);
+  }
 });
