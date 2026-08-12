@@ -157,10 +157,24 @@ export async function simuler() {
         : null,
     },
 
-    // Formulé comme une limite assumée, pas comme une lacune cachée.
+    // DEUX LIMITES ASSUMÉES, ET AUCUNE N'EST CELLE QU'ON ANNONÇAIT AVANT.
+    //
+    // L'ancien texte affirmait qu'on ne pouvait pas connaître le nombre de
+    // nouveautés « sans interroger Spotify, ce que seule une vraie
+    // synchronisation fait ». C'est faux depuis que la connexion Spotify
+    // existe : l'onglet des morceaux manquants donne le compte exact. Dire
+    // « impossible » d'une chose que l'app sait faire envoie l'utilisateur
+    // attendre au lieu de regarder.
+    //
+    // L'autre limite, elle, n'avait jamais été dite : les durées ne comptent
+    // que l'attente DÉLIBÉRÉE entre deux titres. Le téléchargement lui-même
+    // s'ajoute. Annoncer dix-sept heures pour en vivre vingt-deux ressemble à
+    // une promesse trahie, alors qu'il suffisait de le préciser.
     incertitude:
-      'Zotijean ne peut pas savoir combien de titres sont nouveaux sans interroger ' +
-      'Spotify, ce que seule une vraie synchronisation fait. Les durées ci-dessus ' +
-      'sont des repères pour différentes tailles de rattrapage.',
+      'Ces durées comptent l’attente volontaire entre deux titres, pas le ' +
+      'téléchargement lui-même, qui s’y ajoute : comptez un peu plus. Ce sont des ' +
+      'repères pour différentes tailles de rattrapage — Zotijean ne devine pas ' +
+      'combien de titres vous manquent. Si votre compte Spotify est connecté, ' +
+      'l’onglet Playlists vous en donne le nombre exact.',
   };
 }
