@@ -494,6 +494,53 @@ test('construireArguments signale les réglages qu’il n’a pas pu appliquer',
   assert.ok(nonAppliqués.some((m) => m.includes('qualité')));
 });
 
+test('les options booléennes reçoivent une valeur, sinon l’URL se fait avaler', () => {
+  // LE BUG LE PLUS GRAVE DU PROJET, reproduit contre le vrai argparse de
+  // Python. Le fork vivant déclare TOUTES ses options de configuration comme
+  // attendant une valeur, y compris les booléennes. « --skip-existing » passé
+  // en drapeau nu consommait donc l'argument suivant — l'URL de la playlist.
+  // La liste des adresses devenait vide, zotify se terminait sans rien tenter,
+  // et l'app annonçait « aucune nouveauté » à chaque synchronisation, pour
+  // toujours. Aucune doublure de test ne pouvait le voir.
+  //
+  // Le style se lit dans le texte d'aide : argparse affiche le nom en
+  // majuscules après l'option quand une valeur est attendue.
+  const aideFork = '-ie SKIP_EXISTING, --skip-existing SKIP_EXISTING\n'
+    + '--disable-directory-archives DISABLE_DIRECTORY_ARCHIVES';
+  const capacités = {
+    options: ['help', 'root-path', 'output', 'skip-existing', 'disable-directory-archives'],
+    aide: aideFork,
+  };
+  const { arguments: args } = construireArguments({
+    url: 'https://open.spotify.com/playlist/abc', config: CONFIG, attente: 30,
+    capacités, modèle: '{song_name}', dossierRacine: '/M',
+  });
+
+  assert.equal(args[args.indexOf('--skip-existing') + 1], 'true',
+    'l’option booléenne est restée un drapeau nu : l’URL sera avalée');
+  assert.equal(args[args.indexOf('--disable-directory-archives') + 1], 'true');
+  assert.equal(args.at(-1), 'https://open.spotify.com/playlist/abc',
+    'l’URL doit rester le dernier argument, jamais la valeur d’une option');
+});
+
+test('le vieux fork garde ses drapeaux nus : une valeur serait prise pour une adresse', () => {
+  // Symétrique du test précédent. L'ancien fork déclarait ces options comme de
+  // purs drapeaux : leur coller « true » ferait prendre ce mot pour une adresse
+  // à télécharger. Le texte d'aide, sans nom en majuscules, révèle ce style.
+  const capacités = {
+    options: ['help', 'root-path', 'output', 'skip-existing'],
+    aide: '-ie, --skip-existing    Skip songs already downloaded',
+  };
+  const { arguments: args } = construireArguments({
+    url: 'URL', config: CONFIG, attente: 30,
+    capacités, modèle: '{song_name}', dossierRacine: '/M',
+  });
+
+  const position = args.indexOf('--skip-existing');
+  assert.notEqual(position, -1);
+  assert.notEqual(args[position + 1], 'true', 'une valeur a été collée à un pur drapeau');
+});
+
 test('sans l’option d’archive, l’utilisateur est prévenu que la reprise ne marchera pas', () => {
   // RELEVÉ DANS LE CODE SOURCE DE ZOTIFY. Par défaut, il tient un fichier
   // d'archive par dossier et décide d'après LUI qu'un morceau est déjà là — pas

@@ -110,9 +110,37 @@ export function construireArguments({ url, config, attente, capacités, modèle,
   ajouter('format', VALEURS_FORMAT[config.qualité.format] ?? 'copy', 'le format de fichier');
   ajouter('attente', attente, "le rythme d'attente entre les titres");
 
-  // Options sans valeur : on les passe seulement si elles existent.
-  const ignorer = optionSupportée('ignorerExistants', déclarées);
-  if (ignorer) arguments_.push(`--${ignorer}`);
+  // LES OPTIONS BOOLÉENNES EXIGENT UNE VALEUR — LES PASSER EN DRAPEAU NU
+  // DÉTRUISAIT TOUTE LA LIGNE DE COMMANDE.
+  //
+  // Relevé dans le code source du fork vivant, et reproduit avec le même
+  // argparse : ses options de configuration sont toutes déclarées comme
+  // attendant une valeur, y compris les booléennes. « --skip-existing » passé
+  // seul avalait donc l'argument suivant — L'URL DE LA PLAYLIST. La liste des
+  // adresses à télécharger devenait vide, zotify se terminait sans rien tenter,
+  // et l'app annonçait « aucune nouveauté » à chaque synchronisation, pour
+  // toujours. Aucun test ne le voyait : notre doublure acceptait tout.
+  //
+  // L'ancien fork, lui, déclarait ces options comme de purs drapeaux — leur
+  // passer une valeur la ferait prendre pour une adresse à télécharger. Le
+  // style se lit dans le texte d'aide : argparse affiche « --skip-existing
+  // SKIP_EXISTING » quand une valeur est attendue, le nom seul sinon. Sans
+  // texte d'aide, on suppose le style à valeur : c'est celui du fork embarqué.
+  const attendUneValeur = (nom) => {
+    const aide = String(capacités.aide || '');
+    if (!aide) return true;
+    return new RegExp(`--${nom}[ =][A-Z][A-Z_]*`).test(aide);
+  };
+
+  const pousserBooléen = (clé) => {
+    const nom = optionSupportée(clé, déclarées);
+    if (!nom) return false;
+    if (attendUneValeur(nom)) arguments_.push(`--${nom}`, 'true');
+    else arguments_.push(`--${nom}`);
+    return true;
+  };
+
+  pousserBooléen('ignorerExistants');
 
   // LE DISQUE DOIT FAIRE FOI, Y COMPRIS POUR ZOTIFY.
   //
@@ -129,9 +157,7 @@ export function construireArguments({ url, config, attente, capacités, modèle,
   //
   // On la désactive pour que la seule question posée soit « le fichier est-il
   // là ? » — celle à laquelle toute l'application répond déjà.
-  const sansArchive = optionSupportée('sansArchiveDossier', déclarées);
-  if (sansArchive) arguments_.push(`--${sansArchive}`);
-  else {
+  if (!pousserBooléen('sansArchiveDossier')) {
     nonAppliqués.push(
       'la reprise des morceaux effacés ou incomplets (votre version de zotify ' +
       'garde sa propre liste et ne relit pas le dossier)',
