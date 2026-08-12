@@ -1,5 +1,46 @@
 # Journal des versions
 
+## 1.0.4 — 12 août 2026
+
+Cette version ne change rien à ce que Zotijean fait. Elle change ce qu'il vous
+**dit** — parce que quatre de ses messages étaient faux, dépassés, ou taisaient
+l'essentiel.
+
+### Il annonçait un succès complet alors que des morceaux avaient échoué
+
+Après dix-sept heures avec quarante pistes indisponibles dans votre pays, l'app
+affichait « 1 960 nouveaux titres téléchargés. » et rien d'autre. Vous croyiez
+tout avoir, et vous découvriez les manques des semaines plus tard en cherchant
+un morceau précis.
+
+Elle dit maintenant « 1 960 nouveaux titres, **40 repris plus tard** », ou
+« 1 200 nouveaux titres — **synchronisation interrompue** », ou encore
+« 3 nouveaux titres — **trop de demandes envoyées à Spotify** ».
+
+### « Choisissez un autre dossier » quand c'est macOS qui bloque
+
+Si le système refuse l'accès au dossier de musique, l'app vous envoyait en
+choisir un autre. C'est le mauvais conseil : depuis Ventura, **les disques
+externes demandent une autorisation explicite**, et le dossier n'a rien
+d'anormal.
+
+Le message nomme désormais le réglage exact à ouvrir, et précise — pour un
+disque externe — que le disque *est* bien branché. Sans ça, on part chercher un
+câble.
+
+### Les dix-sept heures ne comptaient pas le téléchargement
+
+Les durées annoncées ne comptent que l'attente volontaire entre deux morceaux.
+Le téléchargement s'y ajoute. Annoncer dix-sept heures pour en vivre vingt-deux
+ressemble à une promesse trahie — il suffisait de le préciser, c'est fait.
+
+### Une explication devenue fausse
+
+Sous les options de retrait, l'app expliquait qu'il faudrait « interroger l'API
+Spotify, ce que Zotijean ne fait pas encore ». Cette connexion existe depuis.
+Rien ne change dans le comportement — **aucun de vos fichiers n'est jamais
+déplacé ni jeté** — mais la raison donnée est maintenant la vraie.
+
 ## 1.0.3 — 12 août 2026
 
 Deux défauts qui ne frappaient qu'au **tout premier lancement** — c'est-à-dire
