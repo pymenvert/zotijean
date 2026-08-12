@@ -141,8 +141,16 @@ export function construireArguments({ url, config, attente, capacités, modèle,
   // texte d'aide, on suppose le style à valeur : c'est celui du fork embarqué.
   const attendUneValeur = (nom) => {
     const aide = String(capacités.aide || '');
-    if (!aide) return true;
-    return new RegExp(`--${nom}[ =][A-Z][A-Z_]*`).test(aide);
+    // Une option ABSENTE du texte d'aide ne dit rien de son style : le texte
+    // est tronqué par le diagnostic, et le fork vivant en produit assez pour
+    // atteindre la coupure. Conclure « drapeau nu » sur une absence ferait
+    // revenir le bug de l'URL avalée. Dans le doute : style à valeur, celui du
+    // fork embarqué.
+    if (!aide.includes(`--${nom}`)) return true;
+    // Le nom en capitales exige au moins deux lettres : argparse n'en produit
+    // jamais moins, et un seul « S » majuscule pourrait n'être que le début du
+    // texte d'aide d'un pur drapeau (« Skip songs… »).
+    return new RegExp(`--${nom}[ =][A-Z][A-Z_]+`).test(aide);
   };
 
   const pousserBooléen = (clé) => {

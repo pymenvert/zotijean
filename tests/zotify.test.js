@@ -545,6 +545,24 @@ test('les options booléennes reçoivent une valeur, sinon l’URL se fait avale
     'l’URL doit rester le dernier argument, jamais la valeur d’une option');
 });
 
+test('une aide tronquée avant l’option ne fait pas revenir le drapeau nu', () => {
+  // Le texte d'aide est tronqué par le diagnostic, et le fork vivant déclare
+  // une centaine d'options : la coupure peut tomber avant « --skip-existing ».
+  // Une option ABSENTE du texte ne dit rien de son style — conclure « drapeau
+  // nu » sur une absence ferait revenir le bug de l'URL avalée. Dans le doute,
+  // c'est le style du fork embarqué qui s'applique : à valeur.
+  const capacités = {
+    options: ['help', 'root-path', 'output', 'skip-existing'],
+    aide: '--root-path ROOT_PATH\n--output OUTPUT\n(texte coupé ici…)',
+  };
+  const { arguments: args } = construireArguments({
+    url: 'URL', config: CONFIG, attente: 30,
+    capacités, modèle: '{song_name}', dossierRacine: '/M',
+  });
+  assert.equal(args[args.indexOf('--skip-existing') + 1], 'true');
+  assert.equal(args.at(-1), 'URL');
+});
+
 test('le vieux fork garde ses drapeaux nus : une valeur serait prise pour une adresse', () => {
   // Symétrique du test précédent. L'ancien fork déclarait ces options comme de
   // purs drapeaux : leur coller « true » ferait prendre ce mot pour une adresse

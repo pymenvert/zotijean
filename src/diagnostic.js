@@ -98,7 +98,12 @@ async function contrôlerZotify(commandeConfigurée) {
         chemin: candidat,
         version: extraireVersion(sortie),
         options: [...options].sort(),
-        aide: texteAide.slice(0, 20000),
+        // 80 000 et pas 20 000 : le pilote lit le STYLE de chaque option dans
+        // ce texte — nom en capitales après l'option quand une valeur est
+        // attendue. Le fork vivant déclare une centaine d'options ; une aide
+        // tronquée avant « --skip-existing » ferait conclure au mauvais style,
+        // et l'URL de la playlist serait avalée comme valeur d'option.
+        aide: texteAide.slice(0, 80000),
       },
     );
   }
