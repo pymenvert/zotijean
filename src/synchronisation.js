@@ -751,6 +751,10 @@ export function modèleZotify(c = config(), typeSource = 'playlist') {
     '{piste}': '{track_number}',
     '{disque}': '{disc_number}',
     '{année}': '{release_year}',
+    // L'ISRC est substitué sans condition par zotify — vérifié dans sa liste.
+    // C'est la variable du « pont sans perte » : l'identifiant international
+    // dans le NOM du fichier, sans jamais réécrire son contenu.
+    '{isrc}': '{isrc}',
     // PAS DE CORRESPONDANCE POUR LE GENRE, ET CE N'EST PAS UN OUBLI.
     //
     // Relevé dans le code source de zotify : son moteur de nommage substitue

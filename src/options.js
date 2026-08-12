@@ -228,7 +228,19 @@ export const VARIABLES = [
   { nom: 'piste', description: 'Numéro de piste dans l’album, sur 2 chiffres' },
   { nom: 'disque', description: 'Numéro de disque (1 sauf album multi-disques)' },
   { nom: 'année', description: 'Année de sortie' },
-  { nom: 'genre', description: 'Genre Spotify — souvent large, parfois vide' },
+  {
+    nom: 'genre',
+    description:
+      'INDISPONIBLE pour l’instant : le téléchargeur ne sait pas s’en servir pour ' +
+      'nommer un fichier. La variable est retirée du modèle et signalée.',
+  },
+  {
+    nom: 'isrc',
+    description:
+      'Identifiant international du morceau (ISRC), le même sur toutes les ' +
+      'plateformes. Le mettre dans le nom du fichier crée un pont fiable vers ' +
+      'Rekordbox ou Serato sans jamais réécrire le fichier lui-même.',
+  },
 ];
 
 // ---------------------------------------------------------------------------

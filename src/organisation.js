@@ -108,6 +108,7 @@ const SECOURS = {
   numéro: '000',
   piste: '00',
   disque: '1',
+  isrc: 'ISRC-inconnu',
 };
 
 function valeurVariable(nom, métadonnées) {

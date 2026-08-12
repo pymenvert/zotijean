@@ -244,6 +244,36 @@ test('un album ou un artiste ne reçoit pas les variables réservées aux playli
   assert.equal(modèleZotify(c), '{playlist}/{playlist_num} - {artist} - {song_name}');
 });
 
+test('la variable {isrc} traverse toute la chaîne : c’est le pont sans perte', async () => {
+  // L'ISRC est l'identifiant international du morceau, le même sur toutes les
+  // plateformes. zotify le substitue sans condition — vérifié dans sa liste.
+  // Le mettre dans le NOM du fichier crée un repère fiable vers Rekordbox ou
+  // Serato sans jamais réécrire le contenu du fichier — donc sans toucher aux
+  // points de repère que Serato stocke dedans.
+  const { modèleZotify } = await import('../src/synchronisation.js');
+  const { rendre, validerModèle } = await import('../src/organisation.js');
+  const { VARIABLES } = await import('../src/options.js');
+
+  const modèle = '{playlist}/{numéro} - {artiste} - {titre} [{isrc}]';
+
+  // La validation du modèle personnalisé doit l'accepter…
+  assert.deepEqual(validerModèle(modèle, VARIABLES.map((v) => v.nom)), []);
+
+  // …zotify doit le recevoir tel quel…
+  const envoyé = modèleZotify({ organisation: { schéma: 'personnalise', modèlePersonnalisé: modèle } });
+  assert.ok(envoyé.endsWith('[{isrc}]'), `l’isrc a été perdu en route : ${envoyé}`);
+
+  // …et l'aperçu doit le montrer, avec un repli lisible quand il manque.
+  const complet = rendre(modèle, {
+    playlist: 'Été 2026', numéro: '007', artiste: 'Étienne', titre: 'Prix Choc',
+    isrc: 'FRXXX2600001',
+  });
+  assert.ok(complet.includes('[FRXXX2600001]'));
+
+  const sans = rendre(modèle, { playlist: 'P', numéro: '001', artiste: 'A', titre: 'T' });
+  assert.ok(sans.includes('[ISRC-inconnu]'), 'un isrc absent laisserait un trou dans le nom');
+});
+
 test('la perte est nommée pour pouvoir être annoncée à l’utilisateur', async () => {
   const { variablesImpossibles } = await import('../src/synchronisation.js');
   const pertes = variablesImpossibles({ organisation: { schéma: 'par_genre' } });
