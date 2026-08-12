@@ -189,9 +189,41 @@ export function nettoyerLigne(brut) {
     .trim();
 }
 
+/**
+ * Les intitulés du tableau de bord que zotify redessine en continu.
+ *
+ * Relevés dans son code source, pas devinés. Ce ne sont pas des événements mais
+ * un AFFICHAGE D'ÉTAT, réémis à chaque rafraîchissement.
+ *
+ * LE PIÈGE, ET IL EST GROS. L'un de ces intitulés est « Last Encountered
+ * Error », suivi le plus souvent de « None ». Le motif qui repère les erreurs
+ * cherche le mot « error » : chaque rafraîchissement produisait donc une fausse
+ * erreur. Sur un rattrapage de dix-sept heures, ça remplit le journal, ça sature
+ * la liste des erreurs conservées, et surtout ça fait dire au bilan « 1 960
+ * nouveaux titres, 200 repris plus tard » alors que tout s'est bien passé.
+ *
+ * Les vraies erreurs, elles, arrivent par leur propre canal et gardent leur
+ * formulation d'origine. On peut donc écarter ces lignes-ci sans rien perdre.
+ */
+const INTITULÉS_TABLEAU_DE_BORD = [
+  'Query Tree:',
+  'Current DLContent:',
+  'Status:',
+  'Total Query Progress:',
+  'Last Download Time:',
+  'Last Conversion Time:',
+  'Last Downloaded Item:',
+  'Last Encountered Error:',
+];
+
 /** Classe une ligne de sortie pour l'affichage et le journal. */
 export function classerLigne(brute) {
   const ligne = nettoyerLigne(brute);
+
+  if (INTITULÉS_TABLEAU_DE_BORD.some((intitulé) => ligne.startsWith(intitulé))) {
+    return { type: 'info', texte: ligne, tableauDeBord: true };
+  }
+
   const pourcentage = ligne.match(MOTIF_POURCENTAGE);
 
   if (MOTIFS_ERREUR.some((motif) => motif.test(ligne))) {

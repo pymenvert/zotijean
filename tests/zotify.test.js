@@ -136,6 +136,52 @@ test('une erreur en couleur reste reconnue comme une erreur', () => {
   assert.equal(classée.texte, 'Failed fetching audio key!');
 });
 
+// ---------------------------------------------------------------------------
+// Le tableau de bord que zotify redessine en continu
+// ---------------------------------------------------------------------------
+//
+// CES INTITULÉS SONT COPIÉS DE SON CODE SOURCE. Ce ne sont pas des événements
+// mais un affichage d'état, réémis à chaque rafraîchissement.
+//
+// L'un d'eux est « Last Encountered Error », suivi le plus souvent de « None ».
+// Le motif qui repère les erreurs cherche le mot « error » : chaque
+// rafraîchissement produisait donc une fausse erreur. Sur dix-sept heures, le
+// journal se remplit, la liste des erreurs sature à son plafond de 200, et le
+// bilan final annonce « 1 960 nouveaux titres, 200 repris plus tard » alors que
+// tout s'est parfaitement passé.
+//
+// Deux correctifs de cette session s'annulaient ainsi l'un l'autre : le résumé
+// honnête devenait un mensonge d'un autre genre.
+
+test('le tableau de bord de zotify ne produit aucune fausse erreur', () => {
+  for (const ligne of [
+    'Query Tree: [Playlist(Été 2026)]',
+    'Current DLContent: Track',
+    'Status: downloading',
+    'Total Query Progress: 12/200',
+    'Last Download Time: 4',
+    'Last Conversion Time: 1',
+    'Last Downloaded Item: Prix Choc',
+    'Last Encountered Error: None',
+  ]) {
+    assert.notEqual(classerLigne(ligne).type, 'erreur', `fausse erreur sur : ${ligne}`);
+  }
+});
+
+test('les vraies erreurs de zotify restent détectées', () => {
+  // Le pendant indispensable du test précédent : à trop vouloir filtrer, on
+  // finirait par ne plus rien voir passer. Ces formulations viennent des
+  // canaux d'erreur de zotify, pas de son affichage d'état.
+  for (const ligne of [
+    'Failed fetching audio key!',
+    'ERROR: Track is unavailable in your region',
+    'SKIPPING: song is unavailable',
+    'Rate limit exceeded, too many requests',
+  ]) {
+    assert.equal(classerLigne(ligne).type, 'erreur', `erreur ratée : ${ligne}`);
+  }
+});
+
 test('nettoyerLigne laisse intact ce qui n’a rien à nettoyer', () => {
   // Un nettoyage trop gourmand abîmerait les titres : accents, tirets, points
   // d'exclamation et parenthèses doivent survivre tels quels.
