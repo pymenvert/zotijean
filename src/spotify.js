@@ -483,17 +483,34 @@ export async function versionPlaylist(idPlaylist) {
  * renvoie plusieurs centaines de kilo-octets par page — inutiles et lents.
  */
 export async function contenuPlaylist(idPlaylist) {
-  const champs = 'items(added_at,is_local,track(id,name,duration_ms,disc_number,' +
+  // « type » figure dans la liste, et ce n'est pas décoratif : le filtrage des
+  // épisodes de podcast repose sur lui. Une version précédente ne le demandait
+  // pas — Spotify ne renvoie QUE les champs demandés, donc le type n'arrivait
+  // jamais, et le filtre « épisode » laissait tout passer en croyant filtrer.
+  const champs = 'items(added_at,is_local,track(type,id,name,duration_ms,disc_number,' +
     'track_number,external_ids(isrc),artists(name),album(name,release_date,images))),next';
 
   const items = await toutesLesPages(
     `/playlists/${idPlaylist}/tracks?limit=100&fields=${encodeURIComponent(champs)}`,
   );
 
-  return items
-    // Les épisodes de podcast n'ont pas de type « track » : zotify ne les
-    // télécharge pas, et les compter ferait apparaître des morceaux
-    // éternellement manquants.
+  return normaliserPistes(items);
+}
+
+/**
+ * Transforme les éléments bruts d'une playlist Spotify en pistes exploitables.
+ *
+ * Trois familles d'éléments sont écartées, chacune vue dans de vraies
+ * playlists :
+ * - une piste NULLE — morceau retiré du catalogue, l'élément reste avec un
+ *   trou à la place ; y lire un titre ferait tomber tout l'inventaire ;
+ * - un FICHIER LOCAL — présent dans la playlist de l'utilisateur mais absent
+ *   du catalogue, sans identifiant : intéléchargeable par construction ;
+ * - un ÉPISODE de podcast — zotify ne les télécharge pas depuis une playlist,
+ *   et les compter ferait apparaître des morceaux éternellement manquants.
+ */
+export function normaliserPistes(items) {
+  return (items || [])
     .filter((i) => i?.track?.id && !i.is_local && (i.track.type ?? 'track') === 'track')
     .map((i, index) => {
       const t = i.track;
