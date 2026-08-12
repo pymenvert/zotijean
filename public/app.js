@@ -799,11 +799,15 @@ function écouterÉvénements() {
 
     if (événement.type === 'synchro-fin') {
       rafraîchirTableau();
+      // Le moteur calcule la phrase : elle mentionne les morceaux repris plus
+      // tard et les interruptions, que le décompte brut passait sous silence.
+      // Le repli ne sert que si un vieux moteur ne l'envoie pas.
       const n = événement.bilan.nbFichiers;
-      const phrase = n > 0
-        ? `${n} nouveau${n > 1 ? 'x' : ''} titre${n > 1 ? 's' : ''} téléchargé${n > 1 ? 's' : ''}.`
-        : 'Aucune nouveauté.';
-      noter(phrase, 'succes');
+      const phrase = événement.bilan.phrase
+        || (n > 0
+          ? `${n} nouveau${n > 1 ? 'x' : ''} titre${n > 1 ? 's' : ''} téléchargé${n > 1 ? 's' : ''}.`
+          : 'Aucune nouveauté.');
+      noter(phrase, événement.bilan.interrompu ? 'erreur' : 'succes');
 
       notifications.montrer('Zotijean', phrase);
       // L'autorisation se demande ici, après une synchronisation réussie :

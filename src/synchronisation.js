@@ -35,6 +35,7 @@ import {
 } from './bibliotheque.js';
 import * as étatModule from './etat.js';
 import { conditionToujoursRemplie, empêcherLaVeille } from './energie.js';
+import { phraseBilan } from './erreurs.js';
 
 // ---------------------------------------------------------------------------
 // Verrou d'exécution
@@ -527,11 +528,27 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
       );
     }
 
+    // LE RÉSUMÉ EN UNE PHRASE, CALCULÉ ICI PLUTÔT QUE DANS LE NAVIGATEUR.
+    //
+    // L'interface fabriquait le sien, et il perdait l'essentiel : « 1 960
+    // nouveaux titres téléchargés » sans un mot des quarante qui ont échoué, ni
+    // d'une interruption. Après dix-sept heures, l'utilisateur croit tout avoir.
+    //
+    // La fonction qui dit tout cela existait, écrite et testée — simplement
+    // jamais appelée. En la calculant côté moteur, la même phrase sert à
+    // l'interface, à la notification du système, à l'historique et au menu de
+    // la barre des menus, au lieu d'être réécrite à chaque endroit.
+    bilan.phrase = phraseBilan({
+      nbFichiers: bilan.nbFichiers,
+      erreurs: bilan.lignesErreur,
+      interrompu: bilan.interrompu,
+    });
+
     étatModule.enregistrerExécution(bilan);
 
     journal.info(
-      `Synchronisation terminée — ${bilan.nbFichiers} nouveau(x) titre(s), ` +
-        `${bilan.nbErreurs} erreur(s)${bilan.interrompu ? ', interrompue' : ''}.`,
+      `Synchronisation terminée — ${bilan.phrase} ` +
+        `(${bilan.nbErreurs} erreur(s) au total).`,
     );
     diffuser({ type: 'synchro-fin', bilan });
 
