@@ -251,6 +251,74 @@ function contrôlerIncomplets(dossierMusique) {
   );
 }
 
+/**
+ * Les emplacements que macOS protège, et le nom du réglage correspondant.
+ *
+ * Depuis macOS Catalina, écrire dans le Bureau, les Documents ou les
+ * Téléchargements exige une autorisation explicite ; depuis Ventura, les
+ * volumes amovibles aussi. Une application qui n'est pas passée par une fenêtre
+ * de sélection de fichiers se voit simplement refuser l'accès.
+ */
+const EMPLACEMENTS_PROTÉGÉS = [
+  { dossier: 'Desktop', libellé: 'Bureau', réglage: 'Dossiers Bureau' },
+  { dossier: 'Documents', libellé: 'Documents', réglage: 'Dossiers Documents' },
+  { dossier: 'Downloads', libellé: 'Téléchargements', réglage: 'Dossiers Téléchargements' },
+];
+
+/**
+ * Le message d'un refus d'écriture, adapté à ce qui s'est réellement passé.
+ *
+ * POURQUOI CE N'EST PAS UN DÉTAIL DE FORMULATION. Le conseil précédent était
+ * « choisissez un autre dossier », ce qui est FAUX dans le cas le plus courant
+ * sur un Mac : le dossier est le bon, c'est le système qui bloque l'accès tant
+ * qu'on ne l'a pas autorisé. Envoyer l'utilisateur changer de dossier lui fait
+ * abandonner l'organisation qu'il voulait, pour un problème qui se règle en
+ * deux clics.
+ */
+export function messageÉcritureRefusée(dossier, erreur) {
+  const refus = erreur?.code === 'EACCES' || erreur?.code === 'EPERM';
+
+  if (refus && process.platform === 'darwin') {
+    const protégé = EMPLACEMENTS_PROTÉGÉS.find((e) =>
+      dossier.includes(`/${e.dossier}/`) || dossier.endsWith(`/${e.dossier}`));
+
+    if (protégé) {
+      return (
+        `macOS protège le dossier ${protégé.libellé} et refuse l'accès à Zotijean. ` +
+        `Le dossier n'a rien d'anormal : allez dans Réglages Système → ` +
+        `Confidentialité et sécurité → ${protégé.réglage}, et autorisez Zotijean. ` +
+        'Vous pouvez aussi choisir un dossier dans Musique, qui n’est pas protégé.'
+      );
+    }
+
+    if (dossier.startsWith('/Volumes/')) {
+      return (
+        'macOS refuse l’accès à ce disque externe. Allez dans Réglages Système → ' +
+        'Confidentialité et sécurité → Volumes amovibles, et autorisez Zotijean. ' +
+        'Le disque est bien branché : c’est l’autorisation qui manque.'
+      );
+    }
+
+    return (
+      `macOS refuse l’écriture dans « ${dossier} ». Vérifiez l’autorisation de ` +
+      'Zotijean dans Réglages Système → Confidentialité et sécurité → Accès complet ' +
+      'au disque, ou choisissez un dossier dans Musique.'
+    );
+  }
+
+  if (refus) {
+    return (
+      `Les droits d’écriture manquent sur « ${dossier} ». Vérifiez que le dossier ` +
+      'vous appartient et qu’il n’est pas en lecture seule.'
+    );
+  }
+
+  return (
+    `Impossible d'écrire dans « ${dossier} » : ${erreur?.message || 'raison inconnue'}. ` +
+    'Choisissez un autre dossier dans les réglages.'
+  );
+}
+
 function contrôlerDestination(dossierMusique, gardes) {
   if (!volumeMonté(dossierMusique)) {
     return contrôle(
@@ -277,9 +345,8 @@ function contrôlerDestination(dossierMusique, gardes) {
       'destination',
       'Dossier de musique',
       GRAVITÉ.BLOQUANT,
-      `Impossible d'écrire dans « ${dossierMusique} » : ${erreur.message}. ` +
-        'Choisissez un autre dossier dans les réglages.',
-      { chemin: dossierMusique },
+      messageÉcritureRefusée(dossierMusique, erreur),
+      { chemin: dossierMusique, code: erreur.code },
     );
   }
 
