@@ -524,6 +524,44 @@ export function télécharger({
     let instantArrêt = null;
     let chien = null;
 
+    // DEMANDE DE CONNEXION SPOTIFY, RELEVÉE DANS LE CODE SOURCE DE ZOTIFY.
+    //
+    // Sans identifiants enregistrés, zotify ne s'arrête pas : il affiche
+    // « Click on the following link to login: », l'adresse d'autorisation sur
+    // la ligne suivante, puis attend indéfiniment que l'utilisateur termine la
+    // connexion dans un navigateur. Son entrée standard fermée n'y change rien —
+    // il attend un rappel HTTP, pas une saisie.
+    //
+    // Sans cette détection, le premier lancement d'un utilisateur jamais
+    // authentifié donnait : quinze minutes de silence, puis le chien de garde
+    // qui tue zotify en parlant de blocage. La vraie information — « cliquez ici
+    // pour vous connecter » — était dans le flux, mais rien ne la distinguait.
+    //
+    // On la fait remonter : l'adresse part vers l'interface, où elle devient un
+    // lien cliquable. Si l'utilisateur clique et termine la connexion pendant
+    // que zotify attend encore, celui-ci enregistre ses identifiants et le
+    // téléchargement REPREND tout seul — c'est le scénario idéal, et il ne
+    // demande rien d'autre que de laisser zotify vivre.
+    let connexionRequise = false;
+    let urlConnexion = null;
+
+    const détecterDemandeConnexion = (texte) => {
+      if (!connexionRequise && /link to login/i.test(texte)) {
+        connexionRequise = true;
+        journal.avertir(
+          'zotify demande une connexion à votre compte Spotify. Une adresse de ' +
+            'connexion va s’afficher : ouvrez-la dans votre navigateur pour ' +
+            'autoriser le téléchargement.',
+        );
+        return;
+      }
+      if (connexionRequise && !urlConnexion && /^https?:\/\/\S+$/i.test(texte)) {
+        urlConnexion = texte;
+        journal.info(`Adresse de connexion Spotify : ${urlConnexion}`);
+        surÉvénement({ type: 'connexion-requise', url: urlConnexion });
+      }
+    };
+
     const réarmerChien = () => {
       clearTimeout(chien);
       chien = setTimeout(() => {
@@ -531,11 +569,20 @@ export function télécharger({
         // Même raison que pour un arrêt demandé : ce que zotify écrivait à cet
         // instant est tronqué, et il faut pouvoir le reconnaître ensuite.
         instantArrêt = Date.now();
-        journal.erreur(
-          `zotify n’a rien produit depuis ${Math.round(silenceMaximalMs / 60000)} minutes : ` +
-            'il est considéré comme bloqué et arrêté. Les morceaux déjà téléchargés ' +
-            'sont conservés, les autres seront repris à la prochaine synchronisation.',
-        );
+        if (connexionRequise) {
+          journal.erreur(
+            'zotify attendait une connexion à votre compte Spotify qui n’est pas ' +
+              'venue : il est arrêté. Ouvrez l’adresse de connexion affichée plus ' +
+              'haut dans le journal, ou lancez zotify une fois dans le Terminal, ' +
+              'puis relancez la synchronisation.',
+          );
+        } else {
+          journal.erreur(
+            `zotify n’a rien produit depuis ${Math.round(silenceMaximalMs / 60000)} minutes : ` +
+              'il est considéré comme bloqué et arrêté. Les morceaux déjà téléchargés ' +
+              'sont conservés, les autres seront repris à la prochaine synchronisation.',
+          );
+        }
         surÉvénement({ type: 'expiration' });
         processus.kill('SIGTERM');
         setTimeout(() => {
@@ -554,6 +601,7 @@ export function télécharger({
       if (lignes.length > 2000) lignes.shift();
       surÉvénement(événementDeLigne(classée));
       if (classée.type === 'erreur') journal.avertir(`zotify : ${ligne}`);
+      détecterDemandeConnexion(classée.texte);
     };
 
     réarmerChien();
@@ -670,6 +718,11 @@ export function télécharger({
         suspects,
         erreurs,
         lignes,
+        // La demande de connexion remonte jusqu'à la synchronisation : c'est
+        // elle qui décide d'annuler le reste de l'exécution avec un message
+        // clair, plutôt que de laisser chaque playlist échouer à l'identique.
+        connexionRequise,
+        urlConnexion,
         duréeMs: Date.now() - débutMs,
       });
     });

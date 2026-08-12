@@ -405,6 +405,22 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
       bilan.nbErreurs += résultat.erreurs?.length ?? 0;
       if (résultat.interrompu) bilan.interrompu = true;
 
+      // zotify a demandé une connexion Spotify et rien n'est arrivé : chaque
+      // playlist suivante échouerait exactement pareil, en payant à chaque fois
+      // le délai du chien de garde. On annule tout de suite, en disant quoi
+      // faire. Si l'utilisateur a cliqué le lien à temps, des fichiers sont
+      // arrivés et on ne passe pas ici.
+      if (résultat.connexionRequise && nbNouveaux === 0) {
+        bilan.échec =
+          'zotify n’est pas connecté à votre compte Spotify. Ouvrez l’adresse de ' +
+          'connexion affichée dans le journal (onglet Journal), autorisez l’accès, ' +
+          'puis relancez la synchronisation. Si le lien a expiré, lancez zotify une ' +
+          'fois dans le Terminal pour vous authentifier.';
+        journal.erreur(bilan.échec);
+        diffuser({ type: 'synchro-echec', message: bilan.échec });
+        break;
+      }
+
       for (const erreur of résultat.erreurs ?? []) {
         // Plafonné : une playlist qui échoue en boucle ne doit pas faire enfler
         // le fichier d'état jusqu'à le rendre illisible.

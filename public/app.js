@@ -784,6 +784,40 @@ function écouterÉvénements() {
       return;
     }
 
+    if (événement.type === 'connexion-requise') {
+      // zotify attend que l'utilisateur autorise l'accès à son compte Spotify.
+      // L'adresse doit être CLIQUABLE — un non-développeur ne va pas la
+      // recopier depuis un journal — et rester affichée : contrairement aux
+      // notifications ordinaires, celle-ci n'a pas le droit de disparaître
+      // toute seule au bout de quelques secondes.
+      //
+      // Construite en DOM, jamais en HTML : l'adresse vient de la sortie d'un
+      // sous-processus, elle ne doit pas pouvoir injecter quoi que ce soit.
+      if (!/^https?:\/\//.test(événement.url || '')) return;
+      if ($('#note-connexion-spotify')) return; // déjà affichée
+
+      const élément = document.createElement('div');
+      élément.className = 'notification erreur';
+      élément.id = 'note-connexion-spotify';
+
+      const texte = document.createElement('span');
+      texte.textContent = 'zotify doit se connecter à votre compte Spotify — ';
+      const lien = document.createElement('a');
+      lien.href = événement.url;
+      lien.target = '_blank';
+      lien.rel = 'noopener';
+      lien.textContent = 'cliquez ici pour autoriser';
+      élément.append(texte, lien, document.createTextNode('. Le téléchargement reprendra tout seul.'));
+      $('#notes').append(élément);
+      return;
+    }
+
+    if (['synchro-fin', 'synchro-echec'].includes(événement.type)) {
+      // La fenêtre de connexion est fermée : le bandeau ne doit pas survivre à
+      // l'exécution qui l'a affiché — le lien qu'il porte est mort.
+      $('#note-connexion-spotify')?.remove();
+    }
+
     if (événement.type === 'export-progres') {
       // L'export sonde chaque fichier de la bibliothèque : sur une grosse
       // collection, ça prend des minutes. Un compteur qui avance vaut mille

@@ -315,6 +315,77 @@ test('le dossier des incomplets n’est pas balayé par ce nettoyage', async () 
   }
 });
 
+// ---------------------------------------------------------------------------
+// La demande de connexion Spotify
+// ---------------------------------------------------------------------------
+//
+// RELEVÉ DANS LE CODE SOURCE DE ZOTIFY. Sans identifiants enregistrés, il ne
+// s'arrête pas : il affiche « Click on the following link to login: »,
+// l'adresse d'autorisation sur la ligne suivante, puis attend indéfiniment un
+// rappel HTTP. Son entrée standard fermée n'y change rien.
+//
+// Sans détection, le premier lancement d'un utilisateur jamais authentifié
+// donnait quinze minutes de silence puis un message parlant de blocage. La
+// vraie information — l'adresse à ouvrir — était dans le flux, noyée.
+//
+// Ces tests passent par un VRAI sous-processus (node joue le rôle de zotify) :
+// c'est le chaînage complet qui est vérifié, pas une fonction isolée.
+
+test('la demande de connexion est détectée et l’adresse remonte', async () => {
+  const { télécharger } = await import('../src/zotify.js');
+  const racine = dossierTemporaire();
+  try {
+    const script = [
+      "console.log('Click on the following link to login:')",
+      "console.log('https://accounts.spotify.com/authorize?client_id=abc')",
+    ].join(';');
+
+    const événements = [];
+    const résultat = await télécharger({
+      commande: process.execPath,
+      arguments: ['-e', script],
+      dossierRacine: racine,
+      surÉvénement: (é) => événements.push(é),
+    });
+
+    assert.equal(résultat.connexionRequise, true);
+    assert.match(résultat.urlConnexion, /^https:\/\/accounts\.spotify\.com/);
+
+    // L'interface reçoit l'événement avec l'adresse : c'est lui qui devient le
+    // lien cliquable.
+    const émis = événements.find((é) => é.type === 'connexion-requise');
+    assert.ok(émis, 'aucun événement de connexion émis');
+    assert.equal(émis.url, résultat.urlConnexion);
+  } finally {
+    fs.rmSync(racine, { recursive: true, force: true });
+  }
+});
+
+test('une sortie ordinaire ne déclenche aucune fausse demande de connexion', async () => {
+  // Le pendant : un morceau dont le titre contient « login » ou une adresse
+  // http ne doit pas faire surgir le bandeau de connexion.
+  const { télécharger } = await import('../src/zotify.js');
+  const racine = dossierTemporaire();
+  try {
+    const script = [
+      "console.log('Downloading Login to Paradise  45%')",
+      "console.log('https://open.spotify.com/track/abc')",
+    ].join(';');
+
+    const résultat = await télécharger({
+      commande: process.execPath,
+      arguments: ['-e', script],
+      dossierRacine: racine,
+      surÉvénement: () => {},
+    });
+
+    assert.equal(résultat.connexionRequise, false);
+    assert.equal(résultat.urlConnexion ?? null, null);
+  } finally {
+    fs.rmSync(racine, { recursive: true, force: true });
+  }
+});
+
 test('nettoyerLigne laisse intact ce qui n’a rien à nettoyer', () => {
   // Un nettoyage trop gourmand abîmerait les titres : accents, tirets, points
   // d'exclamation et parenthèses doivent survivre tels quels.
