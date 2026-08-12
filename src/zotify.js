@@ -40,6 +40,7 @@ const OPTIONS_CANDIDATES = {
   attente: ['bulk-wait-time', 'download-delay', 'wait-time'],
   ignorerExistants: ['skip-existing', 'skip-previously-downloaded', 'no-overwrite'],
   interfaceSimple: ['standard-interface', 'no-interactive', 'simple-output'],
+  sansArchiveDossier: ['disable-directory-archives'],
 };
 
 /** Valeurs de qualité, telles que zotify les attend. */
@@ -112,6 +113,30 @@ export function construireArguments({ url, config, attente, capacités, modèle,
   // Options sans valeur : on les passe seulement si elles existent.
   const ignorer = optionSupportée('ignorerExistants', déclarées);
   if (ignorer) arguments_.push(`--${ignorer}`);
+
+  // LE DISQUE DOIT FAIRE FOI, Y COMPRIS POUR ZOTIFY.
+  //
+  // Par défaut, zotify tient un fichier d'archive par dossier et décide d'après
+  // LUI qu'un morceau est déjà là — pas d'après la présence du fichier. Relevé
+  // dans son code source : « --skip-existing » ne consulte le disque que si les
+  // archives de dossier sont désactivées.
+  //
+  // Cette différence casse le principe fondateur de Zotijean. Un morceau écarté
+  // parce qu'il était tronqué, ou supprimé à la main par l'utilisateur, reste
+  // inscrit dans l'archive : zotify le saute indéfiniment, et le titre ne
+  // revient jamais. La mise à l'écart des fichiers incomplets ne servait donc à
+  // rien tant que cette option n'était pas passée.
+  //
+  // On la désactive pour que la seule question posée soit « le fichier est-il
+  // là ? » — celle à laquelle toute l'application répond déjà.
+  const sansArchive = optionSupportée('sansArchiveDossier', déclarées);
+  if (sansArchive) arguments_.push(`--${sansArchive}`);
+  else {
+    nonAppliqués.push(
+      'la reprise des morceaux effacés ou incomplets (votre version de zotify ' +
+      'garde sa propre liste et ne relit pas le dossier)',
+    );
+  }
 
   const supplémentaires = String(config.zotify?.argumentsSupplémentaires || '').trim();
   if (supplémentaires) {

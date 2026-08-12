@@ -350,8 +350,15 @@ const CONFIG = {
 };
 
 test('construireArguments n’utilise que les options réellement supportées', () => {
+  // « disable-directory-archives » figure ici parce qu'une version à jour de
+  // zotify la propose, et que Zotijean en a besoin : sans elle, zotify décide
+  // qu'un morceau est déjà là d'après sa propre liste plutôt que d'après le
+  // disque. Voir le test dédié plus bas.
   const capacités = {
-    options: ['help', 'root-path', 'output', 'download-quality', 'audio-format', 'bulk-wait-time'],
+    options: [
+      'help', 'root-path', 'output', 'download-quality', 'audio-format',
+      'bulk-wait-time', 'skip-existing', 'disable-directory-archives',
+    ],
   };
   const { arguments: args, nonAppliqués } = construireArguments({
     url: 'https://open.spotify.com/playlist/abc',
@@ -389,8 +396,42 @@ test('construireArguments signale les réglages qu’il n’a pas pu appliquer',
 
   assert.ok(!args.some((a) => a.includes('quality')));
   assert.ok(!args.some((a) => a.includes('format')));
-  assert.equal(nonAppliqués.length, 3); // qualité, format, rythme
+  // Qualité, format, rythme — et la reprise des morceaux effacés, qui exige une
+  // option que cette vieille version n'a pas.
+  assert.equal(nonAppliqués.length, 4);
   assert.ok(nonAppliqués.some((m) => m.includes('qualité')));
+});
+
+test('sans l’option d’archive, l’utilisateur est prévenu que la reprise ne marchera pas', () => {
+  // RELEVÉ DANS LE CODE SOURCE DE ZOTIFY. Par défaut, il tient un fichier
+  // d'archive par dossier et décide d'après LUI qu'un morceau est déjà là — pas
+  // d'après la présence du fichier.
+  //
+  // Ça casse le principe fondateur de Zotijean, « le disque fait foi ». Un
+  // morceau écarté parce qu'il était tronqué, ou effacé à la main, reste inscrit
+  // dans l'archive : zotify le saute indéfiniment et le titre ne revient jamais.
+  //
+  // Quand l'option existe, on la passe. Quand elle manque, on le dit plutôt que
+  // de laisser croire à une reprise qui n'aura pas lieu.
+  const àJour = {
+    options: ['help', 'root-path', 'output', 'skip-existing', 'disable-directory-archives'],
+  };
+  const { arguments: args, nonAppliqués } = construireArguments({
+    url: 'u', config: CONFIG, attente: 30, capacités: àJour,
+    modèle: '{song_name}', dossierRacine: '/M',
+  });
+  assert.ok(args.includes('--disable-directory-archives'), 'option non passée');
+  assert.ok(!nonAppliqués.some((m) => m.includes('effacés')), 'avertissement injustifié');
+
+  const ancien = { options: ['help', 'root-path', 'output', 'skip-existing'] };
+  const vieux = construireArguments({
+    url: 'u', config: CONFIG, attente: 30, capacités: ancien,
+    modèle: '{song_name}', dossierRacine: '/M',
+  });
+  assert.ok(
+    vieux.nonAppliqués.some((m) => m.includes('effacés')),
+    'la limite n’est pas signalée à l’utilisateur',
+  );
 });
 
 test('construireArguments accepte des variantes de noms d’options', () => {
