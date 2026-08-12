@@ -56,6 +56,10 @@ function assainir(config) {
 
   corriger('qualité.niveau', (v) => !!trouver(QUALITÉS, v), 'tres_elevee');
   corriger('qualité.format', (v) => !!trouver(FORMATS, v), 'copie');
+  corriger('qualité.paroles', (v) => typeof v === 'boolean', false);
+  // Même garde pour l'autre booléen du fichier : une chaîne « true » venue d'une
+  // édition manuelle serait vraie pour un test naïf et fausse pour un autre.
+  corriger('organisation.écrireM3U', (v) => typeof v === 'boolean', true);
   corriger('organisation.schéma', (v) => !!trouver(SCHÉMAS, v), 'par_playlist');
   corriger('retrait.politique', (v) => !!trouver(POLITIQUES_RETRAIT, v), 'conserver');
   corriger(

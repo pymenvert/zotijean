@@ -545,6 +545,38 @@ test('les options booléennes reçoivent une valeur, sinon l’URL se fait avale
     'l’URL doit rester le dernier argument, jamais la valeur d’une option');
 });
 
+test('les paroles suivent le choix de l’utilisateur, jamais le défaut de zotify', () => {
+  // zotify écrit d'office un fichier .lrc à côté de chaque morceau. C'est un
+  // choix arbitrable, donc un réglage — et la valeur part EXPLICITEMENT dans
+  // les deux sens : s'appuyer sur son défaut reviendrait à l'imposer.
+  const AIDE = '--lyrics-to-file LYRICS_TO_FILE';
+  const capacités = { options: ['root-path', 'output', 'lyrics-to-file'], aide: AIDE };
+  const config = (paroles) => ({
+    ...CONFIG, qualité: { niveau: 'tres_elevee', format: 'copie', paroles },
+  });
+
+  const sans = construireArguments({
+    url: 'U', attente: 30, capacités, modèle: '{song_name}', dossierRacine: '/M',
+    config: config(false),
+  });
+  assert.equal(sans.arguments[sans.arguments.indexOf('--lyrics-to-file') + 1], 'false');
+
+  const avec = construireArguments({
+    url: 'U', attente: 30, capacités, modèle: '{song_name}', dossierRacine: '/M',
+    config: config(true),
+  });
+  assert.equal(avec.arguments[avec.arguments.indexOf('--lyrics-to-file') + 1], 'true');
+
+  // Vieux fork à drapeau nu : il ne sait pas dire « non », donc on ne pousse le
+  // drapeau que pour dire « oui » — l'absence vaut refus.
+  const vieux = { options: ['root-path', 'output', 'lyrics-to-file'], aide: '--lyrics-to-file    Save lyrics' };
+  const refus = construireArguments({
+    url: 'U', attente: 30, capacités: vieux, modèle: '{song_name}', dossierRacine: '/M',
+    config: config(false),
+  });
+  assert.equal(refus.arguments.includes('--lyrics-to-file'), false);
+});
+
 test('une aide tronquée avant l’option ne fait pas revenir le drapeau nu', () => {
   // Le texte d'aide est tronqué par le diagnostic, et le fork vivant déclare
   // une centaine d'options : la coupure peut tomber avant « --skip-existing ».

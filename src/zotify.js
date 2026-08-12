@@ -41,6 +41,7 @@ const OPTIONS_CANDIDATES = {
   ignorerExistants: ['skip-existing', 'skip-previously-downloaded', 'no-overwrite'],
   interfaceSimple: ['standard-interface', 'no-interactive', 'simple-output'],
   sansArchiveDossier: ['disable-directory-archives'],
+  paroles: ['lyrics-to-file', 'download-lyrics'],
 };
 
 /** Valeurs de qualité, telles que zotify les attend. */
@@ -162,6 +163,28 @@ export function construireArguments({ url, config, attente, capacités, modèle,
   };
 
   pousserBooléen('ignorerExistants');
+
+  // LES PAROLES SONT UN CHOIX DE L'UTILISATEUR, PAS DU TÉLÉCHARGEUR.
+  //
+  // zotify écrit d'office un fichier de paroles synchronisées (.lrc) à côté de
+  // chaque morceau. Dans une bibliothèque DJ, c'est du bruit — donc un réglage,
+  // désactivé par défaut. On passe la valeur explicitement dans les deux sens :
+  // s'appuyer sur son défaut reviendrait à l'imposer.
+  //
+  // Le style « drapeau nu » ne sait pas dire « non » : quand il est actif chez
+  // un vieux fork, on ne pousse le drapeau que si l'utilisateur veut les
+  // paroles, et son absence vaut refus.
+  const parolesVoulues = config.qualité?.paroles === true;
+  const nomParoles = optionSupportée('paroles', déclarées);
+  if (nomParoles) {
+    if (attendUneValeur(nomParoles)) {
+      arguments_.push(`--${nomParoles}`, parolesVoulues ? 'true' : 'false');
+    } else if (parolesVoulues) {
+      arguments_.push(`--${nomParoles}`);
+    }
+  } else if (parolesVoulues) {
+    nonAppliqués.push('les paroles synchronisées (votre version de zotify ne les propose pas)');
+  }
 
   // LE DISQUE DOIT FAIRE FOI, Y COMPRIS POUR ZOTIFY.
   //

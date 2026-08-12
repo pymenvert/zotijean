@@ -388,6 +388,8 @@ async function enregistrerConfig(patch) {
 function rendreQualité() {
   const { qualités, formats, noteQualité } = état.catalogue;
 
+  $('#bascule-paroles').checked = état.config.qualité.paroles === true;
+
   remplir($('#choix-qualite'), qualités.map((q) =>
     fabriquerOption({
       ...q,
@@ -1055,6 +1057,13 @@ $('#form-playlist').addEventListener('submit', async (événement) => {
     erreur.textContent = problème.message;
     erreur.hidden = false;
   }
+});
+
+$('#bascule-paroles').addEventListener('change', async (événement) => {
+  await enregistrerConfig({ qualité: { paroles: événement.target.checked } });
+  noter(événement.target.checked
+    ? 'Les paroles seront enregistrées à côté des morceaux.'
+    : 'Aucun fichier de paroles ne sera écrit.', 'succes');
 });
 
 $('#bascule-planif').addEventListener('change', async (événement) => {

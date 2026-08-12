@@ -428,6 +428,11 @@ export function configParDéfaut() {
     qualité: {
       niveau: 'tres_elevee',
       format: 'copie',
+      // Désactivé par défaut : dans une bibliothèque DJ, un fichier de paroles
+      // à côté de chaque morceau est du bruit que personne n'a demandé. Le
+      // téléchargeur, lui, les écrit d'office — c'est un choix qu'on retire à
+      // l'utilisateur si on ne l'expose pas.
+      paroles: false,
     },
     organisation: {
       schéma: 'par_playlist',
