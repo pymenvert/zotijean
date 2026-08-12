@@ -122,9 +122,9 @@ Sur le Mac, `Zotijean - Mac.command` fait la même chose par double-clic.
 
 ## État du projet
 
-**Version 1.0.5 publiée** (12 août 2026). Le moteur, l'interface et la coquille de barre
+**Version 1.0.6 publiée** (12 août 2026). Le moteur, l'interface et la coquille de barre
 des menus macOS sont écrits ; le paquet embarque Node, Python, ffmpeg et zotify, tous en
-arm64. 309 tests. Voir `CHANGELOG.md`.
+arm64. 317 tests. Voir `CHANGELOG.md`.
 
 ### La leçon de la 1.0.5 : confronter, pas supposer
 
@@ -199,8 +199,13 @@ frontière à garder en tête avant d'affirmer que quelque chose « marche » :
 
 ### Reste à faire
 
-- **Écrire les ISRC dans les tags des fichiers** (le « pont sans perte »). Ils sont déjà
-  récupérés et affichés, mais pas écrits : réécrire un fichier détruirait les points de
-  repère et les grilles rythmiques que Serato stocke à l'intérieur. Il faut une passe qui
-  préserve les blocs de tags inconnus.
-- Quelques contrastes du thème clair, relevés lors de la revue visuelle.
+- **Écrire les ISRC dans les tags des fichiers** — la moitié restante du « pont sans
+  perte ». Depuis la 1.0.6, la variable `{isrc}` met déjà l'identifiant dans le NOM du
+  fichier sans rien réécrire ; c'est le chemin sûr. Écrire dans les étiquettes exigerait
+  de réécrire le fichier, où Serato stocke points de repère et grilles rythmiques : à ne
+  faire qu'AVEC l'utilisateur, sur ses vrais fichiers, en commençant par une simulation.
+- **Brancher la politique de retrait** (Archiver / Corbeille) : code écrit et testé,
+  volontairement non câblé — déplacer ou jeter des fichiers de la bibliothèque se décide
+  avec l'utilisateur. La note de l'interface dit la vérité sur cet état.
+- Les contrastes des deux thèmes ont été mesurés et corrigés en 1.0.2 ; l'harmonie
+  générale des teintes n'a jamais été REGARDÉE par un humain.
