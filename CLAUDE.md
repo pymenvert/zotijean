@@ -108,15 +108,44 @@ Ces points ont été vérifiés sur sources primaires en août 2026. Ils contrai
 
 ---
 
+## Profil projet
+
+Bloc lu par les commandes `/flow:*`. Chaque commande y figurant a été exécutée et
+vérifiée le 16 août 2026 — jamais écrite au jugé.
+
+- **type** : web (moteur local + interface dans le navigateur)
+- **stack** : Node.js 24, runner de test natif, zéro dépendance npm
+- **format** : aucun
+- **lint** : aucun
+- **typecheck** : aucun
+- **test** : `node --test` → 326 tests, 315 verts, 11 ignorés
+- **build** : aucun en local ; le paquet est construit par
+  `.github/workflows/publication.yml`
+- **run** : `node server.js` → http://127.0.0.1:8787
+- **critique** : `chemins`, `correspondance`, `organisation`, `conversion`,
+  `planificateur` — une panne y détruit ou reperd des fichiers
+
+---
+
 ## Commandes
 
 ```
 node server.js            # démarre le moteur + l'interface web sur http://127.0.0.1:8787
 node server.js --port 9000
-node --test tests/        # lance les tests (runner natif de Node, aucune dépendance)
+node --test               # lance les tests (runner natif de Node, aucune dépendance)
 ```
 
 Sur le Mac, `Zotijean - Mac.command` fait la même chose par double-clic.
+
+**`node --test tests/` ne fonctionne plus.** Sous Node 24, passer le dossier ne
+découvre plus les fichiers : la commande rapporte un test unique et un échec, ce qui
+donne l'illusion d'une suite cassée alors qu'elle est verte. Utiliser `node --test`
+sans argument, comme le script `test` du `package.json`.
+
+**Lancer le serveur démarre le planificateur** (`planificateur.démarrer`, à la fin de
+`server.js`), qui peut déclencher une synchronisation réelle. Sur le PC de
+développement c'est sans effet — `zotify` n'y est pas installé — mais sur le Mac,
+lancer le serveur n'est pas un geste neutre.
 
 ---
 
