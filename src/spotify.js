@@ -510,16 +510,28 @@ export async function contenuPlaylist(idPlaylist) {
  *   et les compter ferait apparaître des morceaux éternellement manquants.
  */
 export function normaliserPistes(items) {
-  return (items || [])
+  // Un corps d'erreur de l'API à la place d'un tableau ne doit pas lever plus
+  // loin que cette ligne.
+  return (Array.isArray(items) ? items : [])
     .filter((i) => i?.track?.id && !i.is_local && (i.track.type ?? 'track') === 'track')
     .map((i, index) => {
       const t = i.track;
+      // Le trou peut être À L'INTÉRIEUR de la liste des artistes, pas
+      // seulement à la place de la piste : un « artists: [null] » plantait la
+      // lecture entière, et l'analyse Spotify de la playlist restait dégradée
+      // pour toujours — le rattrapage du catch en amont n'a aucun moyen de
+      // guérir. Chaque maillon est donc filtré, y compris les objets sans nom
+      // qui fabriqueraient des empreintes « undefined ».
+      const artistes = (t.artists || [])
+        .filter(Boolean)
+        .map((a) => a.name)
+        .filter(Boolean);
       return {
         id: t.id,
         position: index + 1,
         titre: t.name,
-        artiste: t.artists?.[0]?.name ?? '',
-        artistes: (t.artists || []).map((a) => a.name),
+        artiste: artistes[0] ?? '',
+        artistes,
         album: t.album?.name ?? '',
         année: (t.album?.release_date || '').slice(0, 4),
         numéroPiste: t.track_number ?? 0,

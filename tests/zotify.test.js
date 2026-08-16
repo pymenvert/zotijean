@@ -625,6 +625,70 @@ test('chaque option retombe sur SON style par défaut, pas sur un style unique',
   assert.equal(args.at(-1), 'URL');
 });
 
+test('un metavar sans capitales ne fait pas revenir le drapeau nu', () => {
+  // argparse affiche les « choices » entre accolades (« --skip-existing
+  // {true,false} ») et un metavar personnalisé peut être « <bool> » : aucune
+  // capitale. Conclure « pur drapeau » sur cette simple absence pousserait
+  // l'option nue — et l'URL serait avalée. L'ambiguïté doit retomber sur le
+  // style du fork embarqué, jamais sur le sens destructeur.
+  for (const aide of [
+    '--root-path ROOT_PATH\n--skip-existing {true,false}',
+    '--root-path ROOT_PATH\n--skip-existing <bool>',
+  ]) {
+    const { arguments: args } = construireArguments({
+      url: 'URL', config: CONFIG, attente: 30,
+      capacités: { options: ['root-path', 'skip-existing'], aide },
+      modèle: '{song_name}', dossierRacine: '/M',
+    });
+    assert.equal(args[args.indexOf('--skip-existing') + 1], 'true',
+      `drapeau nu conclu sur : ${aide}`);
+    assert.equal(args.at(-1), 'URL');
+  }
+});
+
+test('une aide coupée en pleine déclaration ne fait pas revenir le drapeau nu', () => {
+  // Le diagnostic coupe l'aide sur une fin de ligne, mais la liste des options
+  // lit le texte COMPLET : une option peut donc être « déclarée » sans que son
+  // style soit lisible. « includes » la trouve, le metavar manque — et
+  // l'ancienne logique concluait « drapeau nu », URL avalée, en silence.
+  const capacités = {
+    options: ['root-path', 'skip-existing'],
+    aide: '--root-path ROOT_PATH\n--skip-existing', // metavar emporté par la coupure
+  };
+  const { arguments: args } = construireArguments({
+    url: 'URL', config: CONFIG, attente: 30,
+    capacités, modèle: '{song_name}', dossierRacine: '/M',
+  });
+  assert.equal(args[args.indexOf('--skip-existing') + 1], 'true');
+  assert.equal(args.at(-1), 'URL');
+});
+
+test('« -- » sépare toujours les options de l’URL : l’avalement devient une erreur visible', () => {
+  // Vérifié contre le même analyseur d'arguments que le fork : tout ce qui suit
+  // « -- » est un positionnel. Si une option à valeur arrive nue juste avant —
+  // style mal lu, aide tronquée, ou argument supplémentaire saisi par
+  // l'utilisateur — argparse échoue avec une ERREUR VISIBLE au lieu d'avaler
+  // l'URL en silence. La différence : « aucune nouveauté » affiché pour
+  // toujours, contre un message d'erreur dès la première synchronisation.
+  const capacités = { options: ['root-path', 'output', 'skip-existing'] };
+
+  const nominal = construireArguments({
+    url: 'URL', config: CONFIG, attente: 30,
+    capacités, modèle: '{song_name}', dossierRacine: '/M',
+  });
+  assert.equal(nominal.arguments.at(-1), 'URL');
+  assert.equal(nominal.arguments.at(-2), '--', 'la ceinture de sécurité manque');
+
+  // Un « -- » isolé saisi par l'utilisateur deviendrait un positionnel après le
+  // nôtre — donc une adresse à télécharger. Il est écarté.
+  const avecTiret = construireArguments({
+    url: 'URL', attente: 30, capacités, modèle: '{song_name}', dossierRacine: '/M',
+    config: { ...CONFIG, zotify: { commande: 'zotify', argumentsSupplémentaires: '--print-errors true --' } },
+  });
+  const tirets = avecTiret.arguments.filter((a) => a === '--');
+  assert.equal(tirets.length, 1, 'le « -- » de l’utilisateur a survécu et deviendrait une adresse');
+});
+
 test('une aide tronquée avant l’option ne fait pas revenir le drapeau nu', () => {
   // Le texte d'aide est tronqué par le diagnostic, et le fork vivant déclare
   // une centaine d'options : la coupure peut tomber avant « --skip-existing ».

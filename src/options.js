@@ -315,17 +315,19 @@ export const SOURCES_APRÈS_CONVERSION = [
     id: 'archiver',
     libellé: 'Les déplacer dans « _Archive »',
     explication:
-      "Les dossiers de playlists ne contiennent plus que les fichiers convertis, ce qui " +
-      "évite que votre logiciel DJ ou votre serveur média voie deux fois le même morceau. " +
-      "Les originaux restent récupérables.",
+      "SANS EFFET pour l'instant, et mieux vaut le dire : le téléchargeur repère les " +
+      "morceaux déjà pris en regardant les fichiers présents. Déplacer l'Ogg d'origine " +
+      "lui ferait tout retélécharger à chaque synchronisation — 17 heures à chaque " +
+      "fois. Tant que ce n'est pas résolu, les fichiers sont conservés quoi qu'il " +
+      "arrive, et l'app vous le rappelle après chaque conversion.",
   },
   {
     id: 'corbeille',
     libellé: 'Les mettre à la corbeille',
     explication:
-      "Récupère toute la place, au prix d'un retéléchargement complet si vous changez " +
-      "de format un jour. Les fichiers restent dans la corbeille tant que vous ne la " +
-      "videz pas.",
+      "SANS EFFET pour l'instant, pour la même raison que l'archivage : retirer les " +
+      "fichiers d'origine déclencherait leur retéléchargement complet à chaque " +
+      "synchronisation. Les fichiers sont conservés quoi qu'il arrive.",
   },
 ];
 

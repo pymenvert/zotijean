@@ -24,7 +24,7 @@ import {
 import { fichierVerrou, assurerDossier, dossierDonnées, volumeMonté, espaceLibre } from './chemins.js';
 import { journal } from './journal.js';
 import { diagnostiquer, GRAVITÉ } from './diagnostic.js';
-import { construireArguments, télécharger } from './zotify.js';
+import { construireArguments, télécharger, saitReprendreSansLeFichier } from './zotify.js';
 import { modèleActif } from './organisation.js';
 import { nécessiteConversion, convertirLot, PROFILS } from './conversion.js';
 import { exporterDepuisConfig } from './exports-dj.js';
@@ -651,9 +651,13 @@ export async function finaliserPlaylist({
     // débit de Spotify. On n'applique la politique que si zotify tient un
     // journal de ce qu'il a déjà téléchargé, indépendant des fichiers présents.
     let politiqueSources = c.retrait?.sourcesAprèsConversion ?? 'conserver';
-    const journalisePrécédents = (capacités?.options || []).some((o) =>
-      /previous|already|archive/i.test(o),
-    );
+    // La réponse vient du PILOTE, qui sait ce qu'il passe réellement à zotify.
+    // L'ancienne heuristique sur les noms d'options (/previous|already|archive/)
+    // était satisfaite par « disable-directory-archives » — l'option passée pour
+    // DÉSACTIVER le journal ouvrait le garde-fou censé en dépendre, et le
+    // retrait des Ogg aurait déclenché le retéléchargement complet qu'il devait
+    // empêcher.
+    const journalisePrécédents = saitReprendreSansLeFichier();
 
     if (politiqueSources !== 'conserver' && !journalisePrécédents) {
       résultat.sourcesNonTraitées =

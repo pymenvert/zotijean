@@ -43,12 +43,30 @@ const ORNEMENTS = [
   'original mix', 'extended mix', 'edit',
 ];
 
+/**
+ * Motif d'un ISRC : deux lettres de pays, trois alphanumériques, sept chiffres.
+ *
+ * POURQUOI IL VIT ICI. Depuis que la variable {isrc} existe dans le modèle de
+ * nommage, un fichier peut porter son identifiant dans son nom — mais les
+ * empreintes des pistes (titre + artiste Spotify) ne le contiennent jamais.
+ * Sans traitement, l'identifiant restait dans l'empreinte du fichier et AUCUNE
+ * intersection n'était possible : la bibliothèque entière devenait
+ * « éternellement manquante », re-vérifiée à ~30 s par titre à chaque cycle.
+ * La fonctionnalité cassait précisément ce qu'elle promettait de fiabiliser.
+ */
+const MOTIF_ISRC = /\b[a-z]{2}[a-z0-9]{3}\d{7}\b/g;
+
 /** Forme courte d'un titre, débarrassée de ses ornements. */
 export function noyau(titre) {
   let texte = normaliser(titre);
   for (const ornement of ORNEMENTS) {
     texte = texte.replace(new RegExp(`\\b${ornement}\\b`, 'g'), ' ');
   }
+  // L'ISRC est retiré des DEUX côtés de la comparaison — le même noyau sert aux
+  // titres de pistes et aux noms de fichiers, donc un titre qui contiendrait
+  // par extraordinaire un mot en forme d'ISRC reste comparable : il est ignoré
+  // symétriquement.
+  texte = texte.replace(MOTIF_ISRC, ' ');
   const réduit = texte.replace(/\s+/g, ' ').trim();
 
   // Un titre RÉELLEMENT nommé « Edit » ou « Deluxe » se viderait entièrement,
@@ -95,8 +113,25 @@ export function empreintes(piste) {
  * Empreintes tirées d'un nom de fichier.
  * On retire l'extension et le numéro de tête, qui varient selon le modèle.
  */
-export function empreintesFichier(chemin) {
+/**
+ * Les ISRC portés par un nom de fichier, en majuscules.
+ *
+ * C'est la clé de jointure de la passe 0 de `confronter` : un identifiant
+ * international dans le nom rattache le fichier à sa piste avec une certitude
+ * qu'aucune comparaison de titres n'atteindra.
+ */
+export function isrcsDuNom(chemin) {
   const base = path.basename(chemin, path.extname(chemin));
+  return [...base.toLowerCase().matchAll(MOTIF_ISRC)].map((m) => m[0].toUpperCase());
+}
+
+export function empreintesFichier(chemin) {
+  const base = path.basename(chemin, path.extname(chemin))
+    // zotify substitue « None » quand le morceau n'a pas d'ISRC, et l'aperçu de
+    // l'app affiche « ISRC-inconnu ». Ces bouchons ne font pas partie du titre :
+    // les garder dans l'empreinte ferait échouer le rapprochement pour tous les
+    // morceaux SANS identifiant — l'inverse exact du service attendu.
+    .replace(/\[(?:none|isrc-inconnu)\]/gi, ' ');
   const sansNuméro = base.replace(/^\d{1,3}\s*[-._]\s*/, '');
   const normalisé = noyau(sansNuméro);
 
@@ -149,12 +184,40 @@ export function confronter(pistes, fichiers) {
     return true;
   };
 
-  // DEUX PASSES, et l'ordre compte. On épuise d'abord les correspondances qui
+  // TROIS PASSES, et l'ordre compte : de la certitude vers l'approximation.
+  //
+  // PASSE 0 — L'ISRC. Un fichier dont le nom porte l'identifiant international
+  // de la piste lui appartient, point : deux morceaux distincts ne partagent
+  // jamais un ISRC. Cette passe est indispensable depuis que la variable
+  // {isrc} existe : l'identifiant dans le nom ne figure jamais dans les
+  // empreintes de titres, et sans cette jointure directe, chaque fichier ainsi
+  // nommé devenait « éternellement manquant ». Elle rend aussi le rapprochement
+  // PLUS sûr qu'avant : deux titres homonymes d'artistes homonymes se
+  // distinguent par leur identifiant.
+  const parIsrc = new Map();
+  for (const fichier of fichiers) {
+    for (const code of isrcsDuNom(fichier)) {
+      if (!parIsrc.has(code)) parIsrc.set(code, fichier);
+    }
+  }
+
+  const aprèsIsrc = [];
+  for (const piste of uniques) {
+    const fichier = piste.isrc ? parIsrc.get(String(piste.isrc).toUpperCase()) : null;
+    if (disponible(fichier)) {
+      présents.push({ piste, fichier });
+      fichiersReconnus.add(fichier);
+    } else {
+      aprèsIsrc.push(piste);
+    }
+  }
+
+  // PASSES 1 et 2 — les empreintes. On épuise d'abord les correspondances qui
   // portent l'artiste, donc fiables. Ne rapprocher que par le titre au premier
   // tour laisserait un morceau approximatif voler le fichier d'une
   // correspondance exacte traitée plus tard dans la liste.
   const restantes = [];
-  for (const piste of uniques) {
+  for (const piste of aprèsIsrc) {
     const { sûres, laxistes } = empreintes(piste);
     if (!attribuer(piste, sûres)) restantes.push({ piste, laxistes });
   }
