@@ -111,6 +111,16 @@ jobs:
           test -x "$APP/Contents/MacOS/Zotijean"                     || manque "Le binaire de l'application est absent."
           test -f "$APP/Contents/Resources/moteur/server.js"         || manque "Le moteur est absent."
           test -f "$APP/Contents/Resources/moteur/public/index.html" || manque "L'interface est absente."
+
+          # Les feuilles de style sont vérifiées une par une depuis que la
+          # politique de sécurité du contenu interdit les styles en ligne : une
+          # page dont la feuille manque ne s'affiche plus mal, elle s'affiche
+          # NUE. retour.css est le cas sensible — c'est la page qui annonce si la
+          # connexion à Spotify a abouti.
+          for feuille in app.css notice.css retour.css; do
+            test -f "$APP/Contents/Resources/moteur/public/$feuille" \
+              || manque "La feuille de style $feuille est absente : la page correspondante s'afficherait sans aucune mise en forme."
+          done
           test -x "$OUTILS/node/node"                                || manque "Node est absent : l'app exigerait une installation."
           test -x "$OUTILS/python/bin/python3"                       || manque "Python est absent : l'app exigerait une installation."
           test -d "$OUTILS/roues"                                    || manque "Le téléchargeur (zotify) est absent."

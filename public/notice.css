@@ -108,6 +108,9 @@
   h3 { margin: 0 0 .35rem; font-size: 1.02rem; font-weight: 650; letter-spacing: -.01em; }
   p  { margin: 0 0 .9rem; max-width: var(--mesure); }
   p:last-child { margin-bottom: 0; }
+  /* Paragraphe qui reprend juste après un bloc encadré — panneau, tableau : il
+     lui faut plus d'air que l'interligne courant, sinon il colle au cadre. */
+  p.apres-bloc { margin-top: 1.4rem; }
   strong { font-weight: 650; }
   a { color: var(--ambre); text-decoration-thickness: 1px; text-underline-offset: 3px; }
   a:focus-visible, button:focus-visible { outline: 2px solid var(--ambre); outline-offset: 3px; border-radius: 3px; }

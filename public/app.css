@@ -72,6 +72,12 @@
    vide restait sur l'accueil. */
 [hidden] { display: none !important; }
 
+/* La bibliothèque d'icônes est un <svg> de 0 × 0 qui ne sert qu'à définir des
+   <symbol>. Sorti du flux, il ne laisse pas une ligne vide en haut de la page.
+   On ne peut PAS le masquer par `display: none` : Safari cesse alors de résoudre
+   les <use> qui y renvoient, et toutes les icônes disparaissent. */
+.sprite { position: absolute; }
+
 body {
   margin: 0;
   background: var(--fond);
@@ -229,8 +235,15 @@ em { font-style: normal; }
   display: flex; flex-direction: column; gap: 13px;
 }
 .entete-carte { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+/* Groupe de commandes aligné dans un en-tête de carte (bascule « Suivre » et
+   bouton d'export du journal). */
+.barre-outils { display: flex; gap: 10px; align-items: center; }
 .aide { color: var(--texte-2); font-size: 13px; }
 .aide em { color: var(--texte); font-weight: 500; }
+/* Les étapes à suivre chez Spotify. Le retrait laisse la place aux numéros, que
+   `display: flex` conserve : la blockification d'un élément de liste garde son
+   marqueur. */
+.liste-etapes { padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
 
 .note {
   background: var(--accent-doux); border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
@@ -282,6 +295,14 @@ em { font-style: normal; }
   content: ''; position: absolute; inset: 3px; border-radius: 50%; background: var(--accent);
 }
 
+/* Rond = un seul choix dans la liste, carré = on peut en cocher plusieurs. La
+   forme n'est pas décorative : c'est la convention qui dit à l'utilisateur ce
+   qu'il a le droit de faire, et l'annoncer de travers coûte un aller-retour à
+   chaque fois. Les listes à choix multiple — playlists suivies, exports DJ —
+   portent donc `.carree`. */
+.puce.carree { border-radius: 5px; }
+.option.choisi .puce.carree::after { border-radius: 2px; }
+
 .option-corps { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .option-titre { font-weight: 570; font-size: 13.5px; display: flex; align-items: center; gap: 7px; }
 .option-explication { font-size: 12.5px; color: var(--texte-2); line-height: 1.5; }
@@ -317,6 +338,9 @@ input[type="text"]::placeholder { color: var(--texte-3); }
 
 .ligne-formulaire { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .ligne-formulaire input#champ-nom { flex: 0 1 170px; }
+/* Rangée détachée de ce qui la précède (le bouton d'enregistrement sous une
+   liste de cases à cocher). */
+.ligne-formulaire.espacee { margin-top: 10px; }
 .etiquette { font-size: 12px; color: var(--texte-2); font-weight: 550; }
 .erreur-champ { color: var(--erreur); font-size: 12.5px; }
 
@@ -352,7 +376,10 @@ input[type="text"]::placeholder { color: var(--texte-3); }
    pousse la page à défiler horizontalement. Le contenu large doit toujours
    s'adapter, jamais élargir la fenêtre. */
 .jeton { max-width: 100%; word-break: break-all; white-space: normal; text-align: left; }
-code.jeton { user-select: all; }   /* un clic sélectionne toute l'adresse */
+/* Un <code class="jeton"> n'est pas un bouton : il ne se clique pas, il se
+   recopie. Il hérite pourtant du `cursor: pointer` de .jeton, qui promet une
+   action inexistante — d'où le curseur de texte, cohérent avec la sélection. */
+code.jeton { user-select: all; cursor: text; }   /* un clic sélectionne toute l'adresse */
 
 /* ---------------------------------------------------------------- Aperçu */
 
@@ -511,6 +538,27 @@ code.jeton { user-select: all; }   /* un clic sélectionne toute l'adresse */
 .surcharge-ligne select:focus, .surcharge-ligne input:focus {
   outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-doux);
 }
+
+/* LA RANGÉE DES HEURES CALMES n'a pas la forme des autres surcharges : deux
+   petits champs d'heure séparés par un « à », au lieu d'un champ unique qui
+   occupe la place restante. Sans ces deux règles, les champs héritent du
+   « flex: 1 » ci-dessus et le « à » du « flex: 0 0 108px » des étiquettes ; la
+   rangée réclame plus de 400 px, déborde de sa carte et se coupe au milieu de
+   la plage.
+   Ces largeurs étaient posées en attributs `style=`, que la politique de
+   sécurité du contenu ignore sans rien dire. Elles étaient de toute façon
+   inopérantes : `max-width: 90px` ne bat pas un `min-width: 140px` — le calcul
+   est max(min-width, min(max-width, largeur)), et le minimum tranche en
+   dernier. D'où `flex-basis` plutôt que `max-width`, et la remise à zéro
+   explicite du minimum.
+   Les étiquettes reprennent leur largeur naturelle. Le « flex: 0 0 108px »
+   ci-dessus sert à aligner les rangées d'une même carte les unes sous les
+   autres — mais cette rangée est SEULE dans la sienne. Les 108 px n'y alignent
+   donc rien : ils écartaient « De » de son champ de quatre-vingt-dix pixels de
+   vide, et décalaient le premier champ de tout le reste de la carte. On lisait
+   un champ manquant là où il n'y avait qu'une marge. */
+.surcharge-ligne.plage-horaire input[type="text"] { flex: 0 0 90px; min-width: 0; }
+.surcharge-ligne.plage-horaire label { flex: 0 0 auto; }
 .etiquette-surcharge {
   font-size: 10.5px; font-weight: 600; padding: 2px 6px; border-radius: 5px;
   background: var(--accent-doux); color: var(--accent-fort);

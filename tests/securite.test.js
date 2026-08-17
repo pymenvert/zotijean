@@ -7,10 +7,15 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { refuser, hôteSansPort, ENTÊTES_SÉCURITÉ } from '../src/securite.js';
+import { sansCommentaires, listerFichiers } from './aide-analyse-source.js';
 
 const PORT = 8787;
+const RACINE = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 function requête({ méthode = 'GET', host = '127.0.0.1:8787', origin, marqueur } = {}) {
   const headers = {};
@@ -124,6 +129,47 @@ test('la politique de sécurité du contenu interdit toute ressource externe', (
   assert.ok(!csp.includes('unsafe-inline'));
   assert.ok(!csp.includes('unsafe-eval'));
   assert.ok(!csp.includes('http://'));
+});
+
+test('la politique autorise les feuilles de style du dossier public', () => {
+  // La page de retour de Spotify n'a plus de bloc <style> : elle charge
+  // /retour.css. Retirer « style-src 'self' » l'afficherait nue, au moment
+  // précis où l'utilisateur attend de savoir si sa connexion a abouti.
+  assert.match(ENTÊTES_SÉCURITÉ['Content-Security-Policy'], /style-src 'self'/);
+});
+
+test('la politique de sécurité du contenu n’est définie qu’à un seul endroit', () => {
+  // Elle l'a été à deux. server.js réécrivait la sienne pour la seule page de
+  // retour, en y rouvrant « unsafe-inline » et en laissant tomber script-src,
+  // img-src, connect-src et font-src. Deux vérités à maintenir : durcir l'une
+  // laissait l'autre ouverte sans que rien ne le signale, et aucun des tests
+  // ci-dessus ne regardait la seconde.
+  //
+  // On cherche le NOM de l'en-tête, sous n'importe quelle forme — clé d'objet,
+  // setHeader, écriture après un étalement, casse quelconque — plutôt qu'une
+  // syntaxe précise, et dans TOUS les fichiers servis, pas seulement server.js.
+  // Les commentaires sont neutralisés : dans ce dépôt ils citent le code en
+  // permanence, et ce test échouerait sur sa propre explication.
+  const fichiers = [
+    'server.js',
+    ...listerFichiers(RACINE, 'src', /\.js$/i),
+    ...listerFichiers(RACINE, 'public', /\.js$/i),
+  ].filter((f) => f !== path.join('src', 'securite.js')); // la source unique, elle, doit la contenir
+
+  assert.ok(fichiers.length >= 8, `trop peu de fichiers relus : ${fichiers.length}`);
+
+  const coupables = fichiers.filter((relatif) =>
+    /content-security-policy/i.test(
+      sansCommentaires(fs.readFileSync(path.join(RACINE, relatif), 'utf8')),
+    ),
+  );
+
+  assert.deepEqual(
+    coupables,
+    [],
+    `Ces fichiers nomment la politique de sécurité du contenu : ${coupables.join(', ')}. ` +
+      'Il ne doit y en avoir qu’une, dans src/securite.js, sans quoi les deux divergent.',
+  );
 });
 
 test('les en-têtes de durcissement sont tous présents', () => {

@@ -288,11 +288,52 @@ jobs:
             || echouer "/notice.html n'a pas répondu."
           grep -q 'rel="stylesheet"' notice.html \
             || echouer "La notice n'utilise pas de feuille de style externe : la politique de sécurité la rendrait illisible."
-          if grep -q '<style>' notice.html; then
+          # « <style » sans le chevron fermant : « <style type="text/css"> » est
+          # un bloc en ligne comme un autre, et le motif d'origine le laissait
+          # passer. Même forme que le contrôle de la page de retour, plus bas.
+          if grep -q '<style' notice.html; then
             echouer "La notice contient un bloc <style> en ligne, que la politique de sécurité bloque."
           fi
           curl -sf -o /dev/null "http://127.0.0.1:8799/notice.css" \
             || echouer "notice.css est introuvable."
+
+          echo "--- La page de retour Spotify suit la politique commune ---"
+          # Elle portait un bloc <style>, ce qui obligeait à lui écrire une
+          # politique de sécurité à part, avec « unsafe-inline » : deux
+          # politiques divergentes pour une seule application.
+          # Sans connexion en cours, elle répond une page d'erreur propre et
+          # n'appelle pas Spotify — c'est tout ce qu'il faut pour l'inspecter.
+          curl -sf "http://127.0.0.1:8799/api/spotify/retour" > retour.html \
+            || echouer "/api/spotify/retour n'a pas répondu."
+          if grep -q '<style' retour.html; then
+            echouer "La page de retour contient un bloc <style>, que la politique de sécurité bloque."
+          fi
+          grep -q 'href="/retour.css"' retour.html \
+            || echouer "La page de retour ne charge pas de feuille de style externe : la politique de sécurité la rendrait illisible."
+          curl -sf -o /dev/null "http://127.0.0.1:8799/retour.css" \
+            || echouer "retour.css est introuvable."
+          # Le verdict doit être écrit, pas seulement coloré : c'est la page qui
+          # annonce si l'authentification a abouti, et elle doit rester lisible
+          # même si sa feuille de style ne se charge pas.
+          grep -q 'Connexion non établie' retour.html \
+            || echouer "La page de retour n'annonce pas son verdict en toutes lettres."
+
+          echo "--- Une seule politique de sécurité du contenu, et c'est la stricte ---"
+          # Les en-têtes partent dans un FICHIER, jamais dans un tuyau. Le
+          # mécanisme décrit plus haut pour « curl | grep -q » vaut pour tout
+          # producteur : « grep -q » sort à la première correspondance, celui qui
+          # écrit meurt sur EPIPE, et « pipefail » fait échouer — ou ici RÉUSSIR —
+          # le contrôle pour une raison qui n'a rien à voir avec ce qu'il teste.
+          # Un garde-fou de sécurité qui passe au vert sur un tuyau cassé est pire
+          # que pas de garde-fou. Une redirection supprime le mécanisme.
+          curl -sf -D entetes-retour.txt -o /dev/null "http://127.0.0.1:8799/api/spotify/retour" \
+            || echouer "Impossible de relire les en-têtes de la page de retour."
+          nb=$(grep -ci '^content-security-policy:' entetes-retour.txt || true)
+          [ "$nb" = "1" ] \
+            || echouer "La page de retour renvoie $nb politique(s) de sécurité du contenu : il en faut exactement une."
+          if grep -qi 'unsafe-inline' entetes-retour.txt; then
+            echouer "La politique de la page de retour rouvre unsafe-inline. C'est exactement la divergence qu'on a supprimée."
+          fi
 
           echo "--- Une requête croisée est refusée ---"
           code=$(curl -s -o /dev/null -w "%{http_code}" -X POST \

@@ -10,7 +10,7 @@
 <body>
 
 <!-- Bibliothèque d'icônes : définies une fois, réutilisées par <use>. -->
-<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+<svg width="0" height="0" class="sprite" aria-hidden="true">
   <defs>
     <symbol id="i-accueil" viewBox="0 0 24 24">
       <path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>
@@ -294,11 +294,11 @@
             <em>Aucun téléchargement pendant la plage choisie. La vérification reprend juste après.</em>
           </span>
         </label>
-        <div class="surcharge-ligne" id="plage-heures-calmes" hidden>
+        <div class="surcharge-ligne plage-horaire" id="plage-heures-calmes" hidden>
           <label for="heure-debut">De</label>
-          <input type="text" id="heure-debut" placeholder="23:00" style="max-width:90px">
-          <label for="heure-fin" style="flex:0 0 auto">à</label>
-          <input type="text" id="heure-fin" placeholder="08:00" style="max-width:90px">
+          <input type="text" id="heure-debut" placeholder="23:00">
+          <label for="heure-fin">à</label>
+          <input type="text" id="heure-fin" placeholder="08:00">
         </div>
 
         <label class="bascule">
@@ -358,7 +358,7 @@
       <div class="carte">
         <div class="entete-carte">
           <h2>Journal</h2>
-          <div style="display:flex; gap:10px; align-items:center">
+          <div class="barre-outils">
             <label class="mini-bascule" title="Suivre automatiquement les nouvelles lignes">
               <input type="checkbox" id="suivre-journal" checked><span>Suivre</span>
             </label>
