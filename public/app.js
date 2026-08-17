@@ -1245,6 +1245,7 @@ async function afficherSélecteurPlaylists(événement) {
   const choisies = new Map(playlists.filter((p) => p.suivie).map((p) => [p.url, p]));
 
   zone.innerHTML = `
+    <p class="aide">Plusieurs playlists possibles — cochez celles à surveiller.</p>
     <div class="choix" id="liste-choix-playlists"></div>
     <div class="ligne-formulaire espacee">
       <button class="bouton primaire" id="btn-valider-playlists">Enregistrer la sélection</button>
