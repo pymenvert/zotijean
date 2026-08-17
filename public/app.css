@@ -2,30 +2,58 @@
    Sombre par défaut, claire si le système le demande. */
 
 :root {
-  --fond:        #0e1014;
-  --fond-2:      #14171d;
-  --carte:       #191d24;
-  --carte-haut:  #1f242c;
-  --bord:        #272d37;
-  --bord-vif:    #343c48;
-  --texte:       #e8ecf2;
-  --texte-2:     #9aa4b2;
+  --fond:          #0e1014;
+  --fond-2:        #14171d;
+  --carte:         #191d24;
+  --carte-haut:    #1f242c;
+  --bord:          #272d37;
+  /* DEUX RÔLES, DEUX VARIABLES, et ce n'est pas de la coquetterie.
+     « --bord-vif » DÉCORE : bordure de carte, de notification, de la fenêtre
+     d'accueil, cadre en tirets d'une liste vide. Rien de tout cela ne porte
+     d'information ; aucun seuil de contraste ne s'y applique.
+     « --bord-controle » borde ce qui SE MANIPULE : case à cocher, puce, champ
+     de texte, jeton, bascule, bouton. Là, le contour est le seul signal qu'il y
+     a quelque chose à faire, et il doit tenir 3 pour 1 — le seuil d'un élément
+     d'interface non textuel.
+     Une seule variable servait les deux rôles, à 1,40 pour 1 : une case
+     décochée n'avait pratiquement pas de bord. La monter pour tout le monde
+     aurait cerné chaque carte et chaque notification d'un trait gris franc,
+     sans qu'aucun défaut ne le demande. D'où la séparation.
+     Les valeurs ne sont pas les minimales possibles : au pire cas elles donnent
+     3,42 et 3,35, là où le minimum atteignable serait 3,04 et 3,02. Cette marge
+     existe pour qu'un futur ajustement d'une surface ne repasse pas sous le
+     seuil en silence. tests/contraste.test.js le vérifie contre les quatre
+     surfaces de la palette, pas seulement contre le fond attendu. */
+  --bord-vif:      #343c48;
+  --bord-controle: #707682;
+  --texte:         #e8ecf2;
+  --texte-2:       #9aa4b2;
   /* Le texte d'aide sous chaque réglage était à 3,5 pour 1 de contraste, soit
      sous le seuil du texte courant. C'est pourtant LA ligne du projet : celle
      qui dit franchement ce qu'on perd en choisissant une option. La plus
      importante ne peut pas être la moins lisible. */
-  --texte-3:     #8b95a3;
-  --accent:      #f0a836;
-  --accent-fort: #ffc061;
-  --accent-doux: rgba(240, 168, 54, .13);
-  --ok:          #4ec98a;
-  --attention:   #f0b429;
-  --erreur:      #f4685f;
-  --info:        #58b6f0;
-  --rayon:       12px;
-  --rayon-s:     8px;
-  --ombre:       0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.28);
-  --transition:  150ms cubic-bezier(.4, 0, .2, 1);
+  --texte-3:       #8b95a3;
+  --accent:        #f0a836;
+  --accent-fort:   #ffc061;
+  --accent-doux:   rgba(240, 168, 54, .13);
+  /* Le texte posé SUR une surface d'accent. Il était écrit en dur, une seule
+     fois, dans la règle du bouton principal — et donc identique dans les deux
+     thèmes. C'était juste ici, où l'accent est un ambre vif : 10,74 pour 1.
+     Mais le thème clair RECALCULE ses accents en bruns foncés, et ce même brun
+     très sombre y tombait à 2,48. Brun sur brun : on voyait la forme du bouton,
+     pas son mot — sur « Synchroniser », « Ajouter », « Connecter »,
+     « Enregistrer la sélection », « Continuer ».
+     Une couleur qui accompagne une variable de thème doit être une variable de
+     thème. Elle n'est pas déductible de l'autre : ici sombre, blanche là. */
+  --sur-accent:    #241804;
+  --ok:            #4ec98a;
+  --attention:     #f0b429;
+  --erreur:        #f4685f;
+  --info:          #58b6f0;
+  --rayon:         12px;
+  --rayon-s:       8px;
+  --ombre:         0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.28);
+  --transition:    150ms cubic-bezier(.4, 0, .2, 1);
 }
 
 /* THÈME CLAIR — les couleurs ne sont pas éclaircies, elles sont RECALCULÉES.
@@ -40,23 +68,33 @@
    texte qu'elle commente. */
 @media (prefers-color-scheme: light) {
   :root {
-    --fond:        #f4f5f7;
-    --fond-2:      #ffffff;
-    --carte:       #ffffff;
-    --carte-haut:  #fafbfc;
-    --bord:        #e3e6ea;
-    --bord-vif:    #d0d5dc;
-    --texte:       #1a1d23;
-    --texte-2:     #4d5764;
-    --texte-3:     #646d7b;
-    --accent:      #9a6209;
-    --accent-fort: #7d4f06;
-    --accent-doux: rgba(154, 98, 9, .1);
-    --ok:          #14784a;
-    --attention:   #8a5a00;
-    --erreur:      #c1352b;
-    --info:        #1a6296;
-    --ombre:       0 1px 2px rgba(16,24,40,.06), 0 8px 20px rgba(16,24,40,.06);
+    --fond:          #f4f5f7;
+    --fond-2:        #ffffff;
+    --carte:         #ffffff;
+    --carte-haut:    #fafbfc;
+    --bord:          #e3e6ea;
+    --bord-vif:      #d0d5dc;
+    /* Le contour des contrôles est RECALCULÉ, jamais l'inverse du sombre : la
+       surface la plus exigeante n'est pas la même d'un thème à l'autre. En
+       sombre c'est --carte-haut, la plus claire des quatre ; en clair c'est
+       --fond, la plus foncée. Une teinte déduite par symétrie tomberait sous le
+       seuil sur l'une des deux. */
+    --bord-controle: #81868f;
+    --texte:         #1a1d23;
+    --texte-2:       #4d5764;
+    --texte-3:       #646d7b;
+    --accent:        #9a6209;
+    --accent-fort:   #7d4f06;
+    --accent-doux:   rgba(154, 98, 9, .1);
+    /* Blanc, et non l'inverse du sombre : les accents clairs sont des bruns
+       foncés, un texte sombre s'y noie. 7,02 et 5,09 sur les deux extrémités du
+       dégradé du bouton principal. */
+    --sur-accent:    #ffffff;
+    --ok:            #14784a;
+    --attention:     #8a5a00;
+    --erreur:        #c1352b;
+    --info:          #1a6296;
+    --ombre:         0 1px 2px rgba(16,24,40,.06), 0 8px 20px rgba(16,24,40,.06);
   }
 }
 
@@ -92,6 +130,19 @@ h2 { font-size: 14px; color: var(--texte-2); text-transform: uppercase; letter-s
 h3 { font-size: 13px; }
 p  { margin: 0; }
 em { font-style: normal; }
+
+/* AUCUNE règle ne visait les liens. Ils tombaient donc sur le bleu par défaut du
+   navigateur — #0000ee — soit 1,80 pour 1 sur une carte sombre : une tache
+   sombre soulignée au milieu d'une phrase claire. Et il ne s'agit pas d'un lien
+   perdu quelque part : c'est celui qui ouvre le tableau de bord Spotify, la
+   toute première action de la seule procédure technique du programme.
+   « --accent-fort » est la variante la plus contrastée de l'accent dans CHAQUE
+   thème — plus claire en sombre, plus foncée en clair. 9,62 et 6,43.
+   Le soulignement reste, et ce n'est pas décoratif : un lien ne doit jamais être
+   reconnaissable à sa seule couleur. */
+a { color: var(--accent-fort); text-decoration: underline; text-underline-offset: 2px; }
+a:hover { text-decoration-thickness: 2px; }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
 
 .ic { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.7;
       stroke-linecap: round; stroke-linejoin: round; flex: none; }
@@ -177,7 +228,7 @@ em { font-style: normal; }
 .bouton {
   display: inline-flex; align-items: center; gap: 7px;
   padding: 8px 14px; border-radius: var(--rayon-s);
-  border: 1px solid var(--bord-vif); background: var(--carte-haut); color: var(--texte);
+  border: 1px solid var(--bord-controle); background: var(--carte-haut); color: var(--texte);
   font: inherit; font-weight: 550; font-size: 13px; cursor: pointer;
   transition: background var(--transition), border-color var(--transition), transform 90ms;
   white-space: nowrap;
@@ -189,11 +240,18 @@ em { font-style: normal; }
 
 .bouton.primaire {
   background: linear-gradient(180deg, var(--accent-fort), var(--accent));
-  border-color: transparent; color: #241804; font-weight: 640;
+  border-color: transparent; color: var(--sur-accent); font-weight: 640;
   box-shadow: 0 1px 3px rgba(0,0,0,.25);
 }
 .bouton.primaire:hover:not(:disabled) { filter: brightness(1.07); background: linear-gradient(180deg, var(--accent-fort), var(--accent)); }
-.bouton.danger { color: var(--erreur); border-color: color-mix(in srgb, var(--erreur) 40%, transparent); }
+/* Le rouge du bouton d'action dangereuse était mêlé à 40 %, soit 1,88 pour 1
+   sur son fond — invisible. Le défaut est ANCIEN, mais séparer les traits l'a
+   rendu criant : tous les autres boutons sont passés à 3,4, et celui-là serait
+   resté le seul sans contour. Or c'est « Arrêter la synchronisation en cours »,
+   exactement le bouton qu'on cherche quand quelque chose va mal.
+   75 % le place à 3,49 et 3,41 — au niveau des autres, pas au-dessus : un
+   bouton d'arrêt doit se trouver, pas hurler. */
+.bouton.danger { color: var(--erreur); border-color: color-mix(in srgb, var(--erreur) 75%, transparent); }
 .bouton.danger:hover { background: color-mix(in srgb, var(--erreur) 12%, transparent); }
 .bouton.mini { padding: 5px 9px; font-size: 12px; }
 
@@ -271,7 +329,19 @@ em { font-style: normal; }
   background: var(--carte-haut); cursor: pointer;
   transition: border-color var(--transition), background var(--transition);
 }
-.option:hover { border-color: var(--bord-vif); }
+/* La ligne d'option reste sur « --bord » au repos, et c'est un arbitrage, pas
+   un oubli : à la relecture, l'écart avec le survol saute aux yeux et se lit
+   volontiers comme une incohérence.
+   Ce qui identifie le contrôle ici, c'est la PUCE que la ligne contient, tenue
+   au-dessus du seuil depuis la séparation des traits — pas le cadre, qui ne
+   fait que regrouper le titre et son explication. Passer les sept groupes de
+   réglages à un contour franc changerait chaque option en case de formulaire
+   administratif, pour un signal déjà porté à côté.
+   Le SURVOL, lui, est un état : il doit se voir, donc il prend le trait des
+   contrôles. Le clavier n'est pas laissé de côté pour autant — la règle
+   « :has(input:focus-visible) » juste en dessous pose un anneau d'accent, et
+   l'option choisie se borde d'accent elle aussi. */
+.option:hover { border-color: var(--bord-controle); }
 .option.choisi { border-color: var(--accent); background: var(--accent-doux); }
 .option input { position: absolute; opacity: 0; pointer-events: none; }
 
@@ -287,7 +357,7 @@ em { font-style: normal; }
 
 .puce {
   width: 16px; height: 16px; border-radius: 50%; flex: none; margin-top: 2px;
-  border: 1.5px solid var(--bord-vif); position: relative;
+  border: 1.5px solid var(--bord-controle); position: relative;
   transition: border-color var(--transition);
 }
 .option.choisi .puce { border-color: var(--accent); }
@@ -362,7 +432,7 @@ em { font-style: normal; }
 input[type="text"] {
   flex: 1; min-width: 0;
   padding: 8px 11px; border-radius: var(--rayon-s);
-  border: 1px solid var(--bord-vif); background: var(--fond); color: var(--texte);
+  border: 1px solid var(--bord-controle); background: var(--fond); color: var(--texte);
   font: inherit; font-size: 13px;
   transition: border-color var(--transition), box-shadow var(--transition);
 }
@@ -383,7 +453,18 @@ input[type="text"]::placeholder { color: var(--texte-3); }
 .bascule { display: flex; gap: 11px; align-items: flex-start; cursor: pointer; }
 .bascule input { position: absolute; opacity: 0; pointer-events: none; }
 .curseur {
-  width: 38px; height: 22px; border-radius: 99px; background: var(--bord-vif);
+/* Une tension assumée, à connaître avant de retoucher cette teinte.
+   La piste éteinte doit tenir deux exigences qui tirent en sens INVERSE : se
+   détacher du fond de la carte (elle était à 1,40 pour 1, donc invisible), et
+   rester distincte de la piste allumée, qui est orange. L'éclaircir résout la
+   première et dégrade la seconde — mesuré : la distinction entre les deux états
+   passe de 5,49 à 2,25 en thème sombre, et de 3,45 à 1,39 en clair.
+   Ce n'est pas une information perdue, et trois signaux indépendants la portent
+   encore : le rond se déplace de 16 px — lisible sans percevoir aucune teinte —,
+   gris contre orange reste une différence franche, et depuis la règle plus bas
+   le rond lui-même change de couleur avec l'état. C'est ce troisième signal qui
+   rend l'arbitrage tenable ; sans lui, il ne le serait pas. */
+  width: 38px; height: 22px; border-radius: 99px; background: var(--bord-controle);
   flex: none; position: relative; transition: background var(--transition); margin-top: 1px;
 }
 .curseur::after {
@@ -392,26 +473,49 @@ input[type="text"]::placeholder { color: var(--texte-3); }
   transition: transform var(--transition);
 }
 .bascule input:checked + .curseur { background: var(--accent); }
-.bascule input:checked + .curseur::after { transform: translateX(16px); }
+/* Le rond reprend la couleur du FOND dès que la piste s'allume, exactement comme
+   la coche des cases à cocher, qui se trace en « --fond » sur son remplissage
+   d'accent. Ce n'est pas une coquetterie : un rond blanc sur l'ambre clair du
+   thème sombre tombe à 2,03 pour 1. La bascule active devenait une pastille
+   presque unie, et l'état ACTIF est justement celui qui porte l'information.
+   Avec « --fond » : 9,39 en sombre, 4,67 en clair. Éteinte, le rond reste blanc.
+   Effet secondaire recherché : les deux états ne se distinguent plus seulement
+   par la teinte de la piste, mais aussi par celle du rond — clair d'un côté,
+   sombre de l'autre. */
+.bascule input:checked + .curseur::after { transform: translateX(16px); background: var(--fond); }
 .bascule input:focus-visible + .curseur { outline: 2px solid var(--accent); outline-offset: 2px; }
 .bascule-texte { display: flex; flex-direction: column; gap: 2px; }
 .bascule-texte em { font-size: 12.5px; color: var(--texte-2); }
 
 .mini-bascule { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--texte-2); cursor: pointer; }
+/* La case « Suivre » du journal est la seule case NATIVE de l'application :
+   toutes les autres sont masquées et redessinées en « .puce ». Sans cette
+   ligne, elle s'affiche dans le bleu du système — bleu Chrome ici, bleu macOS
+   sur la machine de destination — au milieu d'une palette ambre et graphite.
+   Son contour et sa taille restent ceux du système, qui s'en charge très bien ;
+   seule sa couleur d'état détonnait. */
+.mini-bascule input[type="checkbox"] { accent-color: var(--accent); }
 
 .jetons { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+/* Ce bloc était scindé en deux règles « .jeton » distinctes, à une dizaine de
+   lignes d'écart. La cascade s'en accommodait très bien ; les garde-fous, non.
+   Vérifié : une bordure pâle ajoutée au SECOND bloc laissait toute la suite au
+   vert, parce qu'un test qui lit « la règle .jeton » lit la première trouvée et
+   ne sait pas qu'il en existe une autre. Une seule règle par sélecteur, donc —
+   et tests/contraste.test.js refuse désormais d'en mesurer un qui en ouvre deux.
+   Les quatre propriétés de rupture de ligne viennent du bloc fusionné : une
+   adresse de retour n'a aucun espace où se couper, et sans elles, elle pousse la
+   page à défiler horizontalement. Le contenu large doit toujours s'adapter,
+   jamais élargir la fenêtre. */
 .jeton {
-  padding: 3px 8px; border-radius: 6px; border: 1px solid var(--bord-vif);
+  padding: 3px 8px; border-radius: 6px; border: 1px solid var(--bord-controle);
   background: var(--fond); color: var(--texte-2); cursor: pointer;
   font: 500 11.5px/1.5 ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
   transition: all var(--transition);
+  max-width: 100%; word-break: break-all; white-space: normal; text-align: left;
 }
 .jeton:hover { border-color: var(--accent); color: var(--accent-fort); background: var(--accent-doux); }
 
-/* Une adresse de retour n'a aucun espace où se couper : sans cette règle, elle
-   pousse la page à défiler horizontalement. Le contenu large doit toujours
-   s'adapter, jamais élargir la fenêtre. */
-.jeton { max-width: 100%; word-break: break-all; white-space: normal; text-align: left; }
 /* Un <code class="jeton"> n'est pas un bouton : il ne se clique pas, il se
    recopie. Il hérite pourtant du `cursor: pointer` de .jeton, qui promet une
    action inexistante — d'où le curseur de texte, cohérent avec la sélection. */
@@ -568,7 +672,7 @@ code.jeton { user-select: all; cursor: text; }   /* un clic sélectionne toute l
 .surcharge-ligne label { font-size: 12.5px; color: var(--texte-2); flex: 0 0 108px; }
 .surcharge-ligne select, .surcharge-ligne input[type="text"] {
   flex: 1; min-width: 140px;
-  padding: 6px 9px; border-radius: 6px; border: 1px solid var(--bord-vif);
+  padding: 6px 9px; border-radius: 6px; border: 1px solid var(--bord-controle);
   background: var(--fond); color: var(--texte); font: inherit; font-size: 12.5px;
 }
 .surcharge-ligne select:focus, .surcharge-ligne input:focus {
