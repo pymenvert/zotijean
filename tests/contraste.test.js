@@ -54,6 +54,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { sansCommentaires } from './aide-analyse-source.js';
+import { contraste, composer, lecteurDe } from './aide-lecture-css.js';
 
 const RACINE = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -64,96 +65,19 @@ const RACINE = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 // au-dessus de la palette.
 const FEUILLE = sansCommentaires(fs.readFileSync(path.join(RACINE, 'public', 'app.css'), 'utf8'));
 
-const MARQUEUR_CLAIR = '@media (prefers-color-scheme: light)';
-
-// ---------------------------------------------------------------------------
-// Lecture de la palette
-// ---------------------------------------------------------------------------
-
-/**
- * Le bloc « :root » d'un thème.
- *
- * Le thème sombre est la valeur par défaut ; le thème clair la RECALCULE dans
- * une requête de média — jamais un simple éclaircissement. On borne la lecture
- * au bloc lui-même : une tranche courant jusqu'à la fin du fichier laisserait la
- * recherche filer sur n'importe quelle autre couleur si la déclaration attendue
- * changeait de notation.
- */
-function blocRacine(theme) {
-  const coupure = FEUILLE.indexOf(MARQUEUR_CLAIR);
-  assert.notEqual(
-    coupure,
-    -1,
-    `« ${MARQUEUR_CLAIR} » est introuvable dans app.css. La requête de média a ` +
-      `changé de forme : le découpage par thème ne veut plus rien dire, et ce ` +
-      `test lirait deux fois la même palette.`,
-  );
-  const tranche = theme === 'clair' ? FEUILLE.slice(coupure) : FEUILLE.slice(0, coupure);
-  const bloc = /:root\s*\{([^}]*)\}/.exec(tranche);
-  assert.ok(bloc, `aucun bloc « :root » trouvé pour le thème ${theme}`);
-  return bloc[1];
-}
-
-/** Les déclarations d'une variable dans un bloc, sans interprétation. */
-function déclarations(nom, theme) {
-  const trouvées = [...blocRacine(theme).matchAll(new RegExp(`--${nom}\\s*:\\s*([^;]+);`, 'g'))];
-  assert.equal(
-    trouvées.length,
-    1,
-    `--${nom} devrait être déclarée exactement une fois dans le « :root » du ` +
-      `thème ${theme} ; ${trouvées.length} trouvée(s). Une lecture ambiguë ` +
-      `renverrait la mauvaise valeur en silence.`,
-  );
-  return trouvées[0][1].trim();
-}
-
-/** Une couleur opaque, en hexadécimal à six chiffres. */
-function couleur(nom, theme) {
-  const valeur = déclarations(nom, theme);
-  assert.match(
-    valeur,
-    /^#[0-9a-fA-F]{6}$/,
-    `--${nom} (thème ${theme}) vaut « ${valeur} ». Ce test ne sait lire qu'un ` +
-      `hexadécimal à six chiffres : une notation rgb(), color-mix(), un hex court ` +
-      `ou un canal alpha doivent faire ÉCHOUER la lecture, jamais passer ` +
-      `silencieusement. Étendre la lecture, ou convertir la déclaration.`,
-  );
-  return valeur.toLowerCase();
-}
-
-/** Une couleur translucide « rgba(r, v, b, a) ». */
-function couleurTransparente(nom, theme) {
-  const valeur = déclarations(nom, theme);
-  const m = /^rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*([\d.]+)\s*\)$/.exec(valeur);
-  assert.ok(m, `--${nom} (thème ${theme}) vaut « ${valeur} », attendu une notation rgba().`);
-  return { r: +m[1], v: +m[2], b: +m[3], a: +m[4] };
-}
-
-// ---------------------------------------------------------------------------
-// Contraste
-// ---------------------------------------------------------------------------
-
-const canal = (v) => {
-  const s = v / 255;
-  return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
-};
-
-function contraste(a, b) {
-  const luminance = (hex) => {
-    const [r, v, bl] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
-    return 0.2126 * canal(r) + 0.7152 * canal(v) + 0.0722 * canal(bl);
-  };
-  const [haut, bas] = [luminance(a), luminance(b)].sort((x, y) => y - x);
-  return (haut + 0.05) / (bas + 0.05);
-}
-
-/** Compose une couleur translucide sur un fond opaque. */
-function composer(dessus, dessous) {
-  const [r, v, b] = [1, 3, 5].map((i) => parseInt(dessous.slice(i, i + 2), 16));
-  const mêler = (d, f) => Math.round(dessus.a * d + (1 - dessus.a) * f);
-  const hex = (n) => n.toString(16).padStart(2, '0');
-  return `#${hex(mêler(dessus.r, r))}${hex(mêler(dessus.v, v))}${hex(mêler(dessus.b, b))}`;
-}
+// Les gestes de lecture vivent dans aide-lecture-css.js : retrouver une règle,
+// y retrouver une propriété, en extraire une couleur, la résoudre dans le bon
+// thème. Chacun porte une garde payée par un défaut réel de ce dépôt, et
+// tests/lisibilite-options.test.js pose les mêmes questions à la même feuille.
+const {
+  couleur,
+  couleurTransparente,
+  règle,
+  variableDe,
+  couleurDe,
+  couleurMêlée,
+  arrêtsDuDégradé,
+} = lecteurDe(FEUILLE);
 
 // ---------------------------------------------------------------------------
 // Cas positifs — le calcul et la lecture prouvent d'abord qu'ils fonctionnent
@@ -208,105 +132,8 @@ test('la mesure retrouve le défaut qu’elle a été écrite pour attraper', ()
 });
 
 // ---------------------------------------------------------------------------
-// La règle que ce fichier prétend garder
+// La coche existe-t-elle encore, et le balisage la pose-t-il ?
 // ---------------------------------------------------------------------------
-
-const échapper = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-/**
- * Le corps d'une règle CSS, sélecteur et accolades retirés.
- *
- * L'ancrage en DÉBUT DE LIGNE n'est pas cosmétique : « .jeton { » est une
- * sous-chaîne de « code.jeton { », qui existe bel et bien plus bas dans cette
- * feuille. Une recherche libre mesurerait la mauvaise règle le jour où l'une
- * passe devant l'autre — sans rien signaler, en rendant un rapport
- * parfaitement plausible.
- *
- * La contrepartie, à connaître avant de s'y fier : l'ancrage rend INVISIBLES
- * les sélecteurs indentés, et cette feuille en contient — ceux des requêtes de
- * média (« .coque », « .rail », « .onglet span »…). Aucun n'est mesuré
- * aujourd'hui ; le jour où il faudra en garder un, c'est cette fonction qu'il
- * faudra étendre. D'où un message d'erreur qui nomme les deux causes possibles
- * plutôt que d'accuser une disparition.
- */
-function règle(sélecteur) {
-  const trouvées = [...FEUILLE.matchAll(new RegExp(`^${échapper(sélecteur)}\\s*\\{`, 'gm'))];
-  assert.equal(
-    trouvées.length,
-    1,
-    `« ${sélecteur} » devrait ouvrir EXACTEMENT UNE règle en début de ligne dans ` +
-      `app.css ; ${trouvées.length} trouvée(s).\n` +
-      `À zéro : la règle a disparu, ou s’est fait indenter dans une requête de ` +
-      `média — ce fichier mesurerait alors une palette sans rapport avec l’écran.\n` +
-      `À deux : c’est la CASCADE qui décide laquelle peint, et ce fichier lirait ` +
-      `la première — donc pas forcément celle-là. Vérifié sur ce dépôt : une ` +
-      `bordure pâle ajoutée au SECOND bloc « .jeton » laissait toute la suite au ` +
-      `vert. Fusionner les deux règles.`,
-  );
-  const début = trouvées[0].index;
-  const ouvre = FEUILLE.indexOf('{', début);
-  const ferme = FEUILLE.indexOf('}', ouvre);
-  assert.notEqual(ferme, -1, `la règle « ${sélecteur} » n’est pas refermée`);
-  return FEUILLE.slice(ouvre + 1, ferme);
-}
-
-/** La déclaration brute d'une propriété dans une règle. */
-function déclarationDe(sélecteur, propriété) {
-  const déclaration = règle(sélecteur)
-    .split(';')
-    .find((d) => d.trim().startsWith(propriété + ':'));
-  assert.ok(déclaration, `« ${propriété} » n’est plus déclarée dans ${sélecteur}`);
-  return déclaration;
-}
-
-/**
- * La même, en exigeant que la couleur soit OPAQUE et unique.
- *
- * C'est la garde la plus importante du fichier, et elle protège contre une
- * mesure FLATTEUSE, pas contre une absence de mesure — bien plus difficile à
- * repérer. Une couche translucide, un mélange ou un dégradé changent ce que
- * l'écran peint sans changer le nom de la variable : lire la variable brute
- * rendrait un chiffre confortable pour un contrôle invisible à l'écran.
- *
- * Vérifié sur ce dépôt, deux fois. La bordure du bouton d'action dangereuse
- * donne 1,88:1 une fois peinte, et 5,19:1 si on lit « --erreur » toute seule :
- * un facteur 2,8. Et poser un « color-mix(…, 30%, transparent) » sur la case à
- * cocher laissait la suite entièrement verte pour un bord réel à 1,4:1.
- *
- * Qui a besoin de mesurer une couche composée passe par « couleurMêlée », qui
- * la compose sur son fond au lieu de la supposer opaque.
- */
-function déclarationOpaqueDe(sélecteur, propriété) {
-  const déclaration = déclarationDe(sélecteur, propriété);
-  for (const forme of ['color-mix(', 'gradient(', 'rgba(', 'hsla(']) {
-    assert.ok(
-      !déclaration.includes(forme),
-      `« ${propriété} » de ${sélecteur} passe par ${forme}…) : la couleur peinte ` +
-        `n’est pas celle de la variable, et cette lecture la SURESTIMERAIT. ` +
-        `Composer la couche sur son fond avec « couleurMêlée », ou sortir ce ` +
-        `contrôle de la garde en écrivant noir sur blanc pourquoi.`,
-    );
-  }
-  assert.ok(
-    déclaration.split('var(--').length <= 2,
-    `« ${propriété} » de ${sélecteur} cite plusieurs variables : cette lecture ne ` +
-      `sait pas laquelle l’écran montre.`,
-  );
-  return déclaration;
-}
-
-/** Le nom de la variable passée à var(…) par une propriété d'une règle. */
-function variableDe(sélecteur, propriété) {
-  const déclaration = déclarationOpaqueDe(sélecteur, propriété);
-  const i = déclaration.indexOf('var(--');
-  assert.notEqual(
-    i,
-    -1,
-    `« ${propriété} » de ${sélecteur} ne prend plus sa couleur dans une variable ` +
-      `de la palette : ce test ne peut plus savoir quoi mesurer.`,
-  );
-  return déclaration.slice(i + 6, déclaration.indexOf(')', i));
-}
 
 test('la coche a de quoi être dessinée', () => {
   // Trois invariants qui ne sont PAS esthétiques : les violer rend la coche
@@ -454,25 +281,6 @@ for (const theme of ['sombre', 'clair']) {
   }
 }
 
-/**
- * La couleur d'une propriété, qu'elle vienne de la palette ou soit écrite en
- * clair. Le rond de la bascule est un blanc littéral : il ne passe par aucune
- * variable, et une lecture qui n'accepterait que « var(--…) » ne saurait pas le
- * mesurer — donc ne le garderait pas.
- */
-function couleurDe(sélecteur, propriété, theme) {
-  const déclaration = déclarationOpaqueDe(sélecteur, propriété);
-  if (déclaration.includes('var(--')) return couleur(variableDe(sélecteur, propriété), theme);
-  const m = /#([0-9a-f]{3}|[0-9a-f]{6})\b/i.exec(déclaration);
-  assert.ok(
-    m,
-    `« ${propriété} » de ${sélecteur} ne donne ni une variable de la palette ni ` +
-      `un hexadécimal : ce test ne peut plus savoir quoi mesurer.`,
-  );
-  const brut = m[1].toLowerCase();
-  return '#' + (brut.length === 3 ? [...brut].map((c) => c + c).join('') : brut);
-}
-
 for (const theme of ['sombre', 'clair']) {
   test(`le rond de la bascule se détache de sa piste ALLUMÉE en thème ${theme}`, () => {
     // L'état allumé est celui qui porte l'information « ce réglage est en
@@ -505,54 +313,6 @@ for (const theme of ['sombre', 'clair']) {
         `si le réglage est actif.`,
     );
   });
-}
-
-/**
- * Une couleur écrite « color-mix(in srgb, var(--X) N%, transparent) », composée
- * sur le fond qui la reçoit.
- *
- * Ces mélanges sont le point aveugle naturel d'une garde de contraste : ils
- * ressemblent à une couleur, mais leur valeur réelle dépend de ce qu'il y a
- * DESSOUS. Une lecture qui ne les compose pas rendrait un chiffre flatteur, ou
- * refuserait de lire — les deux sont pires qu'une mesure juste.
- */
-function couleurMêlée(sélecteur, propriété, theme, fond) {
-  const déclaration = déclarationDe(sélecteur, propriété);
-  const m = /color-mix\(\s*in srgb\s*,\s*var\(--([a-z0-9-]+)\)\s+([\d.]+)%\s*,\s*transparent\s*\)/i.exec(
-    déclaration,
-  );
-  assert.ok(
-    m,
-    `« ${propriété} » de ${sélecteur} n’est plus un mélange « color-mix(…, ` +
-      `transparent) » lisible : ce test ne peut plus savoir quoi composer.`,
-  );
-  const teinte = couleur(m[1], theme);
-  const [r, v, b] = [1, 3, 5].map((i) => parseInt(teinte.slice(i, i + 2), 16));
-  return composer({ r, v, b, a: Number(m[2]) / 100 }, fond);
-}
-
-/**
- * Les couleurs d'arrêt d'un dégradé.
- *
- * Un dégradé n'a pas UNE couleur. Le texte posé dessus doit rester lisible sur
- * toute sa hauteur, donc sur chacune de ses extrémités : mesurer une moyenne
- * rendrait un chiffre que personne ne voit à l'écran, et masquerait justement
- * l'extrémité qui pose problème.
- */
-function arrêtsDuDégradé(sélecteur, propriété, theme) {
-  const déclaration = déclarationDe(sélecteur, propriété);
-  assert.match(
-    déclaration,
-    /gradient\(/,
-    `« ${propriété} » de ${sélecteur} n’est plus un dégradé : cette lecture ne ` +
-      `sait plus quoi mesurer.`,
-  );
-  const noms = [...déclaration.matchAll(/var\(--([a-z0-9-]+)\)/g)].map((m) => m[1]);
-  assert.ok(
-    noms.length >= 2,
-    `le dégradé de ${sélecteur} ne cite plus au moins deux couleurs de la palette.`,
-  );
-  return noms.map((n) => couleur(n, theme));
 }
 
 for (const theme of ['sombre', 'clair']) {
