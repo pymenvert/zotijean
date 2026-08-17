@@ -30,73 +30,15 @@ Dernière mise à jour : 17 août 2026, pendant la préparation de la 1.0.7.
 
 ## Défauts constatés
 
-### Les encadrés d'explication sont indiscernables d'une option cochée
+*Rien en attente ici pour le moment.*
 
-**Ce qu'on voit.** Les encadrés qui expliquent un réglage ont exactement l'allure
-d'une option sélectionnée : fond orangé pâle, bordure orangée. L'œil les compte
-donc comme des choix actifs, et une carte qui contient trois explications semble
-avoir trois réglages cochés.
+Les deux qui y figuraient — les encadrés d'explication indiscernables d'une
+option cochée, et le titre de l'option recommandée coupé en quatre — ont été
+corrigés le 17 août 2026, dans la 1.0.7.
 
-**Où.** `public/app.css` — la règle `.note` et la règle `.option.choisi` posent
-le **même** fond `var(--accent-doux)`, avec des bordures orangées qui ne
-diffèrent que par leur intensité (`--accent` plein contre `--accent` à 25 %).
-Rien dans la palette ne distingue « ceci est sélectionné » de « ceci est une
-explication ».
-
-**Pourquoi ça compte.** L'orange est, partout ailleurs dans l'app, la couleur de
-« vous avez choisi ceci ». S'en servir aussi pour du texte purement informatif
-retire au signal sa signification. C'est un défaut de sens, pas de goût.
-
-**Confirmé en regardant l'écran** (17 août 2026). Les deux surfaces sont
-strictement identiques — même fond, même rayon de 8 px —, et le seul écart est
-l'opacité de la bordure. Sur un trait d'un pixel, cet écart *n'existe pas* : le
-relecteur ne l'a pas vu alors qu'il savait où regarder.
-
-Où ça mord le plus : onglet **Qualité**, carte « format des fichiers ». Sous les
-cinq options, la note sur l'offre sans perte de Spotify s'ajoute à la liste avec
-l'allure exacte de l'option sélectionnée quatre lignes plus haut. Elle se lit
-comme une sixième option, cochée elle aussi. Même teinte encore pour la ligne
-« Exemple » du tableau d'aperçu, et — plus curieux — pour l'encadré du numéro de
-version dans Diagnostic : un numéro de version peint dans la couleur de
-l'avertissement, au bas d'un écran de contrôle.
-
-**Piste retenue :** garder l'ambre pour ce qui est *choisi*, et donner aux notes
-un fond neutre avec un filet vertical à gauche — comme les lignes du Diagnostic,
-qui elles fonctionnent bien.
-
-### Le titre de l'option recommandée est coupé en quatre
-
-**Ce qu'on voit.** Dans les listes de réglages présentées en colonnes, le titre
-d'une option portant l'étiquette « Recommandé » se casse mot par mot, sur trois
-ou quatre lignes, alors que la place ne manque pas.
-
-**Où.** `public/app.css` — `.option-titre` est un conteneur `display: flex` sans
-`flex-wrap`, et il contient deux choses côte à côte : le libellé (un texte nu,
-que le navigateur transforme en élément flex anonyme) et l'étiquette
-« Recommandé ». Quand la colonne est étroite — `.choix.compact` est une grille
-dont les colonnes descendent à 190 px — l'étiquette garde sa largeur et c'est le
-libellé qui est comprimé jusqu'à sa plus petite largeur possible, donc jusqu'au
-mot.
-
-**Pourquoi ça compte.** L'option recommandée est celle qu'on veut rendre la plus
-facile à lire. C'est précisément celle qui est illisible.
-
-**Confirmé en regardant l'écran** (17 août 2026), et c'est pire qu'annoncé.
-Onglet **Planification**, carte « vérification automatique » : « Tous les deux
-jours » s'affiche sur **quatre lignes** — un mot par ligne. Et ce n'est pas un
-problème de fenêtre étroite : identique à 1699 px de large comme à 984 px.
-
-Effet en cascade, qui est le vrai dégât : la rangée entière s'aligne sur la carte
-la plus haute. Les trois voisines — « Toutes les 6 heures », « Tous les trois
-jours », « Une fois par semaine » — deviennent des rectangles avec un titre sur
-une ligne et une soixantaine de pixels de vide dessous. C'est le seul endroit de
-l'application où la grille est manifestement cassée.
-
-**Des deux défauts de cette section, c'est de loin le plus grave à l'œil** — et
-ce n'est pas comparable : celui-ci saute aux yeux en une seconde, l'autre demande
-qu'on s'y attarde. À traiter en premier.
-
----
+Ce qui reste constaté mais non corrigé se trouve plus bas, dans les **relevés
+datés** : ce sont des points qu'une vérification a trouvés en marge de son sujet,
+et qui attendent d'être pris pour eux-mêmes.
 
 ## Chantiers en pause
 
@@ -135,6 +77,14 @@ qui dessinent la coche, et la grille des colonnes automatiques.
 
 **Ce qu'il faudrait pour le lever :** ouvrir l'app sur le Mac, dans les deux
 thèmes, et regarder. Rien d'autre ne remplace ça.
+
+**Et il faut être précis sur ce que les tests ne font pas.** Aucun moteur de
+rendu n'a jamais lu cette feuille de style dans la chaîne de vérification. Les
+tests relisent le texte du fichier : ils savent qu'une propriété est écrite, pas
+qu'elle produit l'effet attendu. Aucun d'eux ne peut dire si « Tous les deux
+jours » tient sur une ligne — ça se calcule, et seul un navigateur le calcule.
+La relecture par expressions régulières *est* la doublure ; la première
+rencontre réelle sera le Mac.
 
 ### L'harmonie générale des teintes n'a jamais été regardée
 
@@ -270,6 +220,32 @@ permet de trancher entre formats sans lire les explications — mais les libell�
 de FLAC et AIFF répètent « sans perte ajoutée » en toutes lettres, ce qui limite
 la perte réelle. Une correction doit traiter les deux étiquettes ensemble.
 
+#### Les barres de progression déclenchent des refus de la politique de sécurité
+
+**À vérifier en priorité sur le Mac.** Un relecteur a observé, à chaque
+chargement de l'interface, une rafale de messages « Applying inline style … has
+been blocked » dans la console du navigateur. L'origine est identifiée : les
+trois seuls endroits où le programme pose un style directement sur un élément
+(`public/app.js`, lignes 151, 779 et 1602) — **et les trois sont des barres de
+progression**.
+
+Ce que ça contredit : `tests/styles-en-ligne.test.js` affirme noir sur blanc
+qu'une écriture de ce type « passe par le CSSOM, que la politique n'a jamais
+couvert », et que « c'est la façon correcte d'animer une jauge ». Le relecteur a
+d'ailleurs vérifié que la largeur s'applique quand même sur son navigateur : 73 %
+posé, 73 % calculé. Les deux observations ne peuvent pas être vraies partout.
+
+**Pourquoi ça ne peut pas attendre.** Si le moteur de la machine de destination
+applique la règle strictement, la jauge se fige à zéro pendant qu'un
+téléchargement de dix-sept heures avance sans rien montrer. C'est exactement ce
+que le projet s'interdit : une opération longue doit prouver qu'elle avance,
+sans quoi l'utilisateur force la fermeture — et déclenche les dégâts suivants.
+
+**Ce qu'il faut faire :** ouvrir l'app sur le Mac, lancer une simulation, et
+regarder la console **et** la jauge. Si elle ne bouge pas, remplacer l'écriture
+directe par une règle insérée dans la feuille de style, et corriger la phrase
+du fichier de test, qui serait alors fausse.
+
 #### Quatre points relevés en regardant l'app tourner
 
 **Le bouton principal désactivé est une bouillie beige sur beige** — environ
@@ -295,6 +271,24 @@ gravité, simplement bancal.
 dessinées autrement. Frappant quand on passe de l'une à l'autre. C'est le versant
 visible du problème des trois palettes ci-dessus.
 
+**Six réglages sans leur ligne d'explication.** Dans « vérification
+automatique », les six options ont une explication VIDE. C'est le seul groupe de
+réglages dans ce cas, et il contredit frontalement une règle du projet : chaque
+choix arbitrable porte une ligne franche qui dit ce qu'on y perd. Ici, on
+choisit un rythme de synchronisation sans qu'on vous dise ce que coûte chacun.
+
+**Le fond des encadrés d'explication ne se voit pas en thème clair** — 1,04:1
+contre la carte qui les porte, sous le seuil de perception. Seul le filet ambre
+à gauche fait exister le bloc. Ce n'est pas un défaut : la forme retenue est
+celle des lignes du Diagnostic et elle fonctionne. Mais c'est écrit ici pour que
+personne ne croie disposer de trois signaux — fond, bordure, filet — alors qu'un
+seul parle. Affaiblir le filet en pensant toucher un tiers du signal le
+supprimerait en entier.
+
+**Le bouton « Retour » de la première étape du premier lancement** est affiché
+et paraît actif, à un endroit où il n'y a rien derrière. Non vérifié — il est
+peut-être désactivé.
+
 #### Ce que ce regard n'a PAS pu établir
 
 Le relecteur n'a **pas pu tester les fenêtres étroites** : l'outil de
@@ -308,6 +302,26 @@ trait d'un pixel est écrasé sur un seul pixel physique ; sur un Mac Retina il 
 occupera deux, à pleine épaisseur. Les contours du Mac seront donc **un tiers
 plus marqués** que ceux qui ont été jugés « discrets et justes ». Et le thème
 clair a dû être forcé à la main, faute de pouvoir changer le réglage du système.
+
+#### La couleur du choix et celle de l'avertissement sont la même
+
+`--accent`, qui veut dire « vous avez choisi ceci », et `--attention`, qui veut
+dire « regardez ça de près », sont à **1,09:1** l'un de l'autre en thème sombre
+et 1,16:1 en clair. Autrement dit : la même couleur. Deux significations
+opposées — un choix qu'on a fait, un problème qu'on n'a pas vu — portent la
+même teinte.
+
+Cela n'a pas de conséquence tant que les deux ne se croisent pas sur le même
+écran, et c'est aujourd'hui le cas. Mais c'est une collision qui attend : elle
+s'est déjà produite une fois, quand la mention de version a repris l'habit des
+encadrés d'explication au bas de la liste des diagnostics — corrigé le 17 août
+2026 en sortant cette mention de la classe des encadrés, mais la cause est
+restée.
+
+**Ce qu'il faudrait :** écarter franchement `--attention` de `--accent`, en le
+poussant vers l'orangé-rouge ou en le fonçant. À faire en regardant les deux
+thèmes, pas au jugé — et en vérifiant que le nouveau ton ne se rapproche pas
+d'`--erreur`, qui est le troisième de cette famille.
 
 #### Deux tons de trait décoratif sans règle pour choisir
 
