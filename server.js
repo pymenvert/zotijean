@@ -182,38 +182,46 @@ const ÉCHAPPEMENTS_HTML = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot
 const échapperHTML = (texte) =>
   String(texte ?? '').replace(/[&<>"']/g, (c) => ÉCHAPPEMENTS_HTML[c]);
 
-/** Page de fin de connexion, affichée dans le navigateur de l'utilisateur. */
-function pageRetour({ titre, message, réussi }) {
-  const accent = réussi ? '#4ec98a' : '#f4685f';
+/**
+ * Page de fin de connexion, affichée dans le navigateur de l'utilisateur.
+ *
+ * Elle porte son style dans une feuille SÉPARÉE, comme tout le reste de
+ * l'interface. Le bloc `<style>` qu'elle avait avant obligeait à réécrire la
+ * politique de sécurité rien que pour elle, en y rouvrant « unsafe-inline » :
+ * deux politiques divergentes à maintenir, pour une seule page. `src/securite.js`
+ * est désormais la seule.
+ *
+ * La contrepartie est assumée : si la feuille ne se charge pas, la page s'affiche
+ * nue. Or c'est PRÉCISÉMENT celle qui annonce si l'authentification a abouti. Le
+ * verdict est donc écrit en toutes lettres, dans le premier élément du corps, en
+ * gras par la balise et non par le style. La couleur ne fait que le confirmer.
+ */
+export function pageRetour({ titre, message, réussi }) {
+  // `=== true`, et pas seulement une valeur vraie. Les deux erreurs possibles ne
+  // se valent pas : annoncer un échec sur une réussite fait relancer une
+  // connexion qui marchait, annoncer une réussite sur un échec envoie
+  // l'utilisateur attendre des téléchargements qui ne viendront jamais. Une
+  // chaîne 'false', un objet vide ou un 1 renvoyés par un appelant distrait
+  // basculaient du mauvais côté.
+  const aAbouti = réussi === true;
+  const verdict = aAbouti ? 'Connexion réussie' : 'Connexion non établie';
   return `<!doctype html><html lang="fr"><head><meta charset="utf-8">
-<title>Zotijean — ${échapperHTML(titre)}</title><style>
-  body { margin:0; min-height:100vh; display:grid; place-items:center;
-         background:#0e1014; color:#e8ecf2; font:15px/1.6 -apple-system,
-         BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif; padding:24px; }
-  .boite { max-width:440px; text-align:center; }
-  .pastille { width:12px; height:12px; border-radius:50%; background:${accent};
-              margin:0 auto 20px; box-shadow:0 0 0 6px ${accent}22; }
-  h1 { font-size:20px; margin:0 0 10px; font-weight:640; letter-spacing:-.02em; }
-  p { color:#9aa4b2; margin:0; }
-</style></head><body><div class="boite">
-  <div class="pastille"></div><h1>${échapperHTML(titre)}</h1><p>${échapperHTML(message)}</p>
-</div></body></html>`;
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zotijean — ${échapperHTML(titre)}</title>
+<link rel="stylesheet" href="/retour.css">
+</head><body class="${aAbouti ? 'reussi' : 'echec'}"><main class="boite">
+  <p class="verdict"><span class="pastille" aria-hidden="true"></span><strong>${verdict}</strong></p>
+  <h1>${échapperHTML(titre)}</h1>
+  <p class="message">${échapperHTML(message)}</p>
+</main></body></html>`;
 }
 
 async function servirRetourSpotify(url, réponse) {
   const envoyer = (contenu, statut = 200) => {
     réponse.writeHead(statut, {
+      // Aucune politique locale : cette page suit la politique commune, qui
+      // autorise déjà « style-src 'self' » — donc /retour.css.
       ...ENTÊTES_SÉCURITÉ,
-      // La page porte son style en ligne, ce que la politique globale interdit.
-      // On la réécrit donc EN ENTIER : « form-action » et « frame-ancestors »
-      // ne retombent pas sur « default-src », les omettre les désactiverait.
-      'Content-Security-Policy': [
-        "default-src 'none'",
-        "style-src 'unsafe-inline'",
-        "base-uri 'none'",
-        "form-action 'none'",
-        "frame-ancestors 'none'",
-      ].join('; '),
       'Content-Type': 'text/html; charset=utf-8',
     });
     réponse.end(contenu);

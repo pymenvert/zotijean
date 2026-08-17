@@ -1133,9 +1133,9 @@ async function rendreSpotify() {
     <p class="aide">En contrepartie, il faut créer une application dans le tableau
     de bord développeur de Spotify, dont les conditions interdisent d’alimenter un
     téléchargeur. Cela expose un second compte en plus de votre compte d’écoute.</p>
-    <ol class="aide" style="padding-left:20px; display:flex; flex-direction:column; gap:6px">
+    <ol class="aide liste-etapes">
       <li>Ouvrez <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener">developer.spotify.com/dashboard</a> et créez une application.</li>
-      <li>Dans <em>Redirect URI</em>, collez exactement : <code class="jeton" style="cursor:text">${échapper(état_.redirection)}</code></li>
+      <li>Dans <em>Redirect URI</em>, collez exactement : <code class="jeton">${échapper(état_.redirection)}</code></li>
       <li>Cochez <em>Web API</em>, enregistrez, puis copiez l’<em>identifiant client</em> ci-dessous.</li>
     </ol>
     <div class="ligne-formulaire">
@@ -1245,8 +1245,9 @@ async function afficherSélecteurPlaylists(événement) {
   const choisies = new Map(playlists.filter((p) => p.suivie).map((p) => [p.url, p]));
 
   zone.innerHTML = `
+    <p class="aide">Plusieurs playlists possibles — cochez celles à surveiller.</p>
     <div class="choix" id="liste-choix-playlists"></div>
-    <div class="ligne-formulaire" style="margin-top:10px">
+    <div class="ligne-formulaire espacee">
       <button class="bouton primaire" id="btn-valider-playlists">Enregistrer la sélection</button>
       <span class="tuile-libelle" id="compte-choisies"></span>
     </div>`;
@@ -1260,7 +1261,7 @@ async function afficherSélecteurPlaylists(événement) {
     const étiquette = document.createElement('label');
     étiquette.className = `option${choisies.has(p.url) ? ' choisi' : ''}`;
     étiquette.innerHTML = `
-      <span class="puce" style="border-radius:5px"></span>
+      <span class="puce carree"></span>
       <span class="option-corps">
         <span class="option-titre">${échapper(p.nom)}</span>
         <span class="option-explication">${p.nbTitres} titre(s) · ${échapper(p.propriétaire || '')}${p.collaborative ? ' · collaborative' : ''}</span>
@@ -1448,7 +1449,7 @@ function rendreExportsDJ() {
     étiquette.className = `option${actuel[e.id] ? ' choisi' : ''}`;
     étiquette.innerHTML = `
       <input type="checkbox" ${actuel[e.id] ? 'checked' : ''}>
-      <span class="puce" style="border-radius:5px"></span>
+      <span class="puce carree"></span>
       <span class="option-corps">
         <span class="option-titre">${échapper(e.libellé)}</span>
         <span class="option-explication">${échapper(e.explication)}</span>
