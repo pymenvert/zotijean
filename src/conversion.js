@@ -137,8 +137,20 @@ export function construireCommande({ source, destination, format, pochette }) {
 
 /**
  * Un fichier converti doit peser une fraction plausible de sa source.
- * Un ffmpeg qui échoue à mi-parcours laisse un fichier valide mais tronqué : le
- * code de sortie ne suffit pas à s'en apercevoir.
+ *
+ * Ce que cette garde attrape : un ffmpeg qui rend 0 après n'avoir produit
+ * presque rien — quelques octets, un en-tête seul. Le code de sortie ne le
+ * signale pas ; seule la taille sur disque le dit.
+ *
+ * CE QU'ELLE N'ATTRAPE PAS, et il ne faut pas s'y fier : une troncature à
+ * MI-PARCOURS. Un FLAC issu d'un Ogg de 5 Mo en pèse environ 25 ; coupé en son
+ * milieu il en fait encore 12, donc bien plus que sa source, et il passe. Idem
+ * pour un format avec perte, où la moitié reste au-dessus du quart exigé. Le
+ * commentaire précédent annonçait le contraire — d'où cette rectification.
+ *
+ * Attraper une troncature partielle demanderait de comparer les DURÉES, avec
+ * ffprobe : il est déjà embarqué dans le paquet, et déjà utilisé par les exports
+ * Rekordbox. C'est écrit dans docs/reste-a-faire.md.
  */
 export function tailleplausible(octetsSource, octetsCible, format) {
   if (octetsCible < 16 * 1024) return false;

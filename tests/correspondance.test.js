@@ -193,6 +193,36 @@ test('un rapprochement massivement raté est déclaré NON FIABLE', () => {
   assert.match(bilan.fiabilité.raison, /pas fiable/);
 });
 
+test('le garde-fou de fiabilité se déclenche AU SEUIL, pas seulement à zéro', () => {
+  // Le cas voisin — pas un seul fichier reconnu — passe sous n'importe quel
+  // seuil : il ne prouve donc rien sur la valeur de celui-ci. Éprouvé en
+  // cassant le code exprès : abaisser le seuil de 50 % à 5 %, ce qui revient à
+  // neutraliser le garde-fou, ne faisait tomber aucun test.
+  const pistes = Array.from({ length: 10 }, (_, i) => piste('Artiste', `Titre ${i}`));
+  const illisibles = (n) => Array.from({ length: n }, (_, i) => `/m/xyz-illisible-${i}.ogg`);
+  const reconnus = (n) => Array.from({ length: n }, (_, i) => `/m/Artiste - Titre ${i}.ogg`);
+
+  // Quatre fichiers sur dix rattachés : sous la moitié, on ne touche à rien.
+  const bilanBas = confronter(pistes, [...reconnus(4), ...illisibles(6)]);
+  assert.equal(bilanBas.fiabilité.sûre, false, 'quatre sur dix devrait alerter');
+
+  // Six sur dix : au-dessus de la moitié, le rapprochement est exploitable.
+  const bilanHaut = confronter(pistes, [...reconnus(6), ...illisibles(4)]);
+  assert.equal(bilanHaut.fiabilité.sûre, true, 'six sur dix devrait être jugé fiable');
+
+  // Cinq sur dix, la borne EXACTE. Sans ce cas, les deux précédents laissent
+  // encore passer une dérive fine — un seuil déplacé à 45 % ou 55 % survivrait.
+  // La règle est « strictement moins de la moitié alerte », donc pile la moitié
+  // est fiable.
+  const bilanPile = confronter(pistes, [...reconnus(5), ...illisibles(5)]);
+  assert.equal(
+    bilanPile.fiabilité.sûre,
+    true,
+    'cinq sur dix est pile le seuil : la règle est « strictement moins de la ' +
+      'moitié alerte », donc ce cas doit être jugé fiable',
+  );
+});
+
 test('une playlist vide n’est jamais jugée fiable', () => {
   // Sans cette garde, une lecture ratée de l'API ferait passer TOUS les
   // fichiers du dossier pour des orphelins à archiver.
