@@ -103,7 +103,14 @@ async function contrôlerZotify(commandeConfigurée) {
         // attendue. Le fork vivant déclare une centaine d'options ; une aide
         // tronquée avant « --skip-existing » ferait conclure au mauvais style,
         // et l'URL de la playlist serait avalée comme valeur d'option.
-        aide: texteAide.slice(0, 80000),
+        //
+        // LA COUPURE TOMBE SUR UNE FIN DE LIGNE, jamais au milieu d'une
+        // déclaration. Couper entre un nom d'option et son metavar laisserait
+        // une option « déclarée » (la liste des options lit le texte complet)
+        // mais au style illisible — une demi-vérité pire qu'une absence.
+        aide: texteAide.length > 80000
+          ? texteAide.slice(0, 80000).replace(/[^\n]*$/, '')
+          : texteAide,
       },
     );
   }
@@ -111,11 +118,20 @@ async function contrôlerZotify(commandeConfigurée) {
   // Message adapté selon qu'un paquet autonome était censé le fournir ou non :
   // dire « installez zotify » à quelqu'un qui vient de double-cliquer une app
   // supposée tout contenir serait incompréhensible.
+  //
+  // ET CHAQUE CONSEIL DOIT ÊTRE EXÉCUTABLE. Une version précédente terminait
+  // par « indiquez son chemin dans les réglages » — un écran qui n'existe pas.
+  // C'était le message le plus visible de l'app (bandeau rouge sur chaque
+  // page), et il envoyait l'utilisateur dans une impasse. Le chemin de zotify
+  // est bien configurable dans le fichier, mais tant qu'aucun champ de
+  // l'interface ne l'expose, le message n'a pas le droit d'y faire allusion.
   const messageAutonome = embarqué.raison && embarqué.raison !== 'aucun outil embarqué'
     ? `${embarqué.raison} Relancez l’application ; si le problème persiste, ` +
       'consultez le journal dans cet onglet.'
-    : 'zotify est introuvable. Vérifiez qu’il fonctionne en tapant ' +
-      '« zotify --version » dans le Terminal, puis indiquez son chemin dans les réglages.';
+    : 'zotify est introuvable. Vérifiez qu’il répond en tapant ' +
+      '« zotify --version » dans le Terminal. S’il répond là mais pas ici, ' +
+      'Zotijean ne voit pas les mêmes emplacements : lancez Zotijean depuis ce ' +
+      'même Terminal, ou installez zotify à un emplacement standard.';
 
   return contrôle(
     'zotify',

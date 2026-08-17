@@ -6,6 +6,8 @@
 // tort qu'il est présent coûte un morceau non signalé. La prudence penche donc
 // délibérément d'un côté, et ces tests le vérifient.
 
+// (Les tests de la jointure par ISRC sont en fin de fichier : ils rejouent la
+// condition exacte qui rendait la bibliothèque « éternellement manquante ».)
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -208,4 +210,65 @@ test('un même fichier ne satisfait qu’un seul morceau', () => {
   );
   assert.equal(bilan.présents.length + bilan.manquants.length, 2);
   assert.equal(bilan.présents.length, 1, 'un fichier a été compté deux fois');
+});
+
+// ---------------------------------------------------------------------------
+// La jointure par ISRC — passe 0 de confronter
+// ---------------------------------------------------------------------------
+//
+// LE BLOQUANT QU'ELLE CORRIGE, reproduit tel quel par la revue de code : avec
+// le modèle « {titre} [{isrc}] » que le journal des versions promeut,
+// l'identifiant restait dans l'empreinte du fichier mais ne figurait jamais
+// dans celle de la piste. Aucune intersection possible : bibliothèque entière
+// « éternellement manquante », re-vérifiée à ~30 s par titre à chaque cycle,
+// avertissement de fiabilité permanent — la fonctionnalité phare cassait
+// précisément ce qu'elle promettait de fiabiliser.
+
+test('un fichier nommé avec son ISRC est reconnu, pas éternellement manquant', () => {
+  const piste = {
+    id: 't1', titre: 'Prix Choc', artiste: 'Étienne', artistes: ['Étienne'],
+    isrc: 'FRXXX2600001',
+  };
+  const fichier = '/M/Été 2026/007 - Étienne - Prix Choc [FRXXX2600001].ogg';
+
+  const bilan = confronter([piste], [fichier]);
+
+  assert.equal(bilan.manquants.length, 0, 'le morceau présent est vu comme manquant');
+  assert.equal(bilan.nonReconnus.length, 0, 'le fichier présent est vu comme étranger');
+  assert.equal(bilan.présents.length, 1);
+  assert.equal(bilan.présents[0].fichier, fichier);
+});
+
+test('le bouchon [None] écrit par zotify n’empêche pas le rapprochement', () => {
+  // Quand un morceau n'a pas d'ISRC, zotify substitue « None » dans le nom.
+  // Ce bouchon ne fait pas partie du titre : sans son retrait, tous les
+  // morceaux SANS identifiant devenaient introuvables — l'inverse exact du
+  // service attendu.
+  const piste = { id: 't2', titre: 'Prix Choc', artiste: 'Étienne', artistes: ['Étienne'] };
+  const bilan = confronter([piste], ['/M/007 - Étienne - Prix Choc [None].ogg']);
+  assert.equal(bilan.présents.length, 1);
+});
+
+test('deux homonymes parfaits se départagent par leur ISRC', () => {
+  // Même titre, même artiste : les empreintes sont identiques et l'attribution
+  // par empreintes serait arbitraire. L'identifiant, lui, ne ment pas — la
+  // passe 0 rend le rapprochement PLUS sûr qu'avant la variable {isrc}.
+  const a = { id: 'a', titre: 'Intro', artiste: 'X', artistes: ['X'], isrc: 'FRAAA2600001' };
+  const b = { id: 'b', titre: 'Intro', artiste: 'X', artistes: ['X'], isrc: 'FRBBB2600002' };
+
+  const bilan = confronter(
+    [a, b],
+    ['/M/Intro [FRBBB2600002].ogg', '/M/Intro [FRAAA2600001].ogg'],
+  );
+
+  assert.equal(bilan.manquants.length, 0);
+  const parPiste = Object.fromEntries(bilan.présents.map((p) => [p.piste.id, p.fichier]));
+  assert.ok(parPiste.a.includes('FRAAA'), 'la piste A a reçu le fichier de B');
+  assert.ok(parPiste.b.includes('FRBBB'), 'la piste B a reçu le fichier de A');
+});
+
+test('un fichier sans ISRC reste rattachable par empreintes, rien n’a changé pour lui', () => {
+  const piste = { id: 't3', titre: 'Prix Choc', artiste: 'Étienne', artistes: ['Étienne'] };
+  const bilan = confronter([piste], ['/M/007 - Étienne - Prix Choc.ogg']);
+  assert.equal(bilan.présents.length, 1);
 });

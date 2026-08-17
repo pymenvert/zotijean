@@ -150,14 +150,28 @@ export function construireArguments({ url, config, attente, capacités, modèle,
   const attendUneValeur = (nom, parDéfaut) => {
     const aide = String(capacités.aide || '');
     // Une option ABSENTE du texte d'aide ne dit rien de son style : le texte
-    // est tronqué par le diagnostic, et le fork vivant en produit assez pour
-    // atteindre la coupure. Dans le doute, chaque option retombe sur le style
-    // qu'elle a chez le fork embarqué.
+    // est tronqué par le diagnostic. Dans le doute, chaque option retombe sur
+    // le style qu'elle a chez le fork embarqué.
     if (!aide.includes(`--${nom}`)) return parDéfaut;
-    // Le nom en capitales exige au moins deux lettres : argparse n'en produit
-    // jamais moins, et un seul « S » majuscule pourrait n'être que le début du
-    // texte d'aide d'un pur drapeau (« Skip songs… »).
-    return new RegExp(`--${nom}[ =][A-Z][A-Z_]+`).test(aide);
+
+    // Nom en capitales après l'option : c'est un metavar, une valeur est
+    // attendue. Deux lettres minimum — argparse n'en produit jamais moins, et
+    // un seul « S » majuscule pourrait n'être que le début d'un texte d'aide.
+    if (new RegExp(`--${nom}[ =][A-Z][A-Z_]+`).test(aide)) return true;
+
+    // On ne conclut « pur drapeau » QUE sur une preuve claire : dans une aide
+    // argparse, un drapeau est suivi d'une virgule, d'un crochet fermant, d'une
+    // fin de LIGNE, ou d'au moins deux espaces puis son texte d'aide. La fin de
+    // CHAÎNE, elle, ne prouve rien — c'est la signature d'une coupure. Tout le
+    // reste — « {true,false} » d'un choix, « <bool> » d'un metavar
+    // personnalisé, une déclaration tronquée — est AMBIGU, et l'ambiguïté
+    // retombe sur le style du fork embarqué. Conclure « drapeau » sur un doute
+    // est le sens destructeur : l'option nue avale l'argument suivant, qui est
+    // l'URL de la playlist.
+    const clairementDrapeau = aide.split(`--${nom}`).slice(1).every(
+      (suite) => /^[,\]\r\n]/.test(suite) || /^ {2,}\S/.test(suite),
+    );
+    return clairementDrapeau ? false : parDéfaut;
   };
 
   const pousserBooléen = (clé, { valeurParDéfaut = true } = {}) => {
@@ -221,10 +235,25 @@ export function construireArguments({ url, config, attente, capacités, modèle,
 
   const supplémentaires = String(config.zotify?.argumentsSupplémentaires || '').trim();
   if (supplémentaires) {
-    arguments_.push(...supplémentaires.split(/\s+/));
+    // Un « -- » isolé saisi par l'utilisateur deviendrait un positionnel après
+    // le nôtre — donc une adresse à télécharger. Il n'a aucun usage légitime
+    // dans ce champ : on l'écarte.
+    arguments_.push(...supplémentaires.split(/\s+/).filter((a) => a !== '--'));
   }
 
-  arguments_.push(url);
+  // « -- » AVANT L'URL : LA CEINTURE DE SÉCURITÉ DE TOUTE LA LIGNE DE COMMANDE.
+  //
+  // argparse traite « -- » comme la fin des options ; tout ce qui suit est un
+  // positionnel. Vérifié contre le même analyseur que le fork : si une option à
+  // valeur arrive nue juste avant — style mal lu, aide tronquée, ou un argument
+  // supplémentaire saisi par l'utilisateur — argparse échoue avec une ERREUR
+  // VISIBLE (« expected one argument ») au lieu d'avaler l'URL en silence.
+  //
+  // La différence est tout sauf cosmétique : l'avalement silencieux, c'est
+  // « aucune nouveauté » affiché pour toujours avec un bilan vert — le pire
+  // défaut de l'histoire du projet. L'erreur visible, elle, remonte dans le
+  // journal et le résumé dès la première synchronisation.
+  arguments_.push('--', url);
 
   return { arguments: arguments_, nonAppliqués };
 }
@@ -429,6 +458,31 @@ export function nouveauxFichiers(avant, après, tailleMinimale = 32 * 1024) {
 
 /** Dossier où atterrissent les téléchargements interrompus. */
 export const DOSSIER_INCOMPLETS = '_incomplets';
+
+/**
+ * zotify, TEL QUE NOUS LE LANÇONS, saura-t-il qu'un morceau est déjà pris si
+ * son fichier d'origine a disparu ?
+ *
+ * La réponse est NON, et elle découle de nos propres choix. Le pilote passe
+ * « --disable-directory-archives true » précisément pour que zotify ne croie
+ * que le disque (« le disque fait foi », principe fondateur) ; son archive
+ * globale n'est consultée qu'avec « --skip-prev-downloaded », que nous ne
+ * passons pas. Et le vieux fork, lui, regarde le disque nativement.
+ *
+ * Conséquence : retirer l'Ogg d'origine après conversion, c'est garantir son
+ * retéléchargement à la prochaine synchronisation — l'Ogg, pas le fichier
+ * converti, est ce que zotify cherche. Sur une bibliothèque convertie, c'est le
+ * rattrapage complet de dix-sept heures qui recommence à chaque cycle.
+ *
+ * Une version précédente devinait la réponse avec une expression sur les NOMS
+ * d'options (/previous|already|archive/) — que « disable-directory-archives »
+ * satisfaisait par le mot « archive » : l'option passée pour DÉSACTIVER le
+ * journal ouvrait le garde-fou censé en dépendre. La réponse appartient au
+ * pilote, pas à une heuristique posée ailleurs.
+ */
+export function saitReprendreSansLeFichier() {
+  return false;
+}
 
 /**
  * Supprime les fichiers de travail que zotify laisse derrière lui.

@@ -71,6 +71,30 @@ test('un épisode de podcast est écarté, même quand le type est bien renvoyé
   assert.deepEqual(pistes.map((p) => p.titre), ['Prix Choc']);
 });
 
+test('un trou dans la liste des artistes ne fait pas tomber l’inventaire', () => {
+  // Le trou peut être À L'INTÉRIEUR de la liste, pas seulement à la place de
+  // la piste. « artists: [null] » plantait la lecture entière : le catch en
+  // amont absorbait l'erreur à chaque synchronisation, et l'analyse Spotify de
+  // la playlist restait dégradée pour toujours, sans autre signe qu'un
+  // avertissement répété dans le journal.
+  const pistes = normaliserPistes([
+    PISTE('a1', 'Prix Choc'),
+    { is_local: false, track: { type: 'track', id: 'x1', name: 'Trouée', artists: [null] } },
+    { is_local: false, track: { type: 'track', id: 'x2', name: 'Anonyme', artists: [{}] } },
+  ]);
+
+  assert.equal(pistes.length, 3, 'une piste au trou a fait tomber toute la lecture');
+  assert.deepEqual(pistes[1].artistes, []);
+  assert.equal(pistes[1].artiste, '');
+  // Un artiste sans nom ne doit pas produire « undefined » dans les empreintes.
+  assert.deepEqual(pistes[2].artistes, []);
+});
+
+test('un corps d’erreur de l’API à la place d’un tableau rend une liste vide', () => {
+  assert.deepEqual(normaliserPistes({ error: { status: 500 } }), []);
+  assert.deepEqual(normaliserPistes(null), []);
+});
+
 test('les champs absents deviennent des valeurs sûres, jamais des trous', () => {
   // Un single sans album complet, une compilation sans ISRC : chaque champ
   // manquant doit donner une valeur exploitable par l'organisation des
