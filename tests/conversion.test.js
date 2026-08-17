@@ -1,16 +1,28 @@
 // Tests de la conversion de format.
 //
-// La conversion n'est pas exécutée ici (ffmpeg n'est pas garanti présent sur le
-// poste de développement) : on teste la construction de la commande, parce que
-// c'est là que se cachent les erreurs coûteuses. Un drapeau oublié ne fait pas
-// échouer ffmpeg, il produit un fichier silencieusement dégradé ou sans
-// étiquettes — une perte qui n'apparaît qu'à l'import dans le logiciel DJ.
+// L'essentiel porte sur la construction de la commande, parce que c'est là que
+// se cachent les erreurs coûteuses. Un drapeau oublié ne fait pas échouer
+// ffmpeg : il produit un fichier silencieusement dégradé ou sans étiquettes —
+// une perte qui n'apparaît qu'à l'import dans le logiciel DJ.
+//
+// DEUX TESTS EXÉCUTENT POURTANT UNE VRAIE CONVERSION, et ce n'est pas un luxe.
+// « tailleplausible » était testée à fond en isolation, mais la garde qui la
+// CONSOMME — celle qui jette le fichier produit — n'avait jamais tourné : les
+// deux tests de « convertir » sortaient avant, et les tests d'intégration
+// utilisent le format « copie », qui ne convertit rien. Inverser cette garde,
+// donc mettre en place les fichiers invraisemblables et jeter les bons,
+// survivait à la suite entière.
+//
+// C'est exactement la forme de trou qui avait fait qu'aucune version avant la
+// 1.0.5 ne téléchargeait quoi que ce soit : une pièce parfaitement testée, et
+// personne pour vérifier qu'on l'appelle correctement.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 
 import {
   PROFILS,
@@ -170,6 +182,24 @@ test('un fichier minuscule est toujours écarté', () => {
   assert.equal(tailleplausible(5_000_000, 1024, 'mp3_320'), false);
 });
 
+test('un fichier minuscule est écarté même quand le rapport, lui, est bon', () => {
+  // Les deux cas ci-dessus échouent pour DEUX raisons à la fois — le plancher
+  // ET le rapport — ce qui laissait le plancher de 16 Ko sans garde propre.
+  // Éprouvé en cassant le code exprès : le supprimer ne faisait tomber aucun
+  // test. Ici, il est seul à pouvoir rejeter — 8 Ko produits depuis 1 Ko de
+  // source satisfont largement tous les rapports.
+  assert.equal(tailleplausible(1024, 8 * 1024, 'flac'), false);
+  assert.equal(tailleplausible(1024, 8 * 1024, 'mp3_320'), false);
+});
+
+test('un sans-perte de la taille EXACTE de sa source est écarté', () => {
+  // Le cas limite, celui que les bornes ratent toujours. Un FLAC obtenu depuis
+  // un Ogg pèse nettement plus lourd : une taille rigoureusement identique
+  // signale une copie déguisée, pas une conversion. Éprouvé : relâcher la
+  // comparaison en « au moins aussi lourd » ne faisait tomber aucun test.
+  assert.equal(tailleplausible(5_000_000, 5_000_000, 'flac'), false);
+});
+
 // ---------------------------------------------------------------------------
 // Recherche de pochette
 // ---------------------------------------------------------------------------
@@ -253,6 +283,90 @@ test('convertir échoue proprement quand ffmpeg est absent', async () => {
     assert.ok(résultat.raison.length > 10);
     // La source doit être intacte : on ne perd jamais le téléchargement.
     assert.ok(fs.existsSync(source));
+  } finally {
+    fs.rmSync(racine, { recursive: true, force: true });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// La garde qui jette un fichier invraisemblable — exécutée pour de vrai
+// ---------------------------------------------------------------------------
+
+const SAUTER_LEURRE = process.platform === 'win32'
+  ? 'Node refuse de lancer un script sans shell ; ce test tourne sur macOS et Linux en intégration continue.'
+  : false;
+
+test('un fichier produit invraisemblable est jeté, jamais mis en place', { skip: SAUTER_LEURRE }, async () => {
+  const racine = fs.mkdtempSync(path.join(os.tmpdir(), 'zotijean-rebut-'));
+  try {
+    const source = path.join(racine, 'Prix Choc.ogg');
+    fs.writeFileSync(source, Buffer.alloc(5_000_000));
+
+    // Un ffmpeg qui RÉUSSIT — code de sortie 0 — mais livre un fichier d'un
+    // octet. C'est précisément le cas que le code de sortie ne signale pas, et
+    // la seule raison d'être de la vérification sur disque.
+    const leurre = path.join(racine, 'ffmpeg-tronqueur');
+    fs.writeFileSync(leurre, '#!/bin/sh\nfor a in "$@"; do dest="$a"; done\nprintf x > "$dest"\nexit 0\n');
+    fs.chmodSync(leurre, 0o755);
+
+    const résultat = await convertir({ source, format: 'flac', ffmpeg: leurre });
+
+    assert.equal(résultat.réussi, false, 'un fichier d’un octet a été accepté');
+    assert.match(résultat.raison, /invraisemblable/);
+    assert.equal(
+      fs.existsSync(path.join(racine, 'Prix Choc.flac')),
+      false,
+      'le fichier écarté a quand même pris la place de la cible',
+    );
+    assert.deepEqual(
+      fs.readdirSync(racine).filter((f) => f.includes('.tmp')),
+      [],
+      'le rebut est resté sur le disque',
+    );
+    assert.ok(
+      fs.existsSync(source),
+      'la source a été supprimée : ce n’est pas à « convertir » d’en décider',
+    );
+  } finally {
+    fs.rmSync(racine, { recursive: true, force: true });
+  }
+});
+
+// Le seul endroit de ce projet où ffmpeg fait réellement son travail. Les
+// serveurs Linux d'intégration continue en embarquent un ; ailleurs, le test se
+// saute plutôt que de mentir.
+const FFMPEG_RÉEL = (() => {
+  try {
+    execFileSync('ffmpeg', ['-version'], { stdio: 'ignore' });
+    return 'ffmpeg';
+  } catch {
+    return null;
+  }
+})();
+
+test('convertir produit vraiment un fichier et le met en place sans résidu', {
+  skip: FFMPEG_RÉEL ? false : 'ffmpeg absent d’ici ; ce test tourne sur les serveurs d’intégration continue.',
+  timeout: 120_000,
+}, async () => {
+  const racine = fs.mkdtempSync(path.join(os.tmpdir(), 'zotijean-conv-reelle-'));
+  try {
+    const source = path.join(racine, 'Prix Choc.mp3');
+    // Du BRUIT, pas un silence : un silence se comprime à quelques kilo-octets
+    // et tomberait sous le plancher de 16 Ko pour une raison sans aucun rapport
+    // avec ce qu'on cherche à vérifier.
+    execFileSync(FFMPEG_RÉEL, ['-hide_banner', '-loglevel', 'error', '-y',
+      '-f', 'lavfi', '-i', 'anoisesrc=d=8:c=pink:r=44100',
+      '-ac', '2', '-c:a', 'libmp3lame', '-b:a', '320k', source]);
+
+    const résultat = await convertir({ source, format: 'flac', ffmpeg: FFMPEG_RÉEL });
+
+    assert.ok(résultat.réussi, `la conversion a échoué : ${résultat.raison}`);
+    assert.ok(fs.existsSync(résultat.destination), 'le fichier converti n’est pas à sa place');
+    assert.ok(
+      fs.statSync(résultat.destination).size > fs.statSync(source).size,
+      'un sans-perte issu d’un fichier avec perte doit peser nettement plus lourd',
+    );
+    assert.deepEqual(fs.readdirSync(racine).filter((f) => f.includes('.tmp')), []);
   } finally {
     fs.rmSync(racine, { recursive: true, force: true });
   }

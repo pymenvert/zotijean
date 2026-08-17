@@ -105,6 +105,133 @@ test('écrireAtomique ne laisse aucun fichier temporaire derrière lui', () => {
   }
 });
 
+test('écrireAtomique laisse la cible intacte quand l’écriture échoue', () => {
+  // Le test ci-dessus vérifie qu'aucun temporaire ne traîne — mais une écriture
+  // DIRECTE le satisfait tout autant, puisqu'elle n'en crée aucun. Éprouvé en
+  // cassant le code exprès : remplacer le détour par un temporaire suivi d'un
+  // renommage par un simple writeFileSync sur la cible laissait toute la suite
+  // au vert. Or c'est précisément ce détour qui protège la configuration d'une
+  // coupure de courant, et le projet en fait une règle.
+  //
+  // Provoquer un échec AU BON MOMENT sans couper le courant : on occupe le nom
+  // du fichier temporaire par un DOSSIER, ce qui rend son écriture impossible.
+  //
+  // Ce nom est reconstruit ici, donc couplé à celui que pose écrireAtomique. Si
+  // ce test tombe après un changement de nommage du temporaire, c'est le TEST
+  // qu'il faut mettre à jour : son message accuserait sinon l'écriture atomique
+  // d'un défaut qu'elle n'a pas.
+  const racine = bacÀSable();
+  try {
+    const cible = path.join(racine, 'etat.json');
+    fs.writeFileSync(cible, '{"ancien":true}', 'utf8');
+    const temporaire = `${cible}.${process.pid}.tmp`;
+    fs.mkdirSync(temporaire);
+
+    assert.throws(
+      () => écrireAtomique(cible, '{"nouveau":true}'),
+      (erreur) => {
+        // On exige que l'échec vienne bien du TEMPORAIRE. Sans cette
+        // vérification, le jour où le nommage du temporaire change — un
+        // durcissement parfaitement plausible —, le dossier ne barrerait plus
+        // la route, l'écriture réussirait, et le message d'échec accuserait à
+        // tort l'écriture atomique d'un défaut qu'elle n'a pas.
+        assert.equal(
+          erreur.path,
+          temporaire,
+          `l’échec porte sur « ${erreur.path} » et non sur le fichier ` +
+            `temporaire : ce test ne prouve plus rien. Si le nommage du ` +
+            `temporaire a changé, c’est LE TEST qu’il faut mettre à jour.`,
+        );
+        return true;
+      },
+    );
+
+    assert.equal(
+      fs.readFileSync(cible, 'utf8'),
+      '{"ancien":true}',
+      'le contenu précédent a été perdu alors que la nouvelle écriture a ' +
+        'échoué. C’est exactement ce que l’écriture atomique existe pour empêcher.',
+    );
+  } finally {
+    fs.rmSync(racine, { recursive: true, force: true });
+  }
+});
+
+test('écrireAtomique efface son temporaire quand la mise en place échoue', () => {
+  // Le test du cas nominal ne prouve rien ici : en cas de succès, le renommage
+  // consomme le temporaire, il n'y a rien à nettoyer. Éprouvé en cassant le
+  // code exprès : retirer le nettoyage de la branche d'erreur ne faisait tomber
+  // aucun test. Un temporaire abandonné contient une copie PARTIELLE de ce
+  // qu'on écrivait — gênant pour la configuration, franchement mauvais pour des
+  // jetons de connexion.
+  //
+  // On fait échouer le renommage FINAL, donc après que le temporaire a bien été
+  // écrit : c'est exactement la fenêtre où un résidu peut rester. Une cible qui
+  // est un dossier non vide ne peut être remplacée sur aucun système.
+  const racine = bacÀSable();
+  try {
+    const cible = path.join(racine, 'etat.json');
+    fs.mkdirSync(cible);
+    fs.writeFileSync(path.join(cible, 'occupe'), 'x');
+
+    assert.throws(
+      () => écrireAtomique(cible, '{"a":1}'),
+      (erreur) => {
+        // Sans cette exigence, ce test peut virer au vert POUR UNE MAUVAISE
+        // RAISON : si l'échec survenait plus tôt — à l'écriture du temporaire,
+        // ou à la création du dossier — le temporaire n'aurait jamais existé,
+        // la liste des résidus serait vide, et le test passerait alors même que
+        // le nettoyage aurait été supprimé. La fenêtre testée n'aurait pas été
+        // atteinte, et rien ne le dirait.
+        // Le code d'erreur diffère d'un système à l'autre ; l'appel système,
+        // lui, est le même partout. C'est donc lui qu'on vérifie.
+        assert.equal(
+          erreur.syscall,
+          'rename',
+          `l’échec vient de « ${erreur.syscall} » (${erreur.code}) et non du ` +
+            `renommage : aucun temporaire n’a été écrit, ce test ne prouve rien.`,
+        );
+        return true;
+      },
+    );
+
+    const restes = fs.readdirSync(racine).filter((f) => f.includes('.tmp'));
+    assert.deepEqual(
+      restes,
+      [],
+      'un fichier temporaire est resté sur le disque après un échec : il ' +
+        'contient une copie partielle de ce qu’on écrivait.',
+    );
+  } finally {
+    fs.rmSync(racine, { recursive: true, force: true });
+  }
+});
+
+test('écrireAtomique pose les droits restrictifs demandés', {
+  // Windows n'a pas de bits de permission POSIX : le contrôle n'y a aucun sens.
+  // Ce test tourne sur macOS — la machine de destination — et sur Linux.
+  skip: process.platform === 'win32' ? 'Pas de bits de permission POSIX sous Windows.' : false,
+}, () => {
+  // Le paramètre « mode » n'avait aucun test, et il n'a qu'un seul appelant :
+  // l'écriture des jetons de connexion Spotify. Supprimer soit le mode passé à
+  // l'écriture, soit le chmod final, laissait la suite entièrement verte et les
+  // jetons de rafraîchissement lisibles par tous les comptes de la machine.
+  // Le commentaire du code insiste pourtant : « un fichier de jetons brièvement
+  // lisible par tous reste un fichier lisible par tous ».
+  const racine = bacÀSable();
+  try {
+    const cible = path.join(racine, 'jetons.json');
+    écrireAtomique(cible, '{"refresh":"secret"}', { mode: 0o600 });
+    assert.equal(
+      fs.statSync(cible).mode & 0o777,
+      0o600,
+      'le fichier de jetons Spotify est lisible au-delà de son propriétaire',
+    );
+  } finally {
+    fs.rmSync(racine, { recursive: true, force: true });
+  }
+});
+
 test('lireJSON distingue un fichier absent d’un fichier illisible', () => {
   // La distinction n'est pas cosmétique : un fichier absent est normal au
   // premier lancement, un fichier corrompu doit être mis à l'abri avant qu'on
