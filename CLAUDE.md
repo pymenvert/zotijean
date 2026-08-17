@@ -118,7 +118,7 @@ vérifiée le 16 août 2026 — jamais écrite au jugé.
 - **format** : aucun
 - **lint** : aucun
 - **typecheck** : aucun
-- **test** : `node --test` → 326 tests, 315 verts, 11 ignorés
+- **test** : `node --test` → 400 tests, 389 verts, 11 ignorés
 - **build** : aucun en local ; le paquet est construit par
   `.github/workflows/publication.yml`
 - **run** : `node server.js` → http://127.0.0.1:8787
@@ -214,27 +214,17 @@ compléter `CHANGELOG.md`, commiter, **attendre la CI verte**, puis pousser le t
 `vX.Y.Z` — `.github/workflows/publication.yml` construit et publie la release. Il refuse
 un paquet incomplet ou non natif Apple Silicon.
 
-### Ce qui n'a jamais été vérifié en conditions réelles
+### Ce qui reste ouvert : `docs/reste-a-faire.md`
 
-Tout ce qui suit est testé contre des doublures, jamais contre le vrai service. C'est la
-frontière à garder en tête avant d'affirmer que quelque chose « marche » :
+Défauts connus non corrigés, chantiers en pause, et surtout **ce qui n'a jamais été
+vérifié en conditions réelles** — zotify réel, l'API Spotify réelle, un vrai Mac, Safari.
+C'est la frontière à garder en tête avant d'affirmer que quelque chose « marche ».
 
-- **zotify réel** — le format exact de sa sortie, ses codes d'erreur, son comportement
-  quand une piste est indisponible dans le pays.
-- **L'API Spotify réelle** — le flux OAuth complet dans un vrai navigateur, la
-  pagination sur de grosses playlists, les quotas.
-- **Un vrai Mac** — la CI construit le paquet et le démarre, mais personne n'a encore
-  double-cliqué dessus sur la machine de destination.
+**Ne rien dupliquer ici.** Ce fichier-ci dit ce qui CONTRAINT le code : des invariants,
+qui ne se rayent pas. `docs/reste-a-faire.md` dit ce qui est OUVERT : tout y est destiné
+à disparaître une ligne à la fois. Les deux listes ont divergé le jour même où la seconde
+a été créée — trois éléments en double, et une phrase devenue fausse ici.
 
-### Reste à faire
-
-- **Écrire les ISRC dans les tags des fichiers** — la moitié restante du « pont sans
-  perte ». Depuis la 1.0.6, la variable `{isrc}` met déjà l'identifiant dans le NOM du
-  fichier sans rien réécrire ; c'est le chemin sûr. Écrire dans les étiquettes exigerait
-  de réécrire le fichier, où Serato stocke points de repère et grilles rythmiques : à ne
-  faire qu'AVEC l'utilisateur, sur ses vrais fichiers, en commençant par une simulation.
-- **Brancher la politique de retrait** (Archiver / Corbeille) : code écrit et testé,
-  volontairement non câblé — déplacer ou jeter des fichiers de la bibliothèque se décide
-  avec l'utilisateur. La note de l'interface dit la vérité sur cet état.
-- Les contrastes des deux thèmes ont été mesurés et corrigés en 1.0.2 ; l'harmonie
-  générale des teintes n'a jamais été REGARDÉE par un humain.
+Une seule chose à savoir, parce qu'elle ne se devine pas : ce `CLAUDE.md` est chargé
+automatiquement à chaque conversation, `docs/reste-a-faire.md` non. Il faut aller
+l'ouvrir.
