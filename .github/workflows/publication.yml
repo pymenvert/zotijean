@@ -10,8 +10,15 @@ name: Publier une version
 # téléchargeable sans compte. C'est ce qu'on publie ici.
 #
 # Pour publier :   git tag v0.3.0 && git push origin v0.3.0
-# Attendre la CI verte AVANT de taguer : ce workflow ne rejoue pas les tests,
-# il construit et publie.
+#
+# Attendre la CI verte AVANT de taguer. Ce workflow relance bien la suite de
+# tests (étape « Lancer les tests » plus bas) — mais sur une seule plateforme,
+# Linux, alors que la CI ordinaire couvre aussi Windows et macOS. Un défaut
+# propre à macOS passerait donc ici sans être vu, et le tag est irréversible.
+#
+# La phrase précédente affirmait que ce workflow ne rejoue pas les tests. C'était
+# faux, et dans le sens dangereux : elle poussait à se croire moins couvert qu'on
+# ne l'est, ce qui finit par faire ignorer l'étape.
 
 on:
   push:

@@ -1,5 +1,95 @@
 # Journal des versions
 
+## 1.0.7 — 17 août 2026
+
+Une version qui ne change rien à ce que fait l'application, et beaucoup à ce
+qu'on en voit. Plusieurs commandes étaient là depuis le début sans qu'on puisse
+les distinguer du fond ; l'une d'elles était carrément illisible.
+
+### Le bouton principal était illisible en thème clair
+
+« Synchroniser », « Ajouter », « Connecter », « Enregistrer la sélection » : on
+voyait la forme du bouton, pas le mot écrit dessus.
+
+La cause tient en une ligne. La couleur du texte était fixée une fois pour
+toutes, et elle avait été choisie pour l'orange vif du thème sombre — où elle
+est parfaitement lisible. Mais le thème clair ne se contente pas d'éclaircir le
+thème sombre : il **recalcule** ses couleurs, et ses orangés y deviennent des
+bruns foncés. Un texte brun très sombre sur un fond brun foncé : la forme se
+voit, le mot non.
+
+### Ce qui se coche, se saisit et se clique se voit enfin
+
+Une case à cocher décochée était à peine plus contrastée que le fond de sa
+carte. Rien n'indiquait qu'il y avait là quelque chose à cocher. Le même défaut
+touchait les puces rondes, les champs de texte, les jetons de nommage, les
+bascules et les boutons — dix endroits, tous sous le seuil.
+
+Ils ont désormais un contour franc, sans devenir criards : l'œil va toujours au
+texte d'abord. Les bordures purement décoratives, elles, n'ont pas bougé — une
+ligne qui ne dit rien n'a pas besoin de se voir.
+
+Trois cas méritaient une attention particulière :
+
+- **« Arrêter la synchronisation en cours »** n'avait pratiquement pas de
+  contour. C'est le bouton qu'on cherche quand quelque chose va mal.
+- **Le lien vers le tableau de bord Spotify**, dans la procédure de connexion,
+  s'affichait dans le bleu par défaut du navigateur — presque noir sur fond
+  sombre. C'est la première action de la seule procédure technique du programme.
+- **Une bascule allumée** montrait un rond blanc sur orange clair, presque
+  invisible. Le rond change maintenant de couleur avec l'état.
+
+### Les explications ne se font plus passer pour des choix
+
+Les encadrés qui expliquent un réglage avaient exactement l'apparence d'une
+option sélectionnée : même fond orangé, même bordure. Dans la carte du format
+des fichiers, la note glissée sous les cinq formats se lisait comme un sixième
+format, coché lui aussi.
+
+L'orange veut dire « vous avez choisi ceci » partout ailleurs dans
+l'application. Il ne sert plus qu'à ça. Les explications ont désormais un fond
+neutre et un filet vertical.
+
+### « Tous les deux jours » s'affichait sur quatre lignes
+
+Dans les réglages de vérification automatique, le titre de l'option recommandée
+se cassait mot par mot — un mot par ligne — et faisait dépasser toute sa rangée
+de cartes. L'étiquette « Recommandé » passe maintenant à la ligne d'un bloc, au
+lieu de hacher le titre, et les cartes d'une même rangée ont la même hauteur.
+
+### La fenêtre peut être rétrécie sans que la page déborde
+
+En dessous d'environ 430 pixels de large, l'interface devenait plus large que sa
+fenêtre : il fallait défiler horizontalement pour lire, sur tous les onglets.
+Elle descend maintenant sous 280 pixels sans déborder.
+
+### Sous le capot : des garde-fous qui ne gardaient rien
+
+Le programme a été cassé volontairement, dix-sept fois, pour vérifier que ses
+tests s'en apercevaient. **Cinq fois sur dix-sept, ils ne voyaient rien** — et
+une relecture en a trouvé trois autres du même genre.
+
+Le plus important concernait l'**écriture des fichiers de réglages**. Le
+programme écrit d'abord dans un fichier provisoire, puis le met en place d'un
+seul geste : c'est ce qui garantit qu'une coupure de courant ne laisse jamais
+une configuration à moitié écrite. Rien ne vérifiait que ce détour existait
+encore. Deux autres passaient tout aussi inaperçus : la protection qui **jette
+un fichier converti manifestement raté** au lieu de le mettre dans votre
+bibliothèque, et les **droits restrictifs du fichier de connexion Spotify**, qui
+pouvait redevenir lisible par n'importe quel compte de la machine sans qu'aucun
+test ne bronche.
+
+Aucun de ces défauts n'était présent dans la 1.0.6 : c'est leur *filet de
+sécurité* qui manquait. Il est posé.
+
+### Ce qui reste connu et non corrigé
+
+Le fichier `docs/reste-a-faire.md` recense désormais, avec ses mesures, ce qui
+est imparfait et pourquoi ça ne l'a pas été dans cette version : huit contrastes
+trop faibles dans la notice, trois dans l'application, et deux angles morts —
+Safari n'a jamais rendu ces styles, et la connexion Spotify n'a jamais été jouée
+en conditions réelles.
+
 ## 1.0.6 — 12 août 2026
 
 La suite du travail de la 1.0.5 : confronter chaque supposition au code réel —
