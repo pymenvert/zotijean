@@ -151,9 +151,13 @@ lancer le serveur n'est pas un geste neutre.
 
 ## État du projet
 
-**Version 1.0.6 publiée** (12 août 2026). Le moteur, l'interface et la coquille de barre
+**Version 1.0.7 publiée** (17 août 2026). Le moteur, l'interface et la coquille de barre
 des menus macOS sont écrits ; le paquet embarque Node, Python, ffmpeg et zotify, tous en
 arm64. Voir `CHANGELOG.md`.
+
+**La 1.0.7 n'a jamais été regardée sur un Mac.** Elle corrige presque exclusivement du
+rendu — contrastes, mises en page, repliements — et tout a été mesuré sous Chromium sur
+Windows. Le paquet est publié pour être essayé, pas parce qu'il a été vu.
 
 Le nombre de tests ne figure QUE dans le bloc « Profil projet » ci-dessus. Il était
 écrit ici aussi, et les deux comptes ont divergé de cent tests sans que personne ne le
