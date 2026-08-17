@@ -129,6 +129,74 @@ encore double-cliqué dessus sur la machine de destination.
 
 ## Relevés datés
 
+### 17 août 2026 — épreuve de la suite de tests
+
+La suite était passée de 326 à 424 tests sans avoir jamais prouvé qu'elle
+détecte quoi que ce soit. Dix-sept cassages délibérés ont été appliqués au code
+des cinq modules critiques, un à la fois, en exigeant que la suite tombe.
+
+**Résultat initial : cinq cassages sur dix-sept survivaient**, c'est-à-dire que
+le code était cassé et que tous les tests restaient verts. Chacun était un test
+manquant — aucun code mort, aucun cassage sans effet réel. Les cinq trous sont
+désormais bouchés, et l'épreuve rejouée donne 17 sur 17.
+
+Ce qui n'était pas gardé, et qui aurait dû l'être :
+
+- **L'écriture atomique** — la règle la plus explicite du projet, et elle n'était
+  pas testée. Remplacer le détour par un fichier temporaire suivi d'un renommage
+  par une écriture directe ne faisait tomber aucun test. Le test existant
+  vérifiait qu'aucun résidu ne traîne — ce qu'une écriture directe satisfait
+  parfaitement, puisqu'elle n'en crée aucun. Une coupure de courant pendant
+  l'écriture aurait laissé une configuration à moitié écrite.
+- **Le nettoyage du temporaire après un échec**, pour la même raison : le cas
+  nominal ne prouve rien, le renommage y consomme le temporaire.
+- **Le seuil du garde-fou de rapprochement** pouvait passer de 50 % à 5 % —
+  autant dire être neutralisé — sans rien casser. Le seul cas couvert était
+  « pas un seul fichier reconnu », qui reste sous n'importe quel seuil.
+- **Le plancher de 16 Ko** sur la taille d'un fichier converti : les cas testés
+  échouaient pour deux raisons à la fois, le plancher n'était donc jamais seul
+  responsable du rejet.
+- **Le cas d'égalité exacte** entre la taille d'un fichier sans perte et celle de
+  sa source, qui signale une copie déguisée plutôt qu'une conversion.
+
+**La leçon, et elle vaut au-delà de ces cinq trous :** quatre de ces cinq tests
+existaient déjà sous une forme voisine. Ils vérifiaient le cas nominal, ou un cas
+extrême qui passe sous n'importe quelle borne. Ce qui manquait était toujours la
+même chose — **le cas où la garde est SEULE à pouvoir refuser**.
+
+**Ce que cette épreuve n'a PAS couvert :** cinq modules sur vingt-trois. Les
+dix-huit autres — dont la synchronisation, les exports DJ, la sécurité, l'API
+Spotify et le pilotage de zotify — n'ont jamais été éprouvés de cette façon. Leur
+suite est verte ; personne ne sait encore ce que ça vaut.
+
+**Et surtout : l'épreuve a muté des fonctions, pas leurs points d'usage.** La
+relecture qui a suivi a trouvé ce que cette méthode ne pouvait pas voir — une
+fonction impeccablement testée en isolation, et personne pour vérifier qu'on
+l'appelle correctement. Trois trous de cette nature ont été bouchés dans la
+foulée : la garde qui jette un fichier converti invraisemblable n'avait jamais
+tourné, les droits restrictifs du fichier de jetons Spotify n'étaient vérifiés
+nulle part, et deux tests pouvaient virer au vert sans avoir atteint la situation
+qu'ils prétendaient éprouver. C'est exactement la forme de trou qui avait fait
+qu'aucune version avant la 1.0.5 ne téléchargeait quoi que ce soit.
+
+### Ce qui reste ouvert sur la conversion et le rapprochement
+
+**Une troncature à mi-parcours n'est pas détectée.** La vérification de taille
+attrape un fichier presque vide, pas un fichier coupé en son milieu : un FLAC
+issu d'un Ogg de 5 Mo en pèse environ 25, coupé en deux il en fait encore 12,
+donc plus que sa source, et il passe. Le commentaire du code annonçait le
+contraire ; il est corrigé. Attraper ce cas demande de comparer les **durées**
+avec `ffprobe`, déjà embarqué dans le paquet et déjà utilisé par les exports
+Rekordbox.
+
+**Trois bornes exactes ne sont pas épinglées** — le plancher de 16 Ko (passer de
+« moins de » à « au plus » survit), le rapport d'un quart (le porter à 0,9
+survit), et le seuil de rapprochement entre 40 % et 50 %. Aucune de ces dérives
+n'est une neutralisation : les cassages grossiers, eux, sont bien attrapés.
+
+**Un format de conversion inconnu** tombe silencieusement dans la branche « avec
+perte ». Probablement voulu, mais nulle part écrit ni testé.
+
 ### 17 août 2026 — lot « contraste des contours »
 
 Pendant la correction du contour des contrôles, un balayage automatique a mesuré

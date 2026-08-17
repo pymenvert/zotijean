@@ -118,7 +118,7 @@ vérifiée le 16 août 2026 — jamais écrite au jugé.
 - **format** : aucun
 - **lint** : aucun
 - **typecheck** : aucun
-- **test** : `node --test` → 424 tests, 413 verts, 11 ignorés
+- **test** : `node --test` → 432 tests, 419 verts, 13 ignorés
 - **build** : aucun en local ; le paquet est construit par
   `.github/workflows/publication.yml`
 - **run** : `node server.js` → http://127.0.0.1:8787
@@ -153,7 +153,11 @@ lancer le serveur n'est pas un geste neutre.
 
 **Version 1.0.6 publiée** (12 août 2026). Le moteur, l'interface et la coquille de barre
 des menus macOS sont écrits ; le paquet embarque Node, Python, ffmpeg et zotify, tous en
-arm64. 317 tests. Voir `CHANGELOG.md`.
+arm64. Voir `CHANGELOG.md`.
+
+Le nombre de tests ne figure QUE dans le bloc « Profil projet » ci-dessus. Il était
+écrit ici aussi, et les deux comptes ont divergé de cent tests sans que personne ne le
+voie — un chiffre répété est un chiffre qui vieillit deux fois plus vite.
 
 ### La leçon de la 1.0.5 : confronter, pas supposer
 
