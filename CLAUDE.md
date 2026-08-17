@@ -118,7 +118,7 @@ vérifiée le 16 août 2026 — jamais écrite au jugé.
 - **format** : aucun
 - **lint** : aucun
 - **typecheck** : aucun
-- **test** : `node --test` → 400 tests, 389 verts, 11 ignorés
+- **test** : `node --test` → 424 tests, 413 verts, 11 ignorés
 - **build** : aucun en local ; le paquet est construit par
   `.github/workflows/publication.yml`
 - **run** : `node server.js` → http://127.0.0.1:8787

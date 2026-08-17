@@ -204,9 +204,19 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-
 
 /* ------------------------------------------------------------------- Héros */
 
+/* LE MÊME DÉFAUT QUE LES TITRES D'OPTIONS, UN CRAN PLUS HAUT — et cette fois il
+   débordait de la fenêtre. Mesuré : à 375 px de large, la page réclamait 430 px
+   et défilait horizontalement sur les SEPT onglets. Le bandeau est un conteneur
+   flex sans repli, dont les boutons refusent en plus de rétrécir : quand la
+   place manque, rien ne cède, et c'est la page qui s'élargit.
+   Autoriser le repli fait tomber la largeur minimale du document de 430 à
+   272 px, et à 198 px en l'autorisant aussi pour les boutons. Le réglage est
+   posé ici plutôt que dans la requête de média : sur un grand écran il ne change
+   rien, tout tient sur une ligne — et une règle qu'on peut relire à un seul
+   endroit est une règle qu'un test peut garder. */
 .heros {
   display: flex; align-items: flex-start; justify-content: space-between;
-  gap: 24px; margin-bottom: 22px;
+  flex-wrap: wrap; gap: 24px; margin-bottom: 22px;
 }
 .heros h1 { display: flex; align-items: center; gap: 10px; }
 .heros h1::before {
@@ -221,7 +231,7 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-
 @keyframes pulse { 0%, 100% { opacity: 1 } 50% { opacity: .35 } }
 
 .heros p { color: var(--texte-2); margin-top: 3px; font-size: 13px; }
-.heros-actions { display: flex; gap: 8px; flex: none; }
+.heros-actions { display: flex; flex-wrap: wrap; gap: 8px; flex: none; }
 
 /* ---------------------------------------------------------------- Boutons */
 
@@ -303,10 +313,49 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-
    marqueur. */
 .liste-etapes { padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
 
+/* UN ENCADRÉ D'EXPLICATION N'EST PAS UNE OPTION COCHÉE.
+   Il portait pourtant exactement sa peinture : même fond « --accent-doux »,
+   même rayon, une bordure ambre dont seule l'opacité différait — et sur un
+   trait d'un pixel, cet écart n'existe tout simplement pas à l'écran. Vérifié
+   en regardant : dans la carte du format des fichiers, la note glissée sous les
+   cinq options se lit comme une SIXIÈME option, cochée elle aussi.
+   Le défaut n'est pas esthétique, il est sémantique. L'ambre veut dire « vous
+   avez choisi ceci » partout ailleurs dans l'application ; s'en servir aussi
+   pour du texte purement informatif retire au signal sa signification.
+   La forme retenue est celle des lignes du Diagnostic, qui fonctionnent bien.
+   Et il faut être exact sur ce qui porte le bloc : c'est LE FILET, seul. Le fond
+   neutre ne se détache presque pas de la carte — 1,08 pour 1 en thème sombre,
+   1,04 en clair, où il est littéralement imperceptible — et la bordure d'un
+   pixel n'ajoute pas grand-chose. Un encadré ne se lit donc pas comme un
+   panneau, mais comme « du texte avec une barre ambre à gauche ». C'est
+   cohérent avec le Diagnostic, et c'est suffisant ; mais quiconque croirait
+   disposer ici de trois signaux se tromperait, et affaiblirait le seul qui
+   parle en croyant n'en toucher qu'un sur trois. */
 .note {
-  background: var(--accent-doux); border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  background: var(--carte-haut); border: 1px solid var(--bord);
+  border-left: 3px solid var(--accent);
   border-radius: var(--rayon-s); padding: 11px 13px;
   font-size: 12.5px; color: var(--texte-2); line-height: 1.5;
+}
+
+/* Un encadré qui suit une liste d'options en est séparé de 13 px, quand les
+   options le sont de 8 px entre elles. L'écart est trop faible : la note se lit
+   comme une sixième ligne de la liste, d'autant qu'elle en a le fond et la
+   bordure — seul le filet et l'absence de puce l'en distinguent. Un blanc plus
+   franc est le séparateur le moins coûteux qui soit. */
+.choix + .note { margin-top: 7px; }
+
+/* Le numéro de version portait la classe « .note », et ce n'en était pas une :
+   une note explique un réglage, celle-ci ne fait qu'indiquer où l'on en est.
+   Le détail comptait, car cette ligne vit dans la MÊME carte que les contrôles
+   du diagnostic — dont le filet coloré à gauche EST le codage de gravité. Avec
+   le filet des notes, « Zotijean version 1.0.7 » s'affichait au bas de cette
+   liste comme un avertissement de plus : « --accent » et « --attention » ne
+   sont qu'à 1,09 pour 1 l'un de l'autre, autant dire la même couleur.
+   Une mention de version n'est ni un choix, ni une alerte, ni une explication.
+   Elle n'a donc aucun encadré du tout. */
+.mention-version {
+  font-size: 12px; color: var(--texte-3); text-align: right; padding-top: 2px;
 }
 
 .grille-cartes { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
@@ -321,7 +370,12 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-
 /* ---------------------------------------------------------------- Choix */
 
 .choix { display: flex; flex-direction: column; gap: 8px; }
-.choix.compact { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+/* « grid-auto-rows: 1fr » met toutes les rangées à la hauteur de la plus haute.
+   Sans lui, une rangée dont un titre se replie mesure 79 px pendant que la
+   suivante en fait 50 : six cartes qui devraient former un bloc régulier
+   s'affichent sur deux hauteurs franchement différentes. Le vide sous un titre
+   court devient alors une marge assumée, au lieu d'un décalage qu'on remarque. */
+.choix.compact { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); grid-auto-rows: 1fr; }
 
 .option {
   display: flex; gap: 11px; align-items: flex-start;
@@ -410,19 +464,38 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-
 }
 
 .option-corps { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.option-titre { font-weight: 570; font-size: 13.5px; display: flex; align-items: center; gap: 7px; }
+/* LE TITRE ET SON ÉTIQUETTE SE PARTAGENT UNE RANGÉE, ET IL FAUT L'AUTORISER À
+   SE REPLIER. Sans « flex-wrap », les deux restent sur une seule ligne quoi
+   qu'il arrive, et se compriment donc l'un l'autre jusqu'à leur plus petite
+   largeur possible — c'est-à-dire jusqu'au MOT. Résultat vu à l'écran :
+   « Tous les deux jours » s'affichait sur quatre lignes, un mot par ligne. Et
+   pas seulement en fenêtre étroite : à 1699 px de large aussi, parce que la
+   grille des réglages donne des colonnes d'environ 207 px quelle que soit la
+   fenêtre.
+   Le dégât ne s'arrêtait pas là : toute la rangée s'aligne sur la carte la plus
+   haute, et les trois voisines se retrouvaient avec un titre d'une ligne et
+   soixante pixels de vide dessous.
+   Avec le repli autorisé, l'étiquette passe ENTIÈRE à la ligne suivante quand la
+   place manque, au lieu de hacher le titre. Et « flex: none » sur les étiquettes
+   les empêche de se comprimer elles-mêmes — sans quoi ce serait « RECOM-MANDÉ ». */
+.option-titre { font-weight: 570; font-size: 13.5px; display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
 .option-explication { font-size: 12.5px; color: var(--texte-2); line-height: 1.5; }
 
+/* « flex: none » sur les trois : une étiquette ne se comprime jamais. Elle passe
+   à la ligne entière, ou elle reste où elle est. */
 .etiquette-reco {
+  flex: none;
   font-size: 10.5px; font-weight: 650; text-transform: uppercase; letter-spacing: .05em;
   padding: 2px 6px; border-radius: 5px; background: var(--accent-doux); color: var(--accent-fort);
   border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
 }
 .etiquette-perte {
+  flex: none;
   font-size: 10.5px; font-weight: 600; padding: 2px 6px; border-radius: 5px;
   background: color-mix(in srgb, var(--erreur) 14%, transparent); color: var(--erreur);
 }
 .etiquette-sansperte {
+  flex: none;
   font-size: 10.5px; font-weight: 600; padding: 2px 6px; border-radius: 5px;
   background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok);
 }
