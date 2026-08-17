@@ -295,13 +295,49 @@ em { font-style: normal; }
   content: ''; position: absolute; inset: 3px; border-radius: 50%; background: var(--accent);
 }
 
-/* Rond = un seul choix dans la liste, carré = on peut en cocher plusieurs. La
-   forme n'est pas décorative : c'est la convention qui dit à l'utilisateur ce
-   qu'il a le droit de faire, et l'annoncer de travers coûte un aller-retour à
-   chaque fois. Les listes à choix multiple — playlists suivies, exports DJ —
-   portent donc `.carree`. */
-.puce.carree { border-radius: 5px; }
-.option.choisi .puce.carree::after { border-radius: 2px; }
+/* Rond = un seul choix dans la liste, coche = on peut en cocher plusieurs. La
+   distinction n'est pas décorative : c'est la convention qui dit à
+   l'utilisateur ce qu'il a le droit de faire, et l'annoncer de travers coûte un
+   aller-retour à chaque fois. Les listes à choix multiple — playlists suivies,
+   exports DJ — portent donc `.carree`.
+   Un simple carré arrondi ne suffisait pas : à 16 px, 5 px de rayon contre un
+   cercle, l'œil ne fait pas la différence, et le sens n'arrivait pas à l'écran.
+   D'où deux changements — le rayon se resserre pour que le carré soit
+   franchement carré, et l'état coché devient une VRAIE coche. */
+.puce.carree { border-radius: 3px; }
+
+/* Coché : la boîte se remplit, la coche se pose dessus.
+   L'ordre des deux pseudo-éléments n'est pas interchangeable — `::after` peint
+   PAR-DESSUS `::before`. Le remplissage doit donc être le `::before`, sinon il
+   recouvre la coche. */
+.option.choisi .puce.carree::before {
+  content: ''; position: absolute; inset: 0; border-radius: 1.5px; background: var(--accent);
+}
+.option.choisi .puce.carree::after {
+  /* La coche déclare ce dont elle a besoin pour EXISTER, au lieu de l'emprunter
+     à la règle du disque. Sans ces deux propriétés, restreindre un jour la règle
+     ci-dessus à `.puce:not(.carree)` — le nettoyage le plus naturel qui soit —
+     ferait disparaître la coche sans un mot et sans casser quoi que ce soit
+     d'autre. */
+  content: ''; position: absolute;
+  /* Annule le disque hérité avant de redessiner. `inset: auto` doit rester
+     AVANT `left`/`top`, sinon la coche repart à sa position statique. */
+  inset: auto; border-radius: 0; background: none;
+  /* `* { box-sizing: border-box }` en tête de fichier ne s'applique PAS ici : le
+     sélecteur universel ne matche pas les pseudo-éléments, et `box-sizing` ne
+     s'hérite pas — c'est pourquoi le bloc de mouvement réduit, plus bas, écrit
+     `*, *::before, *::after`. La boîte de bordure mesure donc 5,5 × 9 px et non
+     3,5 × 7, et l'encre pivotée tombe à un quart de pixel du centre. On épingle
+     le mode explicitement : le jour où quelqu'un étend le reset aux
+     pseudo-éléments, la coche se décalerait de 1,5 px vers le haut. */
+  box-sizing: content-box;
+  left: 4px; top: 1px; width: 3.5px; height: 7px;
+  /* Deux bordures en équerre, pivotées : le tracé universel de la coche.
+     Elle est peinte en couleur de FOND, qui s'inverse avec le thème — sombre
+     sur l'ambre vif en thème sombre, claire sur le brun foncé en thème clair. */
+  border: solid var(--fond); border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
 
 .option-corps { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .option-titre { font-weight: 570; font-size: 13.5px; display: flex; align-items: center; gap: 7px; }
