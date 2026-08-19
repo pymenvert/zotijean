@@ -549,6 +549,7 @@ function rendrePlanification() {
   const {
     intervalles, notePlanification, rythmes, politiquesRetrait,
     noteRetrait, noteRetraitPourquoi, sourcesAprèsConversion,
+    noteSourcesAprèsConversion,
   } = état.catalogue;
 
   remplir($('#choix-sources'), sourcesAprèsConversion.map((s) =>
@@ -562,6 +563,7 @@ function rendrePlanification() {
       },
     })));
 
+  $('#note-sources').textContent = noteSourcesAprèsConversion || '';
   $('#note-retrait').textContent = noteRetrait;
   $('#note-retrait-pourquoi').textContent = noteRetraitPourquoi || '';
 

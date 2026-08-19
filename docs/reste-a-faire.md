@@ -35,42 +35,6 @@ Tous ceux qui suivent ont été vus le 19 août 2026 sur le Mac, sur la 1.0.7
 installée, avec le vrai zotify et une vraie bibliothèque. Aucun n'est déduit
 d'une lecture : chacun porte la trace qui l'a montré.
 
-### La politique de retrait des sources ne peut jamais s'appliquer
-
-`saitReprendreSansLeFichier()` (`src/zotify.js:483`) renvoie `false`, en dur.
-Le garde-fou force donc toujours « conserver ». Vérifié en isolation avec la
-configuration réelle : la source survit, et l'avertissement part.
-
-C'est le bon comportement — mais l'utilisateur a choisi « Corbeille » le 19 août
-à 15 h 27, et il recevra cet avertissement à **chaque** synchronisation sans que
-son choix prenne jamais effet. Un réglage qu'on peut poser et que l'app refuse
-en silence à chaque fois n'est pas un réglage.
-
-**Et le « false » en dur est désormais faux.** zotify 0.17.4 tient bien un
-journal indépendant des fichiers présents, et sa source dit exactement comment
-s'en servir (`api.py`, `check_skippable`) :
-
-```
-si  fichier présent   ET --skip-existing        ET --disable-directory-archives  → sauté
-si  id dans .song_ids ET --skip-existing        ET PAS de --disable-directory-…  → sauté
-si  id dans .song_archive (global) ET --skip-prev-downloaded                     → sauté
-```
-
-Zotijean n'emprunte que la première ligne, celle qui dépend du fichier. La
-troisième est exactement le garde-fou recherché — et `--skip-prev-downloaded`
-figure déjà dans la liste d'options que le diagnostic relève sur la machine.
-
-**Un détail décide de tout, et il est contre-intuitif** : `SongArchive.__init__`
-(`utils.py:320`) pose `disabled = not Path(self.filepath).exists() or …`. **Le
-journal ne se crée jamais tout seul.** Vérifié sur la machine : après 17 titres
-téléchargés, `~/Library/Application Support/Zotify/.song_archive` n'existe pas.
-Il faut créer le fichier vide une fois pour que zotify commence à l'alimenter.
-
-Ce qu'il faut peser avant de basculer : ce journal est **global à la machine**,
-pas propre au dossier de musique ; et s'il est perdu alors que les Ogg ont été
-jetés, c'est toute la bibliothèque qui se retéléchargerait. Le journal devient
-alors un fichier aussi précieux que la configuration, et mérite le même soin.
-
 ### Cinq pixels de défilement horizontal sous 361 px de large
 
 Mesuré dans Safari 16.3 puis reproduit sous Chromium : à 356 px de large utile,
@@ -103,12 +67,6 @@ met déjà l'identifiant dans le NOM du fichier sans rien réécrire ; c'est le
 chemin sûr. Écrire dans les étiquettes exigerait de réécrire le fichier, là où
 Serato stocke points de repère et grilles rythmiques : à ne faire qu'**avec**
 l'utilisateur, sur ses vrais fichiers, en commençant par une simulation.
-
-### Brancher la politique de retrait (Archiver / Corbeille)
-
-Le code est écrit et testé, volontairement non câblé : déplacer ou jeter des
-fichiers de la bibliothèque se décide avec l'utilisateur. La note de l'interface
-dit la vérité sur cet état.
 
 ---
 
@@ -827,3 +785,48 @@ rétablie, il passe. Il garde donc bien ce qu'il prétend garder.
 **Conséquence pratique pour la bibliothèque réelle** : les treize Ogg encore sur
 le disque seront convertis au démarrage de la prochaine synchronisation, sans
 rien retélécharger.
+
+### 19 août 2026 — la politique de retrait devient applicable
+
+`saitReprendreSansLeFichier()` renvoyait `false` en dur. Le choix « Corbeille »
+posé le 19 août à 15 h 27 était donc refusé en silence à **chaque**
+synchronisation. Un réglage qu'on peut poser et que l'app reprend sans le dire
+n'est pas un réglage.
+
+**Ce que la source de zotify 0.17.4 a appris**, lue sur la machine plutôt que
+supposée — et elle corrige deux points du plan :
+
+- l'option a trois graphies (`-ip`, `--skip-prev-downloaded`,
+  `--skip-previously-downloaded`) ; les deux longues sont acceptées ;
+- **`--song-archive-location` existe** et prend un DOSSIER, auquel zotify ajoute
+  lui-même `.song_archive` (`config.py:427`). Le journal n'a donc pas à rester
+  dans un coin du système : il vit maintenant avec la configuration et l'état,
+  se sauvegarde avec eux, et suit une installation portable ;
+- `SongArchive.__init__` (`utils.py:320`) pose bien
+  `disabled = not Path(filepath).exists()`, et `add_obj` sort immédiatement
+  quand c'est le cas. Un journal absent ne se remplit donc jamais. Confirmé.
+
+**Quatre garde-fous, et chacun doit pouvoir refuser seul :**
+
+1. zotify déclare l'option ;
+2. l'utilisateur a demandé un retrait — sinon on ne touche à rien. Activer le
+   journal pour tout le monde retirerait « LE DISQUE FAIT FOI » à ceux qui n'ont
+   rien demandé : supprimer un morceau à la main ne le ferait plus revenir ;
+3. le journal existe, sans quoi zotify n'y écrit rien ;
+4. **ce morceau-là y est inscrit.** C'est le garde-fou le plus important et le
+   moins évident : tout peut être en place et zotify n'avoir rien écrit. On ne
+   retire que ce qu'il dit savoir reprendre, et on annonce combien de fichiers
+   ont été conservés faute de trace.
+
+Le journal est copié après chaque synchronisation : il vaut désormais la
+bibliothèque entière.
+
+**Corrigé au passage** : `skip-previously-downloaded` figurait dans les candidats
+de `ignorerExistants`, comme s'il était synonyme de `skip-existing`. Ce sont deux
+portes différentes de `check_skippable`. Sur un fork qui ne déclarerait que la
+seconde, un réglage serait passé pour un autre.
+
+**Épreuve du test, faite** : le filtre du journal retiré, le test « un morceau
+absent du journal garde sa source » tombe ; rétabli, il passe. Le faux zotify
+reproduit fidèlement la règle du fichier absent — une doublure plus complaisante
+que l'original est précisément ce qui a coûté le plus cher à ce projet.

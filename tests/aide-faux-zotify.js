@@ -43,7 +43,16 @@ options:
   --download-quality    audio quality
   --audio-format        output format
   --bulk-wait-time      seconds between downloads
-  --skip-existing       do not re-download existing files
+  --skip-existing SKIP_EXISTING
+                        do not re-download existing files
+  --skip-prev-downloaded SKIP_PREVIOUSLY_DOWNLOADED
+                        skip anything already in the global archive
+  --song-archive-location SONG_ARCHIVE_LOCATION
+                        where the global archive lives
+  --disable-directory-archives DISABLE_DIRECTORY_ARCHIVES
+                        do not keep a per-folder archive
+  --lyrics-to-file LYRICS_TO_FILE
+  --lyrics-to-metadata LYRICS_TO_METADATA
 `);
   process.exit(0);
 }
@@ -124,6 +133,26 @@ if (scénario === 'echec-total') {
 // d'écrire les fichiers, comme le vrai.
 const parolesManquantes = scénario === 'paroles-manquantes';
 
+// Le journal global des telechargements, reproduit fidelement.
+//
+// Le vrai zotify n'y ecrit QUE si le fichier existe deja : « disabled = not
+// Path(filepath).exists() » (utils.py:320), et « add_obj » sort aussitot quand
+// c'est le cas. Reproduire cette regle est le seul moyen qu'un test attrape le
+// piege — sans quoi la doublure serait plus complaisante que l'original, ce qui
+// est precisement ce qui a coute le plus cher a ce projet.
+const dossierJournal = valeur('song-archive-location', null);
+const sansJournal = process.env.FAUX_ZOTIFY_SANS_JOURNAL === '1';
+
+function inscrireAuJournal(destination, piste, index) {
+  if (!dossierJournal || sansJournal) return;
+  const fichier = path.join(dossierJournal, '.song_archive');
+  if (!fs.existsSync(fichier)) return;
+  fs.appendFileSync(
+    fichier,
+    `id${index}\t2026-08-19 15:00:00\t${piste.artist}\t${piste.song_name}\t${destination}\n`,
+  );
+}
+
 let écrits = 0;
 
 for (const [index, piste] of PISTES.entries()) {
@@ -157,6 +186,7 @@ for (const [index, piste] of PISTES.entries()) {
   } else {
     // Taille plausible pour un morceau, pour passer le seuil de vraisemblance.
     fs.writeFileSync(destination, Buffer.alloc(5_000_000, 1));
+    inscrireAuJournal(destination, piste, index);
   }
   écrits += 1;
 

@@ -2,6 +2,26 @@
 
 ## Non publié
 
+### « Archiver » et « Corbeille » fonctionnent enfin
+
+Ces deux réglages existaient, on pouvait les choisir, et l'application les
+reprenait en silence à chaque synchronisation : les fichiers d'origine étaient
+conservés quoi qu'il arrive. La raison était bonne — retirer un Ogg aurait fait
+tout retélécharger — mais elle avait cessé d'être vraie.
+
+Le téléchargeur sait tenir un journal de ce qu'il a pris, indépendant des
+fichiers présents. Il ne le crée jamais tout seul : c'est ce détail, et lui
+seul, qui bloquait tout. Zotijean le crée désormais, et le range avec vos
+réglages plutôt que dans un dossier système — il est sauvegardé après chaque
+synchronisation, parce qu'il vaut maintenant votre bibliothèque entière.
+
+Un fichier d'origine n'est retiré que si le téléchargeur a réellement inscrit le
+morceau. S'il ne l'a pas fait, l'Ogg reste en place et l'app vous le dit : mieux
+vaut un fichier en trop qu'un téléchargement de dix-sept heures.
+
+À savoir, et c'est écrit sous le réglage : tant qu'un retrait est demandé,
+supprimer un morceau à la main ne le fera plus revenir tout seul.
+
 ### Les morceaux sont convertis pendant le téléchargement, plus après
 
 Une synchronisation arrêtée en cours de route laissait ses fichiers dans le

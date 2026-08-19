@@ -22,6 +22,9 @@ import {
   nouveauxFichiers,
   écarterIncomplet,
   DOSSIER_INCOMPLETS,
+  saitReprendreSansLeFichier,
+  assurerJournalTéléchargements,
+  cheminsDéjàTéléchargés,
 } from '../src/zotify.js';
 
 import { optionsDéclarées, extraireVersion } from '../src/diagnostic.js';
@@ -1075,3 +1078,135 @@ function inventaireFactice(chemins) {
     chemins.map((c) => [c.normalize('NFC'), { chemin: c, taille: 5_000_000 }]),
   );
 }
+
+// ---------------------------------------------------------------------------
+// Le journal des téléchargements, celui qui rend la politique de retrait sûre
+// ---------------------------------------------------------------------------
+//
+// CE QUE LA SOURCE DE ZOTIFY 0.17.4 DIT, et qui décide de tout ici
+// (`api.py`, `check_skippable` ; `utils.py`, `SongArchive`) :
+//
+//   si fichier présent   ET --skip-existing         ET --disable-directory-archives → sauté
+//   si id dans .song_ids ET --skip-existing         ET PAS de --disable-directory-… → sauté
+//   si id dans .song_archive (global) ET --skip-prev-downloaded                     → sauté
+//
+// Zotijean n'empruntait que la PREMIÈRE ligne, celle qui dépend du fichier. La
+// politique de retrait était donc refusée en silence à chaque synchronisation :
+// retirer un Ogg aurait fait tout retélécharger.
+//
+// ET UN DÉTAIL DÉCIDE DE TOUT, contre-intuitif, vérifié dans `utils.py:320` :
+//
+//     self.disabled = not Path(self.filepath).exists() or …
+//     def add_obj(self, obj, item_path): if self.disabled: return
+//
+// Le journal ne se crée JAMAIS tout seul. Absent, il est « désactivé », donc
+// zotify n'y écrit rien, donc il reste absent — pour toujours. Vérifié sur la
+// machine : après 17 titres, le fichier n'existait pas. Il faut le créer vide
+// une fois, et c'est le seul geste qui débloque la troisième porte.
+
+test('le journal des téléchargements se crée vide, une fois', () => {
+  const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'zotijean-arch-'));
+  try {
+    const chemin = assurerJournalTéléchargements(dossier);
+    assert.equal(path.basename(chemin), '.song_archive',
+      'le nom est imposé par zotify : il l’ajoute au dossier qu’on lui donne');
+    assert.ok(fs.existsSync(chemin));
+    assert.equal(fs.readFileSync(chemin, 'utf8'), '');
+
+    // Rejouer ne doit RIEN écraser : ce fichier vaut la bibliothèque entière.
+    fs.writeFileSync(chemin, 'abc\t2026-08-19\tArtiste\tTitre\t/m/x.ogg\n');
+    assurerJournalTéléchargements(dossier);
+    assert.match(fs.readFileSync(chemin, 'utf8'), /^abc\t/);
+  } finally {
+    fs.rmSync(dossier, { recursive: true, force: true });
+  }
+});
+
+test('les chemins déjà téléchargés se relisent depuis le journal', () => {
+  const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'zotijean-arch2-'));
+  try {
+    const chemin = assurerJournalTéléchargements(dossier);
+    fs.writeFileSync(chemin,
+      'id1\t2026-08-19 10:00:00\tWalton\tZen\t/Musique/Été/Zen.ogg\n'
+      + 'id2\t2026-08-19 10:01:00\tIglew\tHawksworth\t/Musique/Été/Hawksworth.ogg\n'
+      + '\n');
+
+    const connus = cheminsDéjàTéléchargés(dossier);
+    assert.equal(connus.size, 2);
+    assert.ok(connus.has('/Musique/Été/Zen.ogg'));
+    assert.ok(connus.has('/Musique/Été/Hawksworth.ogg'));
+  } finally {
+    fs.rmSync(dossier, { recursive: true, force: true });
+  }
+});
+
+test('un journal absent ne rend pas une erreur, mais un ensemble vide', () => {
+  assert.equal(cheminsDéjàTéléchargés('/dossier/qui/n/existe/pas').size, 0);
+});
+
+// LE CAS OÙ LA GARDE EST SEULE À POUVOIR REFUSER. Chacune des trois conditions
+// doit pouvoir dire non toute seule : l'option déclarée par zotify, le choix de
+// l'utilisateur, et l'existence du journal. Le « false » en dur d'avant ne
+// distinguait rien — il refusait tout, y compris quand tout était en place.
+test('savoir reprendre sans le fichier exige les trois conditions', () => {
+  const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'zotijean-arch3-'));
+  try {
+    const capacités = { options: ['skip-prev-downloaded', 'song-archive-location'] };
+    const retire = { retrait: { sourcesAprèsConversion: 'corbeille' } };
+    assurerJournalTéléchargements(dossier);
+
+    assert.equal(
+      saitReprendreSansLeFichier({ config: retire, capacités, dossierJournal: dossier }),
+      true,
+      'tout est en place : la politique doit pouvoir s’appliquer',
+    );
+
+    assert.equal(
+      saitReprendreSansLeFichier({
+        config: { retrait: { sourcesAprèsConversion: 'conserver' } }, capacités, dossierJournal: dossier,
+      }),
+      false,
+      'sans retrait demandé, on ne touche pas au comportement de zotify',
+    );
+
+    assert.equal(
+      saitReprendreSansLeFichier({
+        config: retire, capacités: { options: ['skip-existing'] }, dossierJournal: dossier,
+      }),
+      false,
+      'un zotify sans l’option ne sait pas reprendre sans le fichier',
+    );
+
+    fs.rmSync(path.join(dossier, '.song_archive'));
+    assert.equal(
+      saitReprendreSansLeFichier({ config: retire, capacités, dossierJournal: dossier }),
+      false,
+      'sans le journal, zotify le tient pour desactive et n’y ecrit jamais rien',
+    );
+  } finally {
+    fs.rmSync(dossier, { recursive: true, force: true });
+  }
+});
+
+test('le journal n’est demandé à zotify que si la politique en a besoin', () => {
+  const capacités = {
+    options: ['root-path', 'output', 'skip-existing', 'disable-directory-archives',
+      'skip-prev-downloaded', 'song-archive-location'],
+    aide: '--skip-prev-downloaded SKIP_PREVIOUSLY_DOWNLOADED --song-archive-location SONG_ARCHIVE_LOCATION',
+  };
+  const construire = (politique) => construireArguments({
+    url: 'U', attente: 30, capacités, modèle: '{song_name}', dossierRacine: '/M',
+    dossierJournal: '/D',
+    config: { ...CONFIG, retrait: { sourcesAprèsConversion: politique } },
+  }).arguments;
+
+  // Par defaut on ne change rien : le DISQUE fait foi, et supprimer un fichier
+  // doit continuer a le faire retelecharger.
+  const conserve = construire('conserver');
+  assert.equal(conserve.includes('--skip-prev-downloaded'), false);
+
+  const retire = construire('corbeille');
+  assert.equal(retire[retire.indexOf('--skip-prev-downloaded') + 1], 'true');
+  assert.equal(retire[retire.indexOf('--song-archive-location') + 1], '/D',
+    'le journal doit vivre avec les donnees de l’app, pas dans un coin du systeme');
+});
