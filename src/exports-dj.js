@@ -58,8 +58,15 @@ export async function lireMétadonnées(fichier, ffprobe = null) {
   }
 
   const format = sonde.format || {};
-  const étiquettes = normaliserÉtiquettes(format.tags || {});
   const flux = (sonde.streams || []).find((s) => s.codec_type === 'audio') || {};
+
+  // L'Ogg range ses étiquettes sur le FLUX, pas sur le conteneur : `format.tags`
+  // y est vide, et lire ce seul endroit rendait invisibles artiste, album, ISRC
+  // et année de tous les fichiers non convertis — c'est-à-dire du format que
+  // l'app produit par défaut. Le MP3, le FLAC et l'AAC, eux, les mettent bien
+  // sur le conteneur. On lit donc les deux, le flux ayant le dernier mot :
+  // quand les deux existent, c'est lui qui est le plus proche des données.
+  const étiquettes = normaliserÉtiquettes({ ...(format.tags || {}), ...(flux.tags || {}) });
 
   return {
     titre: étiquettes.title || secours.titre,

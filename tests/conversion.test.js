@@ -106,11 +106,20 @@ test('aucun profil ne rééchantillonne', () => {
 // Métadonnées et pochette
 // ---------------------------------------------------------------------------
 
-test('tous les profils reportent les métadonnées de la source', () => {
+// La source est TOUJOURS un Ogg sorti de zotify, et l'Ogg range ses
+// commentaires sur le flux, pas sur le conteneur. Ce test épinglait « 0 », ce
+// qui revenait à ne rien recopier : les fichiers convertis sortaient sans
+// artiste, sans titre, sans album et sans ISRC, et le test restait vert. Il
+// gardait la présence du drapeau, jamais son effet.
+test('tous les profils reportent les métadonnées du FLUX de la source', () => {
   for (const format of Object.keys(PROFILS)) {
     const args = construireCommande({ ...base, destination: '/m/p.x', format });
     assert.ok(at(args, '-map_metadata') !== -1, `${format} perd les métadonnées`);
-    assert.equal(args[at(args, '-map_metadata') + 1], '0');
+    assert.equal(
+      args[at(args, '-map_metadata') + 1],
+      '0:s:0',
+      `${format} recopie les étiquettes du conteneur, vide sur un Ogg`,
+    );
   }
 });
 
