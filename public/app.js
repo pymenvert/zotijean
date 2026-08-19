@@ -358,7 +358,12 @@ async function rendreHistorique() {
     const résultat = exécution.échec
       ? `Échec — ${exécution.échec}`
       : `${exécution.nbFichiers} nouveau${exécution.nbFichiers > 1 ? 'x' : ''} titre${exécution.nbFichiers > 1 ? 's' : ''}` +
-        (exécution.nbErreurs ? `, ${exécution.nbErreurs} erreur${exécution.nbErreurs > 1 ? 's' : ''}` : '') +
+        // « erreur » désigne un TITRE PERDU, pas une ligne signalée par zotify.
+        // La ligne affichait « 4 erreurs » pour quatre paroles introuvables sur
+        // des morceaux entiers et convertis.
+        (exécution.nbErreurs
+          ? `, ${exécution.nbErreurs} titre${exécution.nbErreurs > 1 ? 's' : ''} perdu${exécution.nbErreurs > 1 ? 's' : ''}`
+          : '') +
         interruption;
 
     ligne.innerHTML = `

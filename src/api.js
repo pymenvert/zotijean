@@ -151,6 +151,10 @@ function phraseHéros({ enCours, décision, dernier, résumé, installation }) {
   if (dernièreExéc?.échec) {
     return { texte: 'La dernière synchronisation a échoué', détail: dernièreExéc.échec, ton: 'erreur' };
   }
+  // `nbErreurs` compte des TITRES PERDUS, pas des lignes signalées : le bandeau
+  // annonçait « 4 titres en erreur » pour quatre paroles introuvables, sur des
+  // morceaux entiers et convertis. La distinction est faite dans le moteur ; ici
+  // il suffit de ne pas la défaire.
   if (dernièreExéc?.nbErreurs > 0) {
     return {
       texte: 'Tout est à jour, avec des avertissements',
@@ -497,7 +501,8 @@ export const routes = {
       section('DERNIÈRES EXÉCUTIONS'),
       ...(é.exécutions.slice(0, 10).map((e) =>
         `${new Date(e.date).toLocaleString('fr-FR')} — ${e.déclencheur} — ` +
-        `${e.nbFichiers} titre(s), ${e.nbErreurs} erreur(s)` +
+        `${e.nbFichiers} titre(s), ${e.nbErreurs} perdu(s)` +
+        (e.nbSignalements > e.nbErreurs ? `, ${e.nbSignalements} ligne(s) signalee(s)` : '') +
         (e.échec ? `\n    ÉCHEC : ${e.échec}` : '')) || ['aucune']),
       section('PROBLÈMES RENCONTRÉS'),
       ...(synthétiser(é.exécutions.flatMap((e) => e.lignesErreur || [])).map((s) =>

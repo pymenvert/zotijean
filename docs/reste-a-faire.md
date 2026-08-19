@@ -35,42 +35,6 @@ Tous ceux qui suivent ont été vus le 19 août 2026 sur le Mac, sur la 1.0.7
 installée, avec le vrai zotify et une vraie bibliothèque. Aucun n'est déduit
 d'une lecture : chacun porte la trace qui l'a montré.
 
-### Une ligne de paroles manquante est comptée comme une erreur
-
-**Le plus grave, parce qu'il contamine tout le reste.** Sur les trois
-synchronisations réelles du 19 août, **19 des 22 « erreurs » étaient des paroles
-non trouvées** — alors que l'utilisateur a explicitement décoché les paroles.
-
-La chaîne, vérifiée maillon par maillon :
-
-1. Zotijean passe `--lyrics-to-file false`, et rien d'autre. Or la source de
-   zotify (`api.py`, `fetch_lyrics`) ne renonce que si `lyrics_to_file` **ET**
-   `lyrics_to_metadata` sont faux — et `LYRICS_TO_METADATA` vaut `True` par
-   défaut (`config.py:93`). zotify va donc chercher les paroles de chaque titre,
-   échoue, et écrit `### SKIPPING: LYRICS FOR "…" (FAILED TO FETCH) ###`.
-2. `MOTIFS_ERREUR` (`src/zotify.js:288`) contient `/failed/i` : la ligne devient
-   une erreur.
-3. Aucune entrée du `CATALOGUE` (`src/erreurs.js`) ne la reconnaît : elle tombe
-   dans « Erreur non identifiée », gravité ATTENTION.
-4. `phraseBilan` compte les ATTENTION comme des titres perdus : « 4 nouveaux
-   titres, **4 repris plus tard** » — alors que les quatre titres sont sur le
-   disque, convertis, complets.
-5. `alléAuBout` exige zéro erreur (`src/synchronisation.js:470`) : la playlist
-   n'est **jamais** marquée terminée, sa version Spotify n'est jamais
-   enregistrée, et elle est remise en tête à chaque fois. Dans `etat.json`, les
-   trois playlists sont sans `versionSpotify` après trois exécutions.
-6. Sur une exécution planifiée, `échecsConsécutifs` monte et **la prochaine
-   tentative est espacée** — un report d'horaire déclenché par une parole
-   manquante.
-
-Sur une bibliothèque de 2 000 titres, cela donne 2 000 « erreurs non
-identifiées » et un bandeau d'accueil qui annonce en permanence des titres en
-erreur qui n'existent pas.
-
-**Le correctif tient en un argument** : passer aussi `--lyrics-to-metadata false`
-quand l'utilisateur refuse les paroles. Et, indépendamment, ne pas laisser une
-ligne d'information peser sur le compte d'erreurs ni sur `alléAuBout`.
-
 ### Une synchronisation interrompue laisse ses fichiers dans le mauvais format
 
 Constaté sur le disque : **13 fichiers en Ogg, 4 en MP3**, alors que le réglage
@@ -87,17 +51,6 @@ zotify de les proposer à nouveau. Vérifié : aucun rattrapage nulle part dans
 Conséquence visible : les listes `.m3u8` de ces deux playlists pointent des
 `.ogg`, que Rekordbox ne lit pas — précisément ce que le choix du format devait
 éviter.
-
-### « n'ont rien donné » est dit de playlists qui ont tout donné
-
-Le message est écrit à `src/synchronisation.js:515`. Sa condition, elle, est
-`mériteReprise = !alléAuBout` — qui ne regarde pas le nombre de fichiers. Le
-19 août, il a été écrit trois fois, dont une pour une playlist qui venait de
-livrer 4 titres convertis sans interruption. Le commentaire juste au-dessus
-décrit encore l'ancienne règle (« une playlist qui n'a RIEN produit »).
-
-Deux choses à trancher ensemble : la phrase, et le fait que `bilan.àReprendre`
-contient tantôt un nom (« Deep dive »), tantôt une URL.
 
 ### La politique de retrait des sources ne peut jamais s'appliquer
 
@@ -806,3 +759,44 @@ SERVI par le moteur, lui, est bien bloqué — violation `style-src-elem`, et
 un fichier ouvert par le système, jamais une page servie. C'est écrit dans
 `tests/styles-en-ligne.test.js`, et deux tests d'`achats.test.js` empêchent
 qu'on l'oublie.
+
+### 19 août 2026 — une parole manquante n'est plus une erreur
+
+Le défaut le plus grave de la mise en service, et le plus instructif : **chaque
+maillon faisait son travail, et l'ensemble mentait.**
+
+Une ligne `SKIPPING: LYRICS FOR "…" (FAILED TO FETCH)` contient « failed ». Elle
+devenait une erreur, l'erreur devenait un titre perdu, le titre perdu empêchait
+« allé au bout », et « allé au bout » commandait l'enregistrement de la version
+Spotify. Résultat : la playlist repartait de zéro à chaque exécution et le
+planificateur espaçait la tentative suivante. **Une parole manquante déplaçait un
+horaire de synchronisation.**
+
+Quatre correctifs, indépendants et cumulés :
+
+- `--lyrics-to-metadata false` est passé en plus de `--lyrics-to-file false`.
+  Les lignes ne devraient plus apparaître du tout ; les trois autres correctifs
+  valent quand même, pour un fork qui ignorerait l'option.
+- Le catalogue reconnaît désormais cette ligne, en gravité INFO.
+- **Trois chiffres sont découplés** là où il n'y en avait qu'un :
+  `bilan.nbSignalements` (les lignes que zotify a marquées), `bilan.nbErreurs`
+  (les TITRES réellement perdus) et `alléAuBout` (qui ne regarde plus que le
+  second). Le bandeau d'accueil, l'historique et le rapport de diagnostic ont
+  été relus dans la foulée : tous disaient « erreur » pour une ligne signalée.
+- `bilan.àReprendre` ne mélange plus noms et URL : `nomAffichable()` tranche
+  pour le nom, avec `playlist/<identifiant>` en repli — la même écriture que
+  l'accueil. Le message « n'ont rien donné », écrit pour une règle disparue
+  depuis longtemps, dit maintenant ce qui s'est réellement passé et **nomme**
+  les playlists concernées.
+
+**Ce que ce lot a appris en marge** : `GRAVITÉ.INFO` ne veut pas dire « sans
+importance », il veut dire **« rien à reprendre »**. Un morceau retiré du
+catalogue est INFO pour la raison exactement inverse des paroles — il n'arrivera
+jamais, et le compter comme perdu ferait reprendre la playlist indéfiniment. La
+gravité, et non le nombre de lignes, est donc le bon critère pour `alléAuBout`.
+C'est écrit dans un test, parce que c'est contre-intuitif.
+
+**Le test qui manquait** rejoue la chaîne entière : le faux zotify a gagné un
+scénario `paroles-manquantes` qui écrit la ligne réelle du 19 août pendant que
+les trois titres arrivent entiers. Aucun test unitaire ne pouvait voir ce
+défaut : chaque pièce était juste.

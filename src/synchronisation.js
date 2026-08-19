@@ -35,7 +35,28 @@ import {
 } from './bibliotheque.js';
 import * as étatModule from './etat.js';
 import { conditionToujoursRemplie, empêcherLaVeille } from './energie.js';
-import { phraseBilan } from './erreurs.js';
+import { phraseBilan, compterTitresPerdus } from './erreurs.js';
+
+/**
+ * Le nom sous lequel une playlist est désignée à l'utilisateur.
+ *
+ * `bilan.àReprendre` contenait tantôt un nom (« Deep dive »), tantôt une URL
+ * complète, selon que la playlist avait déjà été nommée. Deux formes pour la
+ * même chose : illisible dans le journal, et impossible à rapprocher d'une ligne
+ * à l'autre. On tranche pour le nom.
+ *
+ * Le repli n'est PAS l'URL entière mais son identifiant, qui est déjà ce que
+ * l'accueil affiche sous chaque playlist non nommée : une seule écriture pour
+ * une même chose, partout dans l'app.
+ */
+export function nomAffichable(playlist, nomDéduit = null) {
+  if (nomDéduit) return nomDéduit;
+  if (playlist?.nom) return playlist.nom;
+
+  const url = String(playlist?.url ?? '');
+  const trouvé = /(playlist|album|artist|track)[/:]([A-Za-z0-9]+)/.exec(url);
+  return trouvé ? `${trouvé[1]}/${trouvé[2]}` : (url || 'playlist sans nom');
+}
 
 // ---------------------------------------------------------------------------
 // Verrou d'exécution
@@ -195,6 +216,13 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
     playlists: [],
     nbFichiers: 0,
     nbConvertis: 0,
+    // DEUX CHIFFRES, PAS UN. Ils étaient confondus, et cette confusion a coûté
+    // au projet un horaire de synchronisation reporté pour une parole
+    // manquante. `nbSignalements` compte les LIGNES que zotify a marquées ;
+    // `nbErreurs` compte les TITRES réellement perdus. Une ligne d'information
+    // — paroles introuvables, morceau retiré du catalogue — pèse sur le premier
+    // et jamais sur le second.
+    nbSignalements: 0,
     nbErreurs: 0,
     interrompu: false,
     réglagesNonAppliqués: [],
@@ -402,7 +430,10 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
       const nbNouveaux = résultat.nouveaux?.length ?? 0;
       courante.fichiersTéléchargés += nbNouveaux;
       bilan.nbFichiers += nbNouveaux;
-      bilan.nbErreurs += résultat.erreurs?.length ?? 0;
+      const lignesSignalées = résultat.erreurs ?? [];
+      const titresPerdus = compterTitresPerdus(lignesSignalées);
+      bilan.nbSignalements += lignesSignalées.length;
+      bilan.nbErreurs += titresPerdus;
       if (résultat.interrompu) bilan.interrompu = true;
 
       // zotify a demandé une connexion Spotify et rien n'est arrivé : chaque
@@ -441,7 +472,10 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
         },
       });
 
+      // Un échec de conversion EST une perte : le fichier attendu n'existe pas
+      // dans le format demandé. Il compte donc dans les deux chiffres.
       bilan.nbConvertis += aprèsTéléchargement.nbConvertis;
+      bilan.nbSignalements += aprèsTéléchargement.échecsConversion.length;
       bilan.nbErreurs += aprèsTéléchargement.échecsConversion.length;
 
       bilan.playlists.push({
@@ -450,7 +484,8 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
         nbFichiers: nbNouveaux,
         nbConvertis: aprèsTéléchargement.nbConvertis,
         nbSuspects: résultat.suspects?.length ?? 0,
-        nbErreurs: résultat.erreurs?.length ?? 0,
+        nbSignalements: lignesSignalées.length,
+        nbErreurs: titresPerdus + aprèsTéléchargement.échecsConversion.length,
         duréeMs: résultat.duréeMs,
         échec: résultat.lancé ? null : résultat.erreur,
       });
@@ -466,9 +501,19 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
       }
 
       const infos = étatModule.infosPlaylist(playlist.id) || {};
+      // « Allée au bout » ne regarde QUE les titres perdus, jamais le nombre de
+      // lignes. Avec l'ancienne condition, une seule parole introuvable suffisait
+      // à ne jamais marquer une playlist terminée : sa version Spotify n'était
+      // jamais enregistrée, elle repartait de zéro à chaque exécution, et le
+      // planificateur espaçait la tentative suivante. Constaté le 19 août 2026 —
+      // les trois playlists étaient sans `versionSpotify` après trois passages.
+      //
+      // Un morceau retiré du catalogue est de gravité INFO pour la même raison,
+      // en sens inverse : il n'arrivera jamais, donc reprendre la playlist
+      // indéfiniment ne servirait qu'à repayer l'attente.
       const alléAuBout = !résultat.interrompu
         && !résultat.expiré
-        && (résultat.erreurs?.length ?? 0) === 0;
+        && titresPerdus === 0;
 
       étatModule.majPlaylist(playlist.id, {
         dernierSuccès: new Date().toISOString(),
@@ -481,19 +526,23 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
         ...(alléAuBout && analyse.version ? { versionSpotify: analyse.version, nbManquants: 0 } : {}),
       });
 
-      // Une playlist qui n'a RIEN produit alors qu'elle a signalé des erreurs
-      // mérite une seconde chance : une coupure réseau passagère ou une
-      // limitation temporaire de Spotify se résorbent souvent en quelques
-      // minutes. Une playlist sans nouveauté et sans erreur, elle, est
-      // simplement à jour — la reprendre ne servirait à rien.
       // Une playlist n'est « terminée » que si zotify est allé au bout. Une
       // interruption — bouton Arrêter, veille du Mac — au milieu d'une playlist
       // de 200 titres en laisse 160 non téléchargés : la marquer terminée
-      // ferait sauter ces 160 titres à la reprise.
+      // ferait sauter ces 160 titres à la reprise. Un titre réellement perdu
+      // mérite la même seconde chance : une coupure réseau ou une limitation
+      // temporaire de Spotify se résorbent souvent en quelques minutes.
+      //
+      // Le commentaire qui vivait ici parlait d'une playlist « qui n'a RIEN
+      // produit » : cette règle-là n'existe plus depuis longtemps, et le message
+      // affiché à l'utilisateur la répétait encore.
       const mériteReprise = !alléAuBout;
 
-      if (mériteReprise) àReprendre.push(playlist);
-      else étatModule.noterPlaylistTerminée(playlist.id);
+      if (mériteReprise) {
+        àReprendre.push({ id: playlist.id, nom: nomAffichable(playlist, aprèsTéléchargement.nom) });
+      } else {
+        étatModule.noterPlaylistTerminée(playlist.id);
+      }
 
       diffuser({
         type: 'playlist-fin',
@@ -510,10 +559,11 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
     // seconde tentative immédiate — qui échouerait de toute façon si la cause
     // est une limitation de débit, justement la plus fréquente.
     if (àReprendre.length) {
-      bilan.àReprendre = àReprendre.map((p) => p.nom || p.url);
+      bilan.àReprendre = àReprendre.map((p) => p.nom);
+      const quelles = àReprendre.map((p) => `« ${p.nom} »`).join(', ');
       journal.avertir(
-        `${àReprendre.length} playlist(s) n'ont rien donné et ont signalé des erreurs. ` +
-          'Elles seront reprises en priorité à la prochaine synchronisation.',
+        `${àReprendre.length} playlist(s) ne sont pas allées au bout : ${quelles}. `
+        + 'Elles seront reprises en priorité à la prochaine synchronisation.',
       );
     }
 
@@ -576,10 +626,16 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
 
     étatModule.enregistrerExécution(bilan);
 
-    journal.info(
-      `Synchronisation terminée — ${bilan.phrase} ` +
-        `(${bilan.nbErreurs} erreur(s) au total).`,
-    );
+    // On ne dit « erreur » que s'il y en a une. Le compte des lignes signalées
+    // vient APRÈS, entre parenthèses, et seulement s'il diffère : c'est une
+    // information de mise au point, pas un motif d'inquiétude. Le journal
+    // annonçait « 4 erreur(s) au total » pour quatre paroles introuvables.
+    const détail = bilan.nbErreurs > 0
+      ? ` (${bilan.nbErreurs} titre(s) perdu(s))`
+      : bilan.nbSignalements > 0
+        ? ` (${bilan.nbSignalements} ligne(s) signalée(s), aucun titre perdu)`
+        : '';
+    journal.info(`Synchronisation terminée — ${bilan.phrase}${détail}.`);
     diffuser({ type: 'synchro-fin', bilan });
 
     return { lancé: true, bilan };
