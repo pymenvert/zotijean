@@ -86,10 +86,11 @@ tient en deux lignes, et il est descendu d'un cran :
   ouvrira donc par `open`. Gecko n'a été mesuré ni ici ni ailleurs. L'angle mort
   n'a pas disparu, il a changé de moteur.
 
-Et la question que les tests ne savaient pas poser a sa réponse : **« Tous les
-deux jours » ne tient PAS sur une ligne.** Deux lignes à 976 px comme à 371 px,
-à cause de l'étiquette « Recommandé » qui le suit. La 1.0.7 l'a fait passer de
-quatre lignes à deux ; elle ne l'a pas réglé.
+~~Et la question que les tests ne savaient pas poser a sa réponse : « Tous les
+deux jours » ne tient PAS sur une ligne.~~ **Réglé le 19 août 2026** : la liste
+des intervalles n'est plus une grille compacte de 190 px. Mesuré après
+correction — une seule ligne à 420 px et au-delà ; en dessous, la mise en page
+est celle d'un téléphone et le repli y est légitime.
 
 ### ~~L'harmonie générale des teintes n'a jamais été regardée~~ — regardée le 19 août 2026
 
@@ -830,3 +831,25 @@ seconde, un réglage serait passé pour un autre.
 absent du journal garde sa source » tombe ; rétabli, il passe. Le faux zotify
 reproduit fidèlement la règle du fichier absent — une doublure plus complaisante
 que l'original est précisément ce qui a coûté le plus cher à ce projet.
+
+### 19 août 2026 — les six explications manquantes, et où elles manquaient vraiment
+
+Le relevé du matin accusait `src/options.js:372`, seule liste d'options sans
+champ `explication`. C'était **la moitié de l'histoire**, et pas la moitié
+décisive : `public/app.js` écrivait `explication: ''` **en dur** au moment de
+fabriquer ces six options. Le texte aurait pu être parfaitement rédigé dans le
+catalogue, il n'aurait jamais atteint l'écran.
+
+Encore la même forme de défaut que la 1.0.5 et que les paroles : deux pièces
+justes, un assemblage qui ment. Et la leçon pour les tests est la même — un
+garde posé sur le seul catalogue serait resté vert sur une application muette.
+Il y a donc **deux** gardes : l'un exige que chaque option arbitrable porte une
+explication (avec une longueur minimale, pour qu'elle dise aussi l'inconvénient),
+l'autre interdit à l'interface d'en vider une. Les deux ont été éprouvés en
+cassant le code exprès.
+
+**Et la mise en page suit le contenu.** La grille compacte à trois colonnes de
+190 px datait de l'époque où ces choix n'avaient que leur libellé ; elle rendait
+maintenant l'explication sur sept lignes, et « Recommandé » ne tenait pas à côté
+de « Tous les deux jours » (il manquait 40 px, mesurés). Les intervalles passent
+en pleine largeur, comme les rythmes et les formats.

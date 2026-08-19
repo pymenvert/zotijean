@@ -2,6 +2,19 @@
 
 ## Non publié
 
+### Le rythme de vérification dit enfin ce que chaque choix coûte
+
+Six réglages, six libellés nus, au milieu de vingt-six autres qui expliquent tous
+ce qu'on y perd. On choisissait « Toutes les 6 heures » ou « Une fois par
+semaine » sans qu'on vous dise ce que ça change — alors que c'est le réglage qui
+décide de la fréquence à laquelle l'application parle à Spotify, donc de
+l'exposition de votre compte.
+
+Chacun porte maintenant sa phrase, avec son inconvénient. Et comme ces
+explications prennent de la place, la liste passe en pleine largeur : au passage,
+« Tous les deux jours » ne se casse plus en deux à côté de son étiquette
+« Recommandé ».
+
 ### « Archiver » et « Corbeille » fonctionnent enfin
 
 Ces deux réglages existaient, on pouvait les choisir, et l'application les
