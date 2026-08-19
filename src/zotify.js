@@ -22,6 +22,7 @@ import path from 'node:path';
 import { environnement } from './processus.js';
 import { journal } from './journal.js';
 import { cléComparaison } from './organisation.js';
+import { phraseJournal } from './erreurs.js';
 
 /**
  * Correspondance entre un réglage de l'app et les noms d'options possibles chez
@@ -890,7 +891,15 @@ export function télécharger({
       lignes.push(classée);
       if (lignes.length > 2000) lignes.shift();
       surÉvénement(événementDeLigne(classée));
-      if (classée.type === 'erreur') journal.avertir(`zotify : ${ligne}`);
+      if (classée.type === 'erreur') {
+        // Traduite AVANT d'entrer dans le journal, pas après : c'est le seul
+        // endroit que l'utilisateur regarde quand quelque chose ne va pas, et il
+        // y lisait « ConnectionResetError: [Errno 54] Connection reset by peer ».
+        // La ligne d'origine part en détail, pour qu'un rapport de panne reste
+        // exploitable.
+        const { texte, détail } = phraseJournal(classée.texte);
+        journal.avertir(texte, détail);
+      }
       détecterDemandeConnexion(classée.texte);
     };
 

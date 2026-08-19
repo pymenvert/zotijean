@@ -27,6 +27,7 @@ const { synchroniser, prendreVerrou, rendreVerrou, exécutionEnCours, demanderAr
 const { listerAudio } = await import('../src/bibliotheque.js');
 const { nomAffichable } = await import('../src/synchronisation.js');
 const étatModule = await import('../src/etat.js');
+const { journal } = await import('../src/journal.js');
 
 /**
  * Ces tests ne s'exécutent pas sous Windows.
@@ -574,6 +575,32 @@ test('un morceau absent du journal garde sa source, même retrait demandé',
       assert.equal(bilan.playlists[0].nbConvertis, 3, 'la conversion, elle, a bien eu lieu');
     } finally {
       delete process.env.FAUX_ZOTIFY_SANS_JOURNAL;
+      nettoyer();
+    }
+  });
+
+// LE CHAÎNAGE, ET NON LA PIÈCE. `phraseJournal` a son propre test unitaire ;
+// celui-ci vérifie qu'elle est bien APPELÉE — c'est exactement le maillon qui
+// manquait, puisque le catalogue savait déjà traduire et que le journal
+// l'ignorait.
+test('le journal ne recopie plus l’anglais brut de zotify',
+  { skip: SAUTER, timeout: 90_000 }, async () => {
+    const { nettoyer } = préparer();
+    process.env.FAUX_ZOTIFY_SCENARIO = 'echec-total';
+
+    try {
+      await synchroniser('manuelle');
+      const lignes = journal.récent(200).map((e) => e.message);
+      const anglaises = lignes.filter((m) => /Errno|Rate limit exceeded|Failed fetching audio key/.test(m));
+      assert.deepEqual(
+        anglaises, [],
+        `des lignes techniques anglaises sont arrivées telles quelles :\n  ${anglaises.join('\n  ')}`,
+      );
+      assert.ok(
+        lignes.some((m) => /Spotify a refusé de livrer un morceau/.test(m)),
+        'la traduction française n’apparaît pas',
+      );
+    } finally {
       nettoyer();
     }
   });
