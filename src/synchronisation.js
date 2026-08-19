@@ -26,7 +26,10 @@ import { journal } from './journal.js';
 import { diagnostiquer, GRAVITÉ } from './diagnostic.js';
 import { construireArguments, télécharger, saitReprendreSansLeFichier } from './zotify.js';
 import { modèleActif } from './organisation.js';
-import { nécessiteConversion, convertirLot, PROFILS } from './conversion.js';
+import {
+  nécessiteConversion, convertirLot, PROFILS,
+  démarrerConversionContinue, rattraperConversions,
+} from './conversion.js';
 import { exporterDepuisConfig } from './exports-dj.js';
 import { analyserPlaylist } from './analyse.js';
 import {
@@ -273,6 +276,41 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
       }
     }
 
+    // --- Rattrapage des conversions laissees en plan ----------------------
+    //
+    // POURQUOI CE PASSAGE EXISTE. Avant lui, une execution interrompue laissait
+    // ses fichiers dans le mauvais format et RIEN ne les reprenait jamais : la
+    // conversion ne regardait que les nouveautes de l'execution en cours, et
+    // « --skip-existing » empeche zotify de reproposer un fichier deja present.
+    // Le 19 aout 2026, treize titres sont ainsi restes en Ogg, dans des listes
+    // de lecture que Rekordbox ne sait pas lire.
+    //
+    // Il est place APRES le diagnostic, donc apres la verification de ffmpeg :
+    // sans lui, chaque fichier remonterait une erreur separee.
+    if (nécessiteConversion(c.qualité.format)) {
+      const rattrapage = await rattraperConversions({
+        dossier: c.général.dossierMusique,
+        format: c.qualité.format,
+        signalArrêt: courante.contrôleur.signal,
+        surProgrès: ({ nom }) => {
+          courante.dernièreLigne = `Rattrapage de conversion — ${nom}`;
+          diffuser({ type: 'ligne', texte: courante.dernièreLigne, sousType: 'conversion' });
+        },
+      });
+      if (rattrapage.convertis.length) {
+        bilan.nbConvertis += rattrapage.convertis.length;
+        bilan.rattrapés = rattrapage.convertis.length;
+        journal.info(
+          `${rattrapage.convertis.length} fichier(s) restes dans le mauvais format ont ete `
+          + `convertis avant de commencer.`,
+        );
+      }
+      if (rattrapage.échecs.length) {
+        bilan.nbSignalements += rattrapage.échecs.length;
+        bilan.nbErreurs += rattrapage.échecs.length;
+      }
+    }
+
     étatModule.ouvrirReprise(déclencheur, début);
     courante.totalPlaylists = playlists.length;
 
@@ -411,21 +449,62 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
         }
       }
 
-      const résultat = await télécharger({
-        commande: capacités.chemin,
-        arguments: args,
-        dossierRacine: racine,
-        signalArrêt: courante.contrôleur.signal,
-        surÉvénement: (événement) => {
-          if (événement.type === 'ligne') {
-            courante.dernièreLigne = événement.texte;
-            if (typeof événement.pourcentage === 'number') {
-              courante.pourcentage = événement.pourcentage;
+      // LA CONVERSION TOURNE PENDANT LE TÉLÉCHARGEMENT, PAS APRÈS.
+      //
+      // Sinon, une interruption laisse les fichiers dans le mauvais format et
+      // rien ne les rattrape jamais : c'est ce qui a laissé treize Ogg sur le
+      // disque le 19 août 2026, dans des listes de lecture que Rekordbox ne sait
+      // pas lire. zotify écrit en .tmp puis renomme, donc tout fichier portant
+      // une extension audio est complet ; et ses trente secondes d'attente entre
+      // deux titres laissent tout le temps à ffmpeg.
+      const moisson = nécessiteConversion(cp.qualité.format)
+        ? démarrerConversionContinue({
+          dossier: racine,
+          format: cp.qualité.format,
+          signalArrêt: courante.contrôleur.signal,
+          surProgrès: ({ nom }) => {
+            // L'avancement doit dire la conversion, pas seulement le
+            // téléchargement : sans ça, la moitié du travail est invisible.
+            courante.dernièreLigne = `Conversion — ${nom}`;
+            diffuser({
+              type: 'ligne', texte: courante.dernièreLigne,
+              sousType: 'conversion', playlist: courante.playlistActuelle,
+            });
+          },
+        })
+        : null;
+
+      let résultat;
+      let convertisAuFilDeLEau = { convertis: [], échecs: [] };
+      try {
+        résultat = await télécharger({
+          commande: capacités.chemin,
+          arguments: args,
+          dossierRacine: racine,
+          signalArrêt: courante.contrôleur.signal,
+          surÉvénement: (événement) => {
+            if (événement.type === 'ligne') {
+              courante.dernièreLigne = événement.texte;
+              if (typeof événement.pourcentage === 'number') {
+                courante.pourcentage = événement.pourcentage;
+              }
             }
-          }
-          diffuser({ ...événement, playlist: courante.playlistActuelle });
-        },
-      });
+            diffuser({ ...événement, playlist: courante.playlistActuelle });
+          },
+        });
+      } finally {
+        // Dans un `finally` : une exception du téléchargement ne doit pas
+        // laisser une minuterie tourner sur un moteur qui croit avoir fini.
+        if (moisson) convertisAuFilDeLEau = await moisson.arrêter();
+      }
+
+      // Les fichiers PRODUITS par la moisson sont apparus dans le dossier
+      // pendant que zotify tournait : l'inventaire avant/après les voit comme
+      // des nouveautés. Les compter ferait annoncer deux fois chaque morceau.
+      const produits = new Set(convertisAuFilDeLEau.convertis.map((c2) => c2.destination));
+      if (produits.size && résultat.nouveaux) {
+        résultat.nouveaux = résultat.nouveaux.filter((f) => !produits.has(f.chemin));
+      }
 
       const nbNouveaux = résultat.nouveaux?.length ?? 0;
       courante.fichiersTéléchargés += nbNouveaux;
@@ -682,7 +761,13 @@ export async function finaliserPlaylist({
       signalArrêt,
     });
 
-    résultat.nbConvertis = bilan.convertis.length;
+    // « Déjà converti » compte comme converti : depuis que la moisson tourne
+    // pendant le téléchargement, c'est même le cas NORMAL — à l'arrivée ici,
+    // tout est déjà fait. Les ignorer ferait retomber les listes de lecture sur
+    // les .ogg, exactement le défaut que la moisson devait supprimer.
+    const réussis = [...bilan.convertis, ...(bilan.déjàPrêts ?? [])];
+
+    résultat.nbConvertis = réussis.length;
     résultat.échecsConversion = bilan.échecs;
 
     if (bilan.échecs.length) {
@@ -692,7 +777,7 @@ export async function finaliserPlaylist({
       );
     }
 
-    fichiersFinaux = bilan.convertis.map((c2) => c2.destination);
+    fichiersFinaux = réussis.map((c2) => c2.destination);
     if (fichiersFinaux.length === 0) fichiersFinaux = nouveaux;
 
     // Sort des fichiers d'origine. Par défaut on les garde : un Ogg permet de
@@ -724,9 +809,9 @@ export async function finaliserPlaylist({
       politiqueSources = 'conserver';
     }
 
-    if (politiqueSources !== 'conserver' && bilan.convertis.length) {
+    if (politiqueSources !== 'conserver' && réussis.length) {
       résultat.sourcesTraitées = 0;
-      for (const { source } of bilan.convertis) {
+      for (const { source } of réussis) {
         try {
           if (politiqueSources === 'archiver') {
             archiver(source, racine);

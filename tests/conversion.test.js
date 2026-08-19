@@ -31,6 +31,8 @@ import {
   trouverPochette,
   tailleplausible,
   convertir,
+  convertirLot,
+  démarrerConversionContinue,
 } from '../src/conversion.js';
 
 const base = { source: '/m/piste.ogg', destination: '/m/piste.flac' };
@@ -378,5 +380,135 @@ test('convertir produit vraiment un fichier et le met en place sans résidu', {
     assert.deepEqual(fs.readdirSync(racine).filter((f) => f.includes('.tmp')), []);
   } finally {
     fs.rmSync(racine, { recursive: true, force: true });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Un fichier déjà converti n'est pas un fichier perdu
+// ---------------------------------------------------------------------------
+//
+// CE QUE CE TEST ATTRAPE, et qui s'est produit en vrai le 19 août 2026 : quand
+// la cible existe déjà, `convertir` refuse — à raison, un fichier réanalysé par
+// Serato porte des points de repère qu'il ne faut pas écraser. Mais le lot
+// rangeait alors le fichier dans « ignorés » SANS sa destination. L'appelant,
+// ne voyant aucune conversion, retombait sur les sources : les listes de lecture
+// pointaient des .ogg que Rekordbox ne lit pas, alors que les .mp3 étaient là,
+// à côté, complets.
+//
+// Le cas devient courant dès que la conversion tourne pendant le
+// téléchargement : à la fin, TOUT est déjà converti.
+test('un lot dont la cible existe déjà rend quand même le chemin converti', async () => {
+  const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'zotijean-deja-'));
+  try {
+    const source = path.join(dossier, 'piste.ogg');
+    const cible = path.join(dossier, 'piste.mp3');
+    fs.writeFileSync(source, Buffer.alloc(5_000_000, 1));
+    fs.writeFileSync(cible, Buffer.alloc(5_000_000, 2));
+
+    const bilan = await convertirLot({ fichiers: [source], format: 'mp3_320' });
+
+    assert.equal(bilan.échecs.length, 0);
+    assert.equal(bilan.convertis.length, 0, 'rien n’a été reconverti, et c’est voulu');
+    assert.deepEqual(
+      bilan.déjàPrêts.map((p) => p.destination),
+      [cible],
+      'le fichier converti doit rester retrouvable, sinon la liste de lecture pointe la source',
+    );
+  } finally {
+    fs.rmSync(dossier, { recursive: true, force: true });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Convertir pendant que zotify télécharge
+// ---------------------------------------------------------------------------
+//
+// LE DÉFAUT QUE CECI FERME : deux exécutions interrompues le 19 août ont laissé
+// 13 fichiers en Ogg alors que le réglage demandait du MP3. `convertirLot` sort
+// à la première boucle quand l'arrêt est déjà demandé, et RIEN ne rattrapait
+// jamais ces fichiers — la conversion ne regarde que les nouveautés de
+// l'exécution en cours, pendant que `--skip-existing` empêche zotify de les
+// reproposer.
+//
+// Convertir au fil de l'eau supprime la fenêtre : à l'instant de l'arrêt, tout
+// ce qui est descendu est déjà converti. zotify écrit en .tmp puis renomme, donc
+// un fichier portant une extension audio est complet — et les 30 s d'attente
+// entre deux titres laissent tout le temps.
+test('la conversion au fil de l’eau prend les fichiers dès qu’ils apparaissent', async () => {
+  const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'zotijean-fil-'));
+  try {
+    const convertis = [];
+    // Doublure : on éprouve la MOISSON, pas ffmpeg, qui a ses propres tests.
+    const convertirUn = async ({ source }) => {
+      const destination = `${source.slice(0, -4)}.mp3`;
+      fs.writeFileSync(destination, 'x');
+      convertis.push(path.basename(source));
+      return { réussi: true, destination };
+    };
+
+    const moisson = démarrerConversionContinue({
+      dossier, format: 'mp3_320', intervalleMs: 20, convertirUn,
+    });
+
+    // Les fichiers apparaissent l'un après l'autre, comme sous zotify.
+    for (const nom of ['01 - A.ogg', '02 - B.ogg', '03 - C.ogg']) {
+      fs.writeFileSync(path.join(dossier, nom), Buffer.alloc(5_000_000, 1));
+      await new Promise((r) => setTimeout(r, 80));
+    }
+
+    const bilan = await moisson.arrêter();
+
+    assert.deepEqual(convertis, ['01 - A.ogg', '02 - B.ogg', '03 - C.ogg']);
+    assert.equal(bilan.convertis.length, 3);
+    // Et aucun Ogg ne reste sans jumeau : c'est la propriété qui compte.
+    const restants = fs.readdirSync(dossier).filter((f) => f.endsWith('.ogg'))
+      .filter((f) => !fs.existsSync(path.join(dossier, f.replace(/\.ogg$/, '.mp3'))));
+    assert.deepEqual(restants, []);
+  } finally {
+    fs.rmSync(dossier, { recursive: true, force: true });
+  }
+});
+
+test('la moisson ne convertit jamais deux fois le même fichier', async () => {
+  const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'zotijean-fil2-'));
+  try {
+    let appels = 0;
+    const convertirUn = async ({ source }) => {
+      appels += 1;
+      const destination = `${source.slice(0, -4)}.mp3`;
+      fs.writeFileSync(destination, 'x');
+      return { réussi: true, destination };
+    };
+
+    fs.writeFileSync(path.join(dossier, 'A.ogg'), Buffer.alloc(5_000_000, 1));
+    const moisson = démarrerConversionContinue({
+      dossier, format: 'mp3_320', intervalleMs: 10, convertirUn,
+    });
+    await new Promise((r) => setTimeout(r, 120));
+    await moisson.arrêter();
+
+    assert.equal(appels, 1, 'la boucle repasse toutes les 10 ms : sans mémoire, elle rejouerait');
+  } finally {
+    fs.rmSync(dossier, { recursive: true, force: true });
+  }
+});
+
+test('un fichier déjà accompagné de son converti est laissé tranquille', async () => {
+  const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'zotijean-fil3-'));
+  try {
+    let appels = 0;
+    fs.writeFileSync(path.join(dossier, 'A.ogg'), Buffer.alloc(5_000_000, 1));
+    fs.writeFileSync(path.join(dossier, 'A.mp3'), Buffer.alloc(5_000_000, 2));
+
+    const moisson = démarrerConversionContinue({
+      dossier, format: 'mp3_320', intervalleMs: 10,
+      convertirUn: async () => { appels += 1; return { réussi: false }; },
+    });
+    await new Promise((r) => setTimeout(r, 60));
+    await moisson.arrêter();
+
+    assert.equal(appels, 0);
+  } finally {
+    fs.rmSync(dossier, { recursive: true, force: true });
   }
 });

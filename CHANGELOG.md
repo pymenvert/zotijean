@@ -2,6 +2,23 @@
 
 ## Non publié
 
+### Les morceaux sont convertis pendant le téléchargement, plus après
+
+Une synchronisation arrêtée en cours de route laissait ses fichiers dans le
+format d'origine — et plus rien ne les reprenait jamais. Sur ce Mac, treize
+titres étaient ainsi restés en Ogg alors que le réglage demandait du MP3, dans
+des listes de lecture que Rekordbox ne sait pas lire. C'est précisément ce que
+le choix du format devait éviter.
+
+La conversion travaille désormais en même temps que le téléchargement : à
+l'instant où vous appuyez sur « Arrêter », ce qui est descendu est déjà
+converti. Un passage de rattrapage s'occupe en plus, au démarrage de chaque
+synchronisation, des fichiers laissés en plan par le passé — sans rien
+retélécharger.
+
+Et l'avancement dit maintenant la conversion, pas seulement le téléchargement :
+la moitié du travail était invisible.
+
 ### Une parole manquante n'était pas une erreur, et l'app le croyait
 
 Le défaut le plus coûteux de la première mise en service. zotify allait chercher

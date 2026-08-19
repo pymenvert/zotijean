@@ -159,6 +159,13 @@ for (const [index, piste] of PISTES.entries()) {
     fs.writeFileSync(destination, Buffer.alloc(5_000_000, 1));
   }
   écrits += 1;
+
+  // Scénario « lent » : laisse le temps d'appuyer sur Arrêter au milieu d'une
+  // playlist. Le vrai zotify attend une trentaine de secondes entre deux
+  // titres ; on garde la forme, pas la durée.
+  if (scénario === 'lent') {
+    await new Promise((r) => { setTimeout(r, 700); });
+  }
 }
 
 process.stdout.write(`\nDone. ${écrits} track(s).\n`);
