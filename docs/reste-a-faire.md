@@ -35,14 +35,6 @@ Tous ceux qui suivent ont été vus le 19 août 2026 sur le Mac, sur la 1.0.7
 installée, avec le vrai zotify et une vraie bibliothèque. Aucun n'est déduit
 d'une lecture : chacun porte la trace qui l'a montré.
 
-### Les erreurs de zotify arrivent en anglais brut
-
-`ConnectionResetError: [Errno 54] Connection reset by peer` et
-`ConnectionRefusedError: [Errno 61] Connection refused` ont été affichées telles
-quelles. Le motif `reseau` du catalogue attrape bien `connection` — mais le
-journal, lui, recopie la ligne d'origine avant traduction. La règle du projet
-veut un message en français orienté action.
-
 ## Chantiers en pause
 
 ### Écrire les ISRC dans les étiquettes des fichiers
@@ -946,3 +938,28 @@ annonçant des variables introuvables. C'est le bon symptôme : les gardes de
 contraste lisaient `app.css`, où il n'y a plus de couleurs. Ils lisent désormais
 les deux feuilles. Une lecture qui ne trouve plus rien doit échouer, jamais
 passer.
+
+### 19 août 2026 — les erreurs de zotify parlent français
+
+L'utilisateur a lu ceci, tel quel, dans son journal :
+
+```
+zotify : ConnectionResetError: [Errno 54] Connection reset by peer
+zotify : ConnectionRefusedError: [Errno 61] Connection refused
+```
+
+Le catalogue savait pourtant les traduire. C'est le journal qui recopiait la
+ligne d'origine **avant** de passer par lui : toute la taxonomie d'`erreurs.js`
+était contournée à l'endroit précis où elle sert le plus — le seul endroit que
+l'on regarde quand quelque chose ne va pas.
+
+`phraseJournal()` rend désormais « ce qui s'est passé, ce que ça implique, quoi
+faire », et la ligne d'origine part en **détail**, pour qu'un rapport de panne
+reste exploitable. Une ligne que le catalogue ne reconnaît pas est conservée
+telle quelle : la traduire au jugé effacerait la seule information exploitable.
+
+**Deux tests, et le second est le vrai.** L'un éprouve la fonction sur les deux
+lignes réelles du 19 août ; l'autre rejoue une synchronisation entière et exige
+qu'aucun `Errno` n'arrive dans le journal. C'est le maillon qui manquait — la
+pièce était juste, personne ne l'appelait. Épreuve faite : la traduction retirée,
+le second tombe.

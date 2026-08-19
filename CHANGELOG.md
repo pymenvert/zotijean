@@ -2,6 +2,14 @@
 
 ## Non publié
 
+### Les pannes s'expliquent en français
+
+Le journal affichait « ConnectionResetError: [Errno 54] Connection reset by
+peer ». L'application savait traduire cette ligne depuis longtemps — elle ne le
+faisait simplement pas à cet endroit-là, le seul qu'on regarde quand quelque
+chose ne va pas. Vous lisez maintenant ce qui s'est passé, ce que ça implique et
+quoi faire ; la ligne technique reste consultable à côté, pour un signalement.
+
 ### La notice ressemble enfin à l'application
 
 Les deux ne se ressemblaient pas, et ce n'était pas qu'une affaire de goût : la

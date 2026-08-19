@@ -209,6 +209,38 @@ export function synthétiser(lignes) {
 }
 
 /**
+ * Ce qu'une ligne de zotify doit devenir dans le journal.
+ *
+ * CE QU'ELLE RÉPARE. Le 19 août 2026, l'utilisateur a lu ceci, tel quel :
+ *
+ *     zotify : ConnectionResetError: [Errno 54] Connection reset by peer
+ *     zotify : ConnectionRefusedError: [Errno 61] Connection refused
+ *
+ * Le catalogue savait pourtant les traduire — c'est le journal qui recopiait la
+ * ligne d'origine AVANT de passer par lui. Toute la taxonomie de ce fichier
+ * était contournée à l'endroit précis où elle sert le plus : le seul endroit où
+ * l'utilisateur regarde quand quelque chose ne va pas.
+ *
+ * La règle du projet : « ce qui s'est passé, ce que ça implique, quoi faire. »
+ * Un numéro d'erreur système ne dit aucune des trois.
+ *
+ * La ligne d'origine n'est pas jetée pour autant : elle part en détail, pour
+ * qu'un rapport de panne reste exploitable. Et une ligne que le catalogue ne
+ * reconnaît PAS est conservée telle quelle — la traduire au jugé effacerait la
+ * seule information exploitable qu'elle contient.
+ */
+export function phraseJournal(ligne) {
+  const diagnostic = reconnaître(ligne);
+  if (!diagnostic.reconnu) return { texte: `zotify : ${ligne}` };
+
+  const geste = diagnostic.geste ? ` ${diagnostic.geste}` : '';
+  return {
+    texte: `${diagnostic.titre} — ${diagnostic.explication}${geste}`,
+    détail: String(ligne),
+  };
+}
+
+/**
  * Combien de TITRES ont réellement été perdus.
  *
  * TROIS CHOSES ÉTAIENT CONFONDUES DANS UN SEUL CHIFFRE, et le projet l'a payé :

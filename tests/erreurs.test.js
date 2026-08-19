@@ -9,7 +9,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  reconnaître, synthétiser, phraseBilan, compterTitresPerdus, CATALOGUE, GRAVITÉ,
+  reconnaître, synthétiser, phraseBilan, compterTitresPerdus, phraseJournal,
+  CATALOGUE, GRAVITÉ,
 } from '../src/erreurs.js';
 
 // ---------------------------------------------------------------------------
@@ -224,4 +225,49 @@ test('compterTitresPerdus tient compte des gravités, pas du nombre de lignes', 
 // et non le nombre de lignes, est le bon critère.
 test('un morceau indisponible ne se reprend pas non plus', () => {
   assert.equal(compterTitresPerdus(['Track is unavailable in your market']), 0);
+});
+
+// ---------------------------------------------------------------------------
+// Ce qui arrive dans le journal est en français
+// ---------------------------------------------------------------------------
+//
+// LES DEUX LIGNES CI-DESSOUS SONT RÉELLES : elles ont été affichées telles
+// quelles à l'utilisateur le 19 août 2026, en anglais brut, avec un numéro
+// d'erreur système. Le catalogue savait pourtant les traduire — c'est le
+// JOURNAL qui recopiait la ligne d'origine avant de passer par lui.
+//
+// La règle du projet est explicite : « Messages d'erreur en français, orientés
+// action : ce qui s'est passé, ce que ça implique, quoi faire. » Un « [Errno 54]
+// Connection reset by peer » ne dit aucune des trois.
+const LIGNES_RÉELLES = [
+  'ConnectionResetError: [Errno 54] Connection reset by peer',
+  'ConnectionRefusedError: [Errno 61] Connection refused',
+];
+
+test('les erreurs réseau réelles de zotify sont traduites, pas recopiées', () => {
+  for (const ligne of LIGNES_RÉELLES) {
+    const d = reconnaître(ligne);
+    assert.equal(d.code, 'reseau', `« ${ligne} » n’est pas reconnue`);
+    assert.equal(d.reconnu, true);
+    // Le titre est ce qui s'affiche : il doit être en français et sans jargon.
+    assert.ok(!/[A-Za-z]+Error|Errno/.test(d.titre), `le titre garde du jargon : ${d.titre}`);
+    assert.ok(d.geste, 'une erreur sans geste à faire est un message raté');
+  }
+});
+
+test('phraseJournal rend une phrase lisible, et garde le détail technique', () => {
+  const { texte, détail } = phraseJournal(LIGNES_RÉELLES[0]);
+  assert.match(texte, /connexion/i, `« ${texte} » ne parle pas de connexion`);
+  assert.ok(!texte.includes('Errno'), 'le numéro système ne doit pas remonter dans la phrase');
+  assert.match(texte, /Vérifiez votre connexion/, 'le geste à faire doit accompagner le constat');
+  assert.equal(détail, LIGNES_RÉELLES[0], 'la ligne d’origine reste consultable');
+});
+
+// Une ligne que le catalogue ne reconnaît PAS doit rester lisible telle quelle :
+// la traduire au jugé effacerait la seule information exploitable.
+test('une ligne non reconnue est conservée intacte', () => {
+  const brute = 'Something entirely unexpected happened at line 42';
+  const { texte, détail } = phraseJournal(brute);
+  assert.ok(texte.includes(brute), 'une ligne inconnue ne doit pas être escamotée');
+  assert.equal(détail, undefined, 'inutile de répéter la ligne en détail si elle est déjà dans le texte');
 });
