@@ -35,21 +35,6 @@ Tous ceux qui suivent ont été vus le 19 août 2026 sur le Mac, sur la 1.0.7
 installée, avec le vrai zotify et une vraie bibliothèque. Aucun n'est déduit
 d'une lecture : chacun porte la trace qui l'a montré.
 
-### Cinq pixels de défilement horizontal sous 361 px de large
-
-Mesuré dans Safari 16.3 puis reproduit sous Chromium : à 356 px de large utile,
-`scrollWidth` vaut 361. Les deux coupables sont nommés — `nav.rail` et
-`main.scene`. La page réclame 361 px et n'en descend pas.
-
-**À 375 px, en revanche, tout est propre** : aucun débordement, tuiles en 2 × 2.
-Le correctif du bandeau héros (commentaire d'`app.css:207`) a bien réglé le cas
-qu'il visait. Ce qui reste ne se manifeste qu'en dessous de 361 px, largeur
-qu'aucune fenêtre de navigateur n'atteint spontanément.
-
-**Le point que le relecteur du 17 août n'avait pas pu vérifier est donc clos, et
-il était moins grave qu'annoncé.** Priorité basse, mais écrit pour ne pas être
-re-cherché.
-
 ### Les erreurs de zotify arrivent en anglais brut
 
 `ConnectionResetError: [Errno 54] Connection reset by peer` et
@@ -853,3 +838,80 @@ cassant le code exprès.
 maintenant l'explication sur sept lignes, et « Recommandé » ne tenait pas à côté
 de « Tous les deux jours » (il manquait 40 px, mesurés). Les intervalles passent
 en pleine largeur, comme les rythmes et les formats.
+
+### 19 août 2026 — les contrastes qui restaient
+
+Tous mesurés par le moteur de rendu, avant et après, dans les deux thèmes.
+
+**Le bouton principal désactivé : 1,64 et 1,36 → 5,14 et 5,05.** `opacity: .45`
+éteignait le libellé avec le décor. On repeint plutôt qu'on estompe : surface
+neutre, contour de contrôle, libellé en gris de texte. Un composant désactivé est
+exempté des seuils — mais celui-ci est l'état de l'app au repos sur les sept
+écrans, et il ne se lisait pas « indisponible », il se lisait « défaut
+d'affichage ».
+
+*Deux pièges rencontrés en le corrigeant, tous deux silencieux :*
+
+- `.bouton.primaire` a la même spécificité que `.bouton:disabled` et vient plus
+  bas dans le fichier : le correctif n'atteignait pas le seul bouton visé. Il
+  faut nommer les variantes.
+- `background: var(--…)` en RACCOURCI est « invalide au moment du calcul » au
+  moindre problème, et **tous** ses sous-champs retombent alors à leur valeur
+  initiale — fond transparent compris. Le dégradé disparaissait bien, rien ne le
+  remplaçait. Les longhands séparément.
+
+**La rainure de progression : 1,22 et 1,25 → un contour à 3,70 et 3,66.**
+Et ici **le relevé du matin se trompait** en annonçant qu'il y avait « toute la
+place » pour l'éclaircir. Mesuré : une rainure à 3 pour 1 contre la carte ne
+laisse plus que 2,7 contre la jauge en sombre, et **en clair aucune valeur ne
+satisfait les deux à la fois** — la carte est blanche, l'accent est un brun
+foncé, les deux contraintes tirent en sens opposés. L'optimum arithmétique en
+sombre plafonne à 2,86 des deux côtés.
+
+D'où un autre dessin plutôt qu'un arbitrage : c'est un **contour** qui porte
+désormais la longueur totale, avec la teinte déjà prévue pour ce qui se manipule
+et déjà garantie à 3 pour 1 contre les quatre surfaces. Le fond de la rainure
+peut alors rester discret, donc très contrasté avec la jauge (6,83 en sombre,
+4,07 en clair). Les deux exigences sont satisfaites au lieu d'être arbitrées. La
+barre passe de 4 à 6 px : le contour lui laisse les mêmes 4 px de remplissage.
+
+**Les quatre tuiles ne se rangent plus en trois plus une.** Aucune combinaison de
+`minmax` ne peut sauter le cas à trois colonnes ; il a fallu nommer les paliers —
+quatre de front au-delà de 980 px, sinon deux par deux, jamais de rangée
+orpheline.
+
+**La case « Suivre » du journal n'est plus native.** Elle emprunte la même
+mécanique que toutes les autres cases : 16 px au lieu de 13, et le jour où la
+coche changera de dessin, elle suivra. Trois tests sont tombés au passage en
+annonçant que la règle de la coche avait *disparu* — elle était devenue un
+sélecteur groupé. La lecture de feuille de style le comprend désormais, et le
+message trompeur n'enverra plus chercher au mauvais endroit.
+
+**Plus aucun débordement horizontal, sur les sept onglets, à 356 px.** Deux
+causes, pas une : les enfants de la grille principale réclamaient la largeur de
+leur contenu (`min-width: auto` est la valeur initiale), et la barre d'outils du
+journal refusait de replier ses boutons.
+
+**Ce que je n'ai PAS corrigé, faute de reproduire le défaut.** L'étiquette
+« perte ajoutée » sur l'option choisie en thème sombre était relevée à 4,41 pour
+un seuil de 4,5. Mesurée ici, en composant l'étiquette translucide sur l'option
+puis sur la carte : **4,83**. Les deux méthodes divergent de 0,4 et je ne sais
+pas laquelle a raison. Le relevé du 17 août avait déjà surestimé cette famille —
+et il demandait lui-même de ne pas corriger au-delà. Changer une couleur sur un
+chiffre qu'on n'arrive pas à reproduire ferait le contraire.
+
+### 19 août 2026 — il y a un SECOND zotify sur cette machine
+
+Trouvé par accident, en montant une instance d'essai dans un dossier de données
+jetable : le diagnostic y a résolu `zotify` vers **`~/.local/bin/zotify`,
+version 1.1.2** — pas celui que l'app a installé (`0.17.4`, dans son venv).
+
+Ce n'est pas un défaut aujourd'hui : `chemins.js` place le venv en tête du
+`PATH`, et la configuration réelle dit simplement `zotify`. Mais cette
+installation-là déclare **63 options et PAS `--skip-existing`**. Le jour où le
+venv manquerait ou serait cassé, l'app se rabattrait dessus en silence et
+**chaque synchronisation reprendrait toute la bibliothèque depuis le début**.
+
+Le diagnostic le signalerait — il l'a fait, tout de suite — mais son message ne
+dit pas QUEL zotify il a trouvé. C'est ce qui a fait perdre dix minutes à croire
+à une régression. Faire nommer le chemin par ce contrôle coûterait deux lignes.

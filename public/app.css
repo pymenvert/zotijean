@@ -149,7 +149,16 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-
 
 /* ---------------------------------------------------------------- Structure */
 
+/* « min-width: 0 » sur les deux enfants de la grille, et ce n'est pas
+   décoratif : la valeur initiale d'un élément de grille est « auto », c'est-à-dire
+   « au moins la largeur de mon contenu le plus large ». Sous 361 px, la barre
+   latérale et la scène réclamaient donc ensemble 361 px quoi qu'il arrive, et la
+   page débordait de 5 px vers la droite. Mesuré dans Safari 16.3 puis reproduit
+   sous Chromium : scrollWidth 361 pour un clientWidth de 356.
+   À 375 px, largeur d'un vrai téléphone, rien ne dépassait déjà. Le défaut ne se
+   manifestait qu'en dessous — mais il ne coûte qu'une ligne à fermer. */
 .coque { display: grid; grid-template-columns: 232px 1fr; min-height: 100vh; }
+.coque > .rail, .coque > .scene { min-width: 0; }
 
 .rail {
   background: var(--fond-2);
@@ -245,7 +254,39 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-
 }
 .bouton:hover:not(:disabled) { background: var(--carte); border-color: var(--texte-3); }
 .bouton:active:not(:disabled) { transform: scale(.975); }
-.bouton:disabled { opacity: .45; cursor: default; }
+/* LE DÉCOR S'ÉTEINT, PAS LE MOT.
+   « opacity: .45 » s'appliquait à tout le bouton, libellé compris : 1,64 pour 1
+   en thème sombre et 1,36 en clair, mesurés par le moteur de rendu sur le Mac.
+   Un composant désactivé est explicitement exempté des seuils, et à juste titre
+   — mais celui-ci est visible sur les SEPT écrans, et l'état normal de l'app au
+   repos est précisément « on ne peut pas encore synchroniser ». Il ne se lisait
+   pas « indisponible », il se lisait « défaut d'affichage ».
+   On repeint donc plutôt que d'estomper : surface neutre, contour discret,
+   libellé dans le gris de texte secondaire — qui reste franchement lisible. */
+/* Le sélecteur nomme explicitement les variantes : « .bouton.primaire » a la
+   même spécificité que « .bouton:disabled » et vient plus bas dans le fichier,
+   donc il l'emportait. Le bouton principal désactivé — le seul qui compte ici,
+   puisque c'est « Synchroniser » — gardait son dégradé ambre et son libellé
+   blanc. Un correctif silencieusement sans effet sur le seul cas visé. */
+.bouton:disabled,
+.bouton.primaire:disabled,
+.bouton.danger:disabled {
+  cursor: default;
+  /* Les deux propriétés séparément, jamais le raccourci « background ». Avec une
+     variable, le raccourci est « invalide au moment du calcul » si quoi que ce
+     soit cloche, et TOUS ses sous-champs retombent alors à leur valeur initiale
+     — fond transparent compris. Constaté ici même : le dégradé disparaissait
+     bien, mais aucune couleur ne le remplaçait. */
+  background-color: var(--carte-haut);
+  background-image: none;
+  /* Le contour des CONTRÔLES, pas celui du décor : sans lui le bouton désactivé
+     se fondait dans la carte (1,04 pour 1 de fond, 1,25 de bordure) et on ne
+     voyait plus qu'il y avait là un bouton. Cette teinte-là est garantie à 3
+     pour 1 contre les quatre surfaces de la palette. */
+  border-color: var(--bord-controle);
+  color: var(--texte-3);
+  box-shadow: none;
+}
 .bouton:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 .bouton.primaire {
@@ -268,8 +309,24 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-
 /* --------------------------------------------------------------- Progression */
 
 .progression { margin: -6px 0 22px; }
+/* LA RAINURE DESSINE LA LONGUEUR TOTALE, ET ELLE NE SE VOYAIT PAS :
+   1,22 pour 1 en sombre, 1,25 en clair, pour un seuil de 3. On voyait où on en
+   était, jamais par rapport à quoi.
+   L'ÉCLAIRCIR NE SUFFIT PAS, contrairement à ce qu'annonçait le relevé du
+   19 août. Mesuré : une rainure à 3 pour 1 contre la carte ne laisse plus que
+   2,7 contre la jauge en sombre, et en clair AUCUNE valeur ne satisfait les deux
+   à la fois — la carte est blanche et l'accent est un brun foncé, les deux
+   contraintes tirent en sens opposés.
+   D'où le contour. C'est LUI qui porte la longueur totale, avec la teinte déjà
+   prévue pour ce qui se manipule et déjà garantie à 3 pour 1 contre les quatre
+   surfaces de la palette. Le fond de la rainure peut alors rester discret, donc
+   très contrasté avec la jauge. Les deux exigences sont satisfaites au lieu
+   d'être arbitrées. La barre passe de 4 à 6 px : le contour d'un pixel de chaque
+   côté lui laisse les mêmes 4 px de remplissage qu'avant. */
 .progression-barre {
-  height: 4px; border-radius: 99px; background: var(--bord); overflow: hidden;
+  height: 6px; border-radius: 99px; overflow: hidden;
+  background: var(--bord);
+  border: 1px solid var(--bord-controle);
 }
 .progression-barre span {
   display: block; height: 100%; width: 0%;
@@ -305,7 +362,11 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-
 .entete-carte { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 /* Groupe de commandes aligné dans un en-tête de carte (bascule « Suivre » et
    bouton d'export du journal). */
-.barre-outils { display: flex; gap: 10px; align-items: center; }
+/* « flex-wrap » : les boutons d'un en-tête de carte ne se compriment pas — un
+   libellé comme « Exporter le diagnostic » porte « white-space: nowrap » et
+   pousse la carte au-delà de la fenêtre. Sous 364 px, c'était le dernier
+   débordement horizontal restant. Ils passent à la ligne plutôt que de déborder. */
+.barre-outils { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .aide { color: var(--texte-2); font-size: 13px; }
 .aide em { color: var(--texte); font-weight: 500; }
 /* Les étapes à suivre chez Spotify. Le retrait laisse la place aux numéros, que
@@ -358,7 +419,16 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-
   font-size: 12px; color: var(--texte-3); text-align: right; padding-top: 2px;
 }
 
-.grille-cartes { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+/* QUATRE TUILES NE SE RANGENT JAMAIS EN TROIS PLUS UNE.
+   « auto-fit » remplit chaque rangée au maximum : entre 510 et 670 px de large,
+   il tenait trois tuiles et laissait la quatrième seule, avec deux emplacements
+   vides à sa droite. Mesuré à l'écran, et déjà noté deux fois comme « bancal ».
+   Aucune combinaison de minmax ne peut sauter le cas à trois colonnes : il faut
+   donc nommer les paliers. Quatre de front quand la place existe, sinon deux par
+   deux — jamais de rangée orpheline. */
+.grille-cartes { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+@media (min-width: 980px) { .grille-cartes { grid-template-columns: repeat(4, 1fr); } }
+@media (max-width: 430px) { .grille-cartes { grid-template-columns: 1fr; } }
 .tuile {
   background: var(--carte); border: 1px solid var(--bord); border-radius: var(--rayon);
   padding: 14px 16px; box-shadow: var(--ombre);
@@ -437,7 +507,8 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-
 .option.choisi .puce.carree::before {
   content: ''; position: absolute; inset: 0; border-radius: 1.5px; background: var(--accent);
 }
-.option.choisi .puce.carree::after {
+.option.choisi .puce.carree::after,
+.mini-bascule input:checked + .puce.carree::after {
   /* La coche déclare ce dont elle a besoin pour EXISTER, au lieu de l'emprunter
      à la règle du disque. Sans ces deux propriétés, restreindre un jour la règle
      ci-dessus à `.puce:not(.carree)` — le nettoyage le plus naturel qui soit —
@@ -561,13 +632,21 @@ input[type="text"]::placeholder { color: var(--texte-3); }
 .bascule-texte em { font-size: 12.5px; color: var(--texte-2); }
 
 .mini-bascule { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--texte-2); cursor: pointer; }
-/* La case « Suivre » du journal est la seule case NATIVE de l'application :
-   toutes les autres sont masquées et redessinées en « .puce ». Sans cette
-   ligne, elle s'affiche dans le bleu du système — bleu Chrome ici, bleu macOS
-   sur la machine de destination — au milieu d'une palette ambre et graphite.
-   Son contour et sa taille restent ceux du système, qui s'en charge très bien ;
-   seule sa couleur d'état détonnait. */
-.mini-bascule input[type="checkbox"] { accent-color: var(--accent); }
+/* La case « Suivre » du journal ÉTAIT la seule case native de l'application.
+   « accent-color » lui donnait bien l'ambre, mais elle gardait la taille du
+   système — 13 px contre 16 pour toutes les autres — et surtout elle ne passait
+   pas par la mécanique commune : un jour où la coche changerait de dessin, elle
+   serait la seule à ne pas suivre. C'était le seul contrôle de l'app à ne pas
+   être redessiné.
+   Elle emprunte désormais exactement le même chemin que les listes à choix
+   multiple : entrée masquée, « .puce.carree » dessinée par-dessus. Les deux
+   règles ci-dessous ne font que rejouer l'état coché hors d'une « .option ». */
+.mini-bascule input[type="checkbox"] { position: absolute; opacity: 0; pointer-events: none; }
+.mini-bascule .puce { margin-top: 0; }
+.mini-bascule input:checked + .puce.carree { border-color: var(--accent); }
+.mini-bascule input:checked + .puce.carree::before {
+  content: ''; position: absolute; inset: 0; border-radius: 1.5px; background: var(--accent);
+}
 
 .jetons { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
 /* Ce bloc était scindé en deux règles « .jeton » distinctes, à une dizaine de
