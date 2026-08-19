@@ -63,7 +63,17 @@ const RACINE = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 // 1,04:1) redevenait verte à 9,39:1 dès qu'un commentaire citant l'ancienne
 // valeur la précédait. Or app.css commente abondamment ses couleurs, juste
 // au-dessus de la palette.
-const FEUILLE = sansCommentaires(fs.readFileSync(path.join(RACINE, 'public', 'app.css'), 'utf8'));
+/* LA PALETTE ET LA FEUILLE, DANS CET ORDRE, ET IL FAUT LES DEUX.
+   Les couleurs vivent désormais dans palette.css, partagée par les trois pages
+   de l'app ; app.css n'en déclare plus aucune. Lire app.css seul rendait ces
+   gardes muets — trente et un tests sont tombés d'un coup en annonçant des
+   variables introuvables, ce qui est le bon symptôme : une lecture qui ne
+   trouve plus rien doit ÉCHOUER, jamais passer. */
+const FEUILLE = sansCommentaires(
+  ['palette.css', 'app.css']
+    .map((f) => fs.readFileSync(path.join(RACINE, 'public', f), 'utf8'))
+    .join('\n'),
+);
 
 // Les gestes de lecture vivent dans aide-lecture-css.js : retrouver une règle,
 // y retrouver une propriété, en extraire une couleur, la résoudre dans le bon
@@ -368,3 +378,68 @@ for (const theme of ['sombre', 'clair']) {
     }
   });
 }
+
+// ---------------------------------------------------------------------------
+// Une couleur ne s'écrit qu'à un seul endroit
+// ---------------------------------------------------------------------------
+//
+// CE QUE CE GARDE-FOU EMPÊCHE DE RECOMMENCER. Trois feuilles décrivaient les
+// mêmes couleurs. `retour.css` en redéclarait cinq sous les mêmes noms et les
+// mêmes valeurs qu'`app.css`. `notice.css` décrivait les mêmes rôles sous
+// d'autres noms — « --seam », « --panneau », « --argent-bas » — avec les
+// valeurs d'AVANT la correction de contraste de la 1.0.2, et elle les déclarait
+// TROIS FOIS dans le même fichier.
+//
+// Les huit défauts de contraste relevés dans la notice le 17 août 2026
+// n'étaient donc pas des défauts nouveaux : c'étaient les mêmes, déjà corrigés
+// une fois ailleurs. Une palette recopiée est une palette qui vieillit deux
+// fois — et rien ne signalait la divergence.
+test('seule la palette partagée écrit des valeurs de couleur', () => {
+  const littérale = /--[a-z0-9-]+\s*:\s*(#[0-9a-fA-F]{3,8}|rgba?\(|hsla?\()/;
+
+  // Cas positif : le scanner doit prouver qu'il attrape une valeur en dur avant
+  // qu'on lui fasse confiance sur un fichier qui n'en a plus.
+  assert.ok(littérale.test('  --seam: #262a31;'), 'le scanner ne reconnaît pas une couleur en dur');
+  assert.ok(littérale.test('--ambre-voile: rgba(240,168,54,.12);'), 'ni une couleur translucide');
+  assert.ok(!littérale.test('  --seam: var(--bord);'), 'un alias n’est pas une valeur');
+
+  for (const fichier of ['notice.css', 'retour.css']) {
+    const feuille = sansCommentaires(
+      fs.readFileSync(path.join(RACINE, 'public', fichier), 'utf8'),
+    );
+    const fautives = feuille.split('\n').filter((l) => littérale.test(l));
+    assert.deepEqual(
+      fautives, [],
+      `${fichier} redéclare des couleurs au lieu de reprendre palette.css :\n  `
+      + `${fautives.join('\n  ')}\n`
+      + 'Une valeur écrite deux fois diverge — c’est exactement ce qui a fait '
+      + 'réapparaître dans la notice huit défauts déjà corrigés ailleurs.',
+    );
+  }
+});
+
+// Et la palette, elle, doit bien porter les trois états de thème : le réglage
+// système ne pose aucun attribut, la notice offre une bascule manuelle qui pose
+// « data-theme ». Une couleur dont la seule définition vivrait dans une requête
+// de média serait absente pour qui a basculé à la main.
+test('la palette couvre le thème système ET la bascule manuelle', () => {
+  const palette = fs.readFileSync(path.join(RACINE, 'public', 'palette.css'), 'utf8');
+  for (const attendu of [
+    '@media (prefers-color-scheme: light)',
+    ':root[data-theme="dark"]',
+    ':root[data-theme="light"]',
+  ]) {
+    assert.ok(palette.includes(attendu), `palette.css ne déclare pas « ${attendu} »`);
+  }
+
+  const variables = (bloc) => new Set(bloc.match(/--[a-z0-9-]+(?=\s*:)/g) || []);
+  const sombreForce = palette.slice(palette.indexOf(':root[data-theme="dark"]'),
+    palette.indexOf(':root[data-theme="light"]'));
+  const systemeSombre = palette.slice(palette.indexOf(':root {'), palette.indexOf('/* THÈME CLAIR'));
+  const manquantes = [...variables(systemeSombre)].filter((v) => !variables(sombreForce).has(v));
+  assert.deepEqual(
+    manquantes, [],
+    `la bascule manuelle ne redéfinit pas : ${manquantes.join(', ')} — `
+    + 'ces couleurs garderaient celles de l’autre thème.',
+  );
+});
