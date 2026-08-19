@@ -2,6 +2,23 @@
 
 ## Non publié
 
+### Ce qui se voyait mal se voit
+
+Le bouton principal désactivé — l'état de l'application au repos, sur les sept
+écrans — était une bouillie de la couleur de son fond : son libellé passe de 1,4
+à 5,1 de contraste. Il ne s'estompe plus, il se repeint : on lit « Synchroniser »
+même quand on ne peut pas encore cliquer.
+
+La rainure de la barre de progression était invisible : on voyait où on en
+était, jamais par rapport à quoi. Elle a maintenant un contour, ce qui règle du
+même coup une tension qu'on croyait devoir arbitrer — l'éclaircir suffisamment
+l'aurait rapprochée de la jauge qu'elle contient.
+
+Les quatre tuiles de l'accueil ne se rangent plus en trois plus une, avec deux
+emplacements vides. La case « Suivre » du journal, seule case restée au dessin du
+système, ressemble enfin aux autres. Et plus rien ne déborde horizontalement,
+même sur une fenêtre de 356 pixels.
+
 ### Le rythme de vérification dit enfin ce que chaque choix coûte
 
 Six réglages, six libellés nus, au milieu de vingt-six autres qui expliquent tous
