@@ -415,6 +415,31 @@ export const NOTE_EXPORTS_DJ =
   "La tonalité, elle, passe bien.";
 
 // ---------------------------------------------------------------------------
+// Racheter en sans-perte
+// ---------------------------------------------------------------------------
+
+export const SOURCES_ACHATS = [
+  {
+    id: 'bandcamp',
+    libellé: 'Chercher aussi sur Bandcamp',
+    explication:
+      "De loin la meilleure source : mesuré sur votre bibliothèque, elle trouve 14 morceaux " +
+      "sur 17 contre 8 pour MusicBrainz seul, et elle donne le lien du morceau plutôt que " +
+      "celui de l'album. L'inconvénient est réel : Bandcamp ne publie aucune interface " +
+      "officielle, Zotijean passe donc par celle de son propre champ de recherche. Elle peut " +
+      "cesser de répondre du jour au lendemain — le rapport continuera alors avec MusicBrainz " +
+      "seul, en le disant. Décochez si vous préférez ne dépendre que de sources documentées.",
+  },
+];
+
+export const NOTE_ACHATS =
+  "Zotijean n'achète rien et ne télécharge rien : il ouvre les portes, vous décidez. Comptez " +
+  "environ trois secondes par morceau — les deux services imposent une requête par seconde, " +
+  "et s'en affranchir ferait bloquer l'application. Un rapport interrompu reprend là où il " +
+  "s'est arrêté. Les liens Bandcamp donnent bien du FLAC ; les autres boutiques ne sont pas " +
+  "toutes sans perte, et le rapport le signale morceau par morceau.";
+
+// ---------------------------------------------------------------------------
 // Valeurs par défaut de la configuration
 // ---------------------------------------------------------------------------
 
@@ -481,6 +506,14 @@ export function configParDéfaut() {
       serato: false,
       automatique: false,
     },
+    achats: {
+      // Activée par défaut parce que sans elle le rapport perd la moitié de sa
+      // couverture — mesuré, pas supposé. Débrayable parce qu'elle dépend d'un
+      // point d'entrée non documenté, ce qui est un choix qui appartient à
+      // l'utilisateur, pas au code.
+      bandcamp: true,
+      musicbrainz: true,
+    },
     gardes: {
       espaceMinimumGo: 2,
       margeParTitreMo: 12,
@@ -511,5 +544,7 @@ export function catalogueComplet() {
     notePlanification: NOTE_PLANIFICATION,
     exportsDJ: EXPORTS_DJ,
     noteExportsDJ: NOTE_EXPORTS_DJ,
+    sourcesAchats: SOURCES_ACHATS,
+    noteAchats: NOTE_ACHATS,
   };
 }

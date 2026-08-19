@@ -822,11 +822,20 @@ export function variablesImpossibles(c = config()) {
 export function ouvrirDossierMusique() {
   const dossier = config().général.dossierMusique;
   assurerDossier(dossier);
+  ouvrirDansLeSystème(dossier);
+}
+
+/** Ouvre un fichier avec l'application que le système lui associe. */
+export function ouvrirFichier(chemin) {
+  ouvrirDansLeSystème(chemin);
+}
+
+function ouvrirDansLeSystème(cible) {
   const commande = process.platform === 'darwin'
     ? 'open'
     : process.platform === 'win32' ? 'explorer' : 'xdg-open';
   import('node:child_process').then(({ spawn }) => {
-    const processus = spawn(commande, [path.resolve(dossier)], {
+    const processus = spawn(commande, [path.resolve(cible)], {
       detached: true, stdio: 'ignore',
     });
     // Un exécutable absent — xdg-open n'est pas garanti sous Linux — émet
@@ -835,7 +844,7 @@ export function ouvrirDossierMusique() {
     // ouvrir un dossier dans l'explorateur de fichiers.
     processus.on('error', (erreur) => {
       journal.avertir(
-        'Le dossier n’a pas pu être ouvert dans l’explorateur de fichiers.',
+        'Cet élément n’a pas pu être ouvert par le système.',
         erreur.message,
       );
     });

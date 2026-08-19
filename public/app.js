@@ -820,6 +820,17 @@ function écouterÉvénements() {
       $('#note-connexion-spotify')?.remove();
     }
 
+    if (événement.type === 'achats-progres') {
+      const jauge = $('#progression-achats-jauge');
+      if (jauge) jauge.style.width = `${événement.pourcentage}%`;
+      const ligne = $('#progression-achats-ligne');
+      if (ligne) {
+        ligne.textContent =
+          `${événement.traités}/${événement.total} — ${événement.texte}`;
+      }
+      return;
+    }
+
     if (événement.type === 'export-progres') {
       // L'export sonde chaque fichier de la bibliothèque : sur une grosse
       // collection, ça prend des minutes. Un compteur qui avance vaut mille
@@ -1466,6 +1477,95 @@ function rendreExportsDJ() {
   $('#note-exports-dj').textContent = noteExportsDJ;
 }
 
+// ------------------------------------------------- Racheter en sans-perte
+
+function rendreAchats() {
+  const { sourcesAchats, noteAchats } = état.catalogue;
+  const actuel = état.config.achats || {};
+
+  remplir($('#choix-sources-achats'), (sourcesAchats || []).map((source) => {
+    const coché = actuel[source.id] !== false;
+    const étiquette = document.createElement('label');
+    étiquette.className = `option${coché ? ' choisi' : ''}`;
+    étiquette.innerHTML = `
+      <input type="checkbox" ${coché ? 'checked' : ''}>
+      <span class="puce carree"></span>
+      <span class="option-corps">
+        <span class="option-titre">${échapper(source.libellé)}</span>
+        <span class="option-explication">${échapper(source.explication)}</span>
+      </span>`;
+    étiquette.addEventListener('click', async (événement) => {
+      événement.preventDefault();
+      await enregistrerConfig({ achats: { [source.id]: !coché } });
+      rendreAchats();
+      rafraîchirEstimationAchats();
+    });
+    return étiquette;
+  }));
+
+  $('#note-achats').textContent = noteAchats || '';
+  rafraîchirEstimationAchats();
+}
+
+/**
+ * La durée est annoncée AVANT de cliquer, jamais après.
+ *
+ * Une recherche sur deux mille morceaux dure plus d'une heure. Un bouton qui ne
+ * dit pas ce qu'il coûte se clique par curiosité, puis se regrette — et pendant
+ * ce temps l'app paraît bloquée.
+ */
+async function rafraîchirEstimationAchats() {
+  const zone = $('#estimation-achats');
+  if (!zone) return;
+  try {
+    const estimation = await appeler('GET', '/api/achats/estimation');
+    zone.textContent = estimation.phrase;
+    $('#btn-achats').disabled = estimation.nbPistes === 0;
+  } catch {
+    // Une estimation indisponible ne doit pas empêcher de lancer : elle informe.
+    zone.textContent = '';
+  }
+}
+
+$('#btn-achats').addEventListener('click', async () => {
+  const bouton = $('#btn-achats');
+  const zone = $('#resultat-achats');
+  bouton.disabled = true;
+  zone.innerHTML = '';
+  $('#progression-achats').hidden = false;
+  $('#progression-achats-ligne').textContent = 'Préparation…';
+
+  try {
+    const r = await appeler('POST', '/api/achats/rapport');
+    const vérifiés = r.bilan.lienPiste + r.bilan.lienAlbum;
+    zone.innerHTML = `<p class="aide">
+      <strong>${vérifiés} morceau(x) sur ${r.bilan.total}</strong> ont un lien d’achat
+      vérifié en sans-perte — ${r.bilan.lienPiste} vers le morceau lui-même,
+      ${r.bilan.lienAlbum} vers l’album qui le porte.
+      ${r.bilan.lienRéférencé} autre(s) ont un lien d’achat référencé ailleurs, et
+      ${r.bilan.rechercheSeule} n’ont qu’une recherche à faire à la main.<br>
+      Rapport : <code>${échapper(r.chemins.html)}</code></p>`;
+    $('#btn-ouvrir-achats').hidden = false;
+    noter(r.interrompu
+      ? 'Recherche interrompue — ce qui est trouvé est conservé, relancer reprendra la suite.'
+      : `${vérifiés} morceau(x) rachetables en sans-perte.`,
+    r.interrompu ? 'erreur' : 'succes');
+  } catch (erreur) {
+    zone.innerHTML = `<p class="aide">${échapper(erreur.message)}</p>`;
+  } finally {
+    $('#progression-achats').hidden = true;
+    bouton.disabled = false;
+  }
+});
+
+$('#btn-ouvrir-achats').addEventListener('click', async () => {
+  try {
+    await appeler('POST', '/api/achats/ouvrir');
+  } catch (erreur) {
+    noter(erreur.message, 'erreur');
+  }
+});
+
 // ------------------------------------------------------------ Premier lancement
 
 const ÉTAPES_ONBOARDING = [
@@ -1620,6 +1720,7 @@ async function terminerOnboarding() {
   rendreRangement();
   rendrePlanification();
   rendreExportsDJ();
+  rendreAchats();
 }
 
 $('#onb-suivant').addEventListener('click', async () => {
@@ -1658,6 +1759,7 @@ async function démarrer() {
     rendreRangement();
     rendrePlanification();
     rendreExportsDJ();
+    rendreAchats();
     rendreSpotify().catch(() => {
       $('#spotify-etat').textContent = 'indisponible';
     });
