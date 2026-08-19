@@ -607,6 +607,55 @@ test('les paroles suivent le choix de l’utilisateur, jamais le défaut de zoti
   assert.equal(refus.arguments.includes('--lyrics-to-file'), false);
 });
 
+// COUPER LES PAROLES DEMANDE DEUX OPTIONS, PAS UNE.
+//
+// Vérifié dans la source de zotify 0.17.4 : `fetch_lyrics` (api.py) ne renonce
+// que si `lyrics_to_file` ET `lyrics_to_metadata` sont faux, et le second vaut
+// True par défaut (config.py:93). Passer la première seule laissait zotify
+// interroger les paroles de CHAQUE titre, échouer, et écrire une ligne
+// contenant « failed » — 19 des 22 « erreurs » du 19 août 2026.
+test('refuser les paroles coupe AUSSI leur écriture dans les etiquettes', () => {
+  const capacités = {
+    options: ['root-path', 'output', 'lyrics-to-file', 'lyrics-to-metadata'],
+    aide: '--lyrics-to-file LYRICS_TO_FILE --lyrics-to-metadata LYRICS_TO_METADATA',
+  };
+  const config = (paroles) => ({
+    ...CONFIG, qualité: { niveau: 'tres_elevee', format: 'copie', paroles },
+  });
+
+  const sans = construireArguments({
+    url: 'U', attente: 30, capacités, modèle: '{song_name}', dossierRacine: '/M',
+    config: config(false),
+  }).arguments;
+  assert.equal(sans[sans.indexOf('--lyrics-to-metadata') + 1], 'false',
+    'sans cette option, zotify va chercher les paroles quand même');
+
+  // Et l'inverse doit rester vrai : qui veut les paroles les veut partout.
+  const avec = construireArguments({
+    url: 'U', attente: 30, capacités, modèle: '{song_name}', dossierRacine: '/M',
+    config: config(true),
+  }).arguments;
+  assert.equal(avec[avec.indexOf('--lyrics-to-metadata') + 1], 'true');
+});
+
+// Un fork qui ne connaît pas l'option ne doit pas la recevoir : une option
+// inconnue fait échouer zotify au lancement, et emporte toute la playlist.
+test('un zotify sans lyrics-to-metadata ne reçoit pas l’option', () => {
+  const capacités = {
+    options: ['root-path', 'output', 'lyrics-to-file'],
+    aide: '--lyrics-to-file LYRICS_TO_FILE',
+  };
+  const { arguments: args, nonAppliqués } = construireArguments({
+    url: 'U', attente: 30, capacités, modèle: '{song_name}', dossierRacine: '/M',
+    config: { ...CONFIG, qualité: { niveau: 'tres_elevee', format: 'copie', paroles: false } },
+  });
+  assert.equal(args.includes('--lyrics-to-metadata'), false);
+  // Et on ne s'en plaint pas : refuser les paroles reste satisfait par la
+  // première option. Ce n'est un réglage non appliqué que si l'utilisateur les
+  // VOULAIT et que rien ne sait les écrire.
+  assert.equal(nonAppliqués.some((n) => /parole/i.test(n)), false, nonAppliqués.join(' | '));
+});
+
 test('chaque option retombe sur SON style par défaut, pas sur un style unique', () => {
   // Le fork embarqué mélange les deux styles : ses options de configuration
   // attendent une valeur, ses drapeaux déclarés à la main (« --no-splash »)

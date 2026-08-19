@@ -8,7 +8,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { reconnaître, synthétiser, phraseBilan, CATALOGUE, GRAVITÉ } from '../src/erreurs.js';
+import {
+  reconnaître, synthétiser, phraseBilan, compterTitresPerdus, CATALOGUE, GRAVITÉ,
+} from '../src/erreurs.js';
 
 // ---------------------------------------------------------------------------
 // Reconnaissance
@@ -148,4 +150,78 @@ test('phraseBilan compte les titres repris plus tard', () => {
     erreurs: Array(4).fill('Failed fetching audio key!'),
   });
   assert.match(phrase, /4 repris plus tard/);
+});
+
+// ---------------------------------------------------------------------------
+// Une ligne d'information n'est pas un titre perdu
+// ---------------------------------------------------------------------------
+//
+// LA LIGNE CI-DESSOUS EST RÉELLE. Elle a été capturée le 19 août 2026 pendant
+// une vraie synchronisation, dans le journal de la machine de destination. Sur
+// les trois exécutions de ce jour-là, 19 des 22 « erreurs » étaient celle-ci —
+// alors que l'utilisateur avait explicitement décoché les paroles.
+//
+// Ce qu'elle coûtait, maillon par maillon : elle contient « failed », donc elle
+// devenait une erreur ; aucune entrée du catalogue ne la reconnaissait, donc
+// elle tombait en « non identifiée », gravité ATTENTION ; « allé au bout »
+// exigeait zéro erreur, donc la playlist n'était JAMAIS marquée terminée, sa
+// version Spotify jamais enregistrée, et le planificateur espaçait la
+// tentative suivante. Une parole manquante déplaçait un horaire.
+const LIGNE_PAROLES_RÉELLE =
+  '###   SKIPPING:  LYRICS FOR "birthCenter - oak" (FAILED TO FETCH)   ###';
+
+test('la ligne de paroles manquantes est reconnue, et seulement informative', () => {
+  const diagnostic = reconnaître(LIGNE_PAROLES_RÉELLE);
+  assert.notEqual(diagnostic.code, 'inconnu', 'elle tombait en « erreur non identifiée »');
+  assert.equal(
+    diagnostic.gravité,
+    GRAVITÉ.INFO,
+    'le morceau est téléchargé : rien n’est perdu, donc rien à signaler comme perte',
+  );
+});
+
+test('les autres formulations de paroles absentes sont couvertes', () => {
+  for (const ligne of [
+    '### SKIPPING: LYRICS FOR "Walton - Zen" (LYRICS NOT AVAILABLE) ###',
+    'Failed to fetch lyrics for track',
+    '###   SKIPPING:  LYRICS FOR "Mr. Mitch - R U IN2 IT?" (FAILED TO FETCH)   ###',
+  ]) {
+    assert.equal(reconnaître(ligne).gravité, GRAVITÉ.INFO, ligne);
+  }
+});
+
+// Le cas où la garde est SEULE à pouvoir refuser : quatre titres bien
+// téléchargés, quatre lignes de paroles, et rien d'autre. Le compte de titres
+// perdus doit être zéro. Avant le correctif il valait quatre, et l'app
+// annonçait « 4 nouveaux titres, 4 repris plus tard » alors que les quatre
+// étaient sur le disque, convertis, complets.
+test('quatre paroles manquantes ne font perdre aucun titre', () => {
+  const lignes = Array.from({ length: 4 }, () => LIGNE_PAROLES_RÉELLE);
+  assert.equal(compterTitresPerdus(lignes), 0);
+  assert.equal(phraseBilan({ nbFichiers: 4, erreurs: lignes }), '4 nouveaux titres');
+});
+
+test('une vraie perte, elle, compte toujours', () => {
+  const lignes = [LIGNE_PAROLES_RÉELLE, 'Failed fetching audio key!'];
+  assert.equal(compterTitresPerdus(lignes), 1, 'la clé audio perd bien un titre');
+  assert.equal(phraseBilan({ nbFichiers: 4, erreurs: lignes }), '4 nouveaux titres, 1 repris plus tard');
+});
+
+test('compterTitresPerdus tient compte des gravités, pas du nombre de lignes', () => {
+  assert.equal(compterTitresPerdus([]), 0);
+  assert.equal(compterTitresPerdus(['Failed fetching audio key!']), 1);
+  // Un sérieux est aussi un titre non obtenu : il ne doit pas s'évaporer.
+  assert.equal(compterTitresPerdus(['429 Too Many Requests']), 1);
+});
+
+// INFO NE VEUT PAS DIRE « SANS IMPORTANCE », IL VEUT DIRE « RIEN À REPRENDRE ».
+//
+// Un morceau retiré du catalogue ou non distribué dans le pays n'arrivera
+// jamais, quel que soit le nombre de tentatives. Le compter comme perdu
+// empêcherait la playlist d'être marquée terminée, donc la ferait reprendre
+// indéfiniment pour un morceau qui n'existe pas. C'est la même mécanique que les
+// paroles manquantes, pour une raison opposée — et c'est pour ça que la gravité,
+// et non le nombre de lignes, est le bon critère.
+test('un morceau indisponible ne se reprend pas non plus', () => {
+  assert.equal(compterTitresPerdus(['Track is unavailable in your market']), 0);
 });

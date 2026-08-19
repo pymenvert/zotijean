@@ -2,6 +2,32 @@
 
 ## Non publié
 
+### Une parole manquante n'était pas une erreur, et l'app le croyait
+
+Le défaut le plus coûteux de la première mise en service. zotify allait chercher
+les paroles de chaque titre — alors qu'elles étaient décochées —, échouait, et
+écrivait une ligne contenant « failed ». Sur trois synchronisations réelles,
+**19 des 22 « erreurs » étaient celle-là**, pendant que les morceaux arrivaient
+entiers sur le disque.
+
+Ce n'était pas qu'un chiffre faux. Cette fausse erreur empêchait de marquer une
+playlist terminée, donc sa version Spotify n'était jamais enregistrée, donc elle
+était retéléchargée en entier à chaque fois — et le planificateur espaçait la
+tentative suivante. Une parole manquante déplaçait un horaire.
+
+Quatre choses ont changé. zotify reçoit désormais les deux options qu'il faut
+pour vraiment renoncer aux paroles. La ligne est reconnue pour ce qu'elle est :
+une information. Et surtout, trois chiffres qui n'en faisaient qu'un sont
+séparés — le nombre de lignes signalées, le nombre de titres réellement perdus,
+et le fait qu'une playlist soit allée au bout. Le bandeau d'accueil,
+l'historique et le rapport de diagnostic disaient tous « erreur » là où il n'y
+avait rien de perdu.
+
+Enfin, le message qui annonçait des playlists « qui n'ont rien donné » le disait
+de playlists ayant livré tous leurs titres. Il dit maintenant ce qui s'est passé,
+et nomme les playlists concernées au lieu d'afficher tantôt un nom, tantôt une
+adresse.
+
 ### Racheter en sans-perte
 
 Spotify plafonne à 320 kb/s et convertir ne récupère rien : le seul vrai FLAC est

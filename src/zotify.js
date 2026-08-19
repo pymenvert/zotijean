@@ -42,6 +42,8 @@ const OPTIONS_CANDIDATES = {
   interfaceSimple: ['standard-interface', 'no-interactive', 'simple-output'],
   sansArchiveDossier: ['disable-directory-archives'],
   paroles: ['lyrics-to-file', 'download-lyrics'],
+  // Deuxieme porte des paroles : sans elle, zotify va les chercher quand meme.
+  parolesÉtiquettes: ['lyrics-to-metadata'],
   sansSplash: ['no-splash'],
 };
 
@@ -199,15 +201,30 @@ export function construireArguments({ url, config, attente, capacités, modèle,
   // Le style « drapeau nu » ne sait pas dire « non » : quand il est actif chez
   // un vieux fork, on ne pousse le drapeau que si l'utilisateur veut les
   // paroles, et son absence vaut refus.
+  // ET IL FAUT DEUX OPTIONS POUR DIRE NON, PAS UNE. Vérifié dans la source de
+  // zotify 0.17.4 : `fetch_lyrics` (api.py) ne renonce que si `lyrics_to_file`
+  // ET `lyrics_to_metadata` sont faux — et le second vaut `True` par défaut
+  // (config.py:93). Avec la première seule, zotify interroge les paroles de
+  // CHAQUE titre, échoue le plus souvent, et écrit une ligne contenant
+  // « failed ». Le 19 août 2026, cela faisait 19 des 22 « erreurs » du jour, et
+  // empêchait toute playlist d'être marquée terminée.
   const parolesVoulues = config.qualité?.paroles === true;
-  const nomParoles = optionSupportée('paroles', déclarées);
-  if (nomParoles) {
-    if (attendUneValeur(nomParoles, true)) {
-      arguments_.push(`--${nomParoles}`, parolesVoulues ? 'true' : 'false');
+  let parolesApplicables = false;
+
+  for (const clé of ['paroles', 'parolesÉtiquettes']) {
+    const nom = optionSupportée(clé, déclarées);
+    if (!nom) continue;
+    parolesApplicables = true;
+    // Le style « drapeau nu » ne sait pas dire « non » : chez un vieux fork on
+    // ne pousse le drapeau que pour dire oui, et son absence vaut refus.
+    if (attendUneValeur(nom, true)) {
+      arguments_.push(`--${nom}`, parolesVoulues ? 'true' : 'false');
     } else if (parolesVoulues) {
-      arguments_.push(`--${nomParoles}`);
+      arguments_.push(`--${nom}`);
     }
-  } else if (parolesVoulues) {
+  }
+
+  if (!parolesApplicables && parolesVoulues) {
     nonAppliqués.push('les paroles synchronisées (votre version de zotify ne les propose pas)');
   }
 

@@ -116,6 +116,14 @@ if (scénario === 'echec-total') {
   process.exit(0);
 }
 
+// Les paroles manquantes : le scénario qui a coûté le plus cher.
+//
+// Le vrai zotify, le 19 août 2026, a écrit exactement ces lignes pendant que
+// les trois titres arrivaient sur le disque, entiers. Elles contiennent
+// « failed » sans qu'aucun morceau ne soit perdu. Le leurre les émet donc AVANT
+// d'écrire les fichiers, comme le vrai.
+const parolesManquantes = scénario === 'paroles-manquantes';
+
 let écrits = 0;
 
 for (const [index, piste] of PISTES.entries()) {
@@ -131,6 +139,13 @@ for (const [index, piste] of PISTES.entries()) {
   // Progression réécrite sur la même ligne, sans saut de ligne.
   for (const pourcentage of [0, 45, 100]) {
     process.stdout.write(`Downloading ${piste.song_name}  ${pourcentage}%\r`);
+  }
+
+  if (parolesManquantes) {
+    // Ligne recopiee telle quelle du journal du 19 aout 2026.
+    process.stderr.write(
+      `###   SKIPPING:  LYRICS FOR "${piste.artist} - ${piste.song_name}" (FAILED TO FETCH)   ###\r`,
+    );
   }
 
   if (scénario === 'fichiers-tronques') {

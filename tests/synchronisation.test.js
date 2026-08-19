@@ -25,6 +25,8 @@ const { enregistrer, recharger, config } = await import('../src/config.js');
 const { synchroniser, prendreVerrou, rendreVerrou, exécutionEnCours } =
   await import('../src/synchronisation.js');
 const { listerAudio } = await import('../src/bibliotheque.js');
+const { nomAffichable } = await import('../src/synchronisation.js');
+const étatModule = await import('../src/etat.js');
 
 /**
  * Ces tests ne s'exécutent pas sous Windows.
@@ -327,6 +329,65 @@ test('une playlist désactivée est ignorée', { skip: SAUTER, timeout: 90_000 }
   } finally {
     nettoyer();
   }
+});
+
+// ---------------------------------------------------------------------------
+// Une ligne d'information n'est pas un titre perdu — la chaîne entière
+// ---------------------------------------------------------------------------
+//
+// CE TEST EST LE PLUS IMPORTANT DE CE LOT, parce qu'il rejoue la situation
+// exacte du 19 août 2026 : trois titres arrivent entiers sur le disque, et
+// zotify écrit à côté une ligne par titre disant qu'il n'a pas trouvé les
+// paroles. Cette ligne contient « failed ».
+//
+// Avant le correctif, chaque maillon faisait son travail et l'ensemble mentait :
+// la ligne devenait une erreur, l'erreur devenait un titre perdu, le titre perdu
+// empêchait « allé au bout », et « allé au bout » commandait l'enregistrement de
+// la version Spotify — donc la playlist repartait de zéro à chaque fois et le
+// planificateur espaçait la tentative suivante. Aucun test unitaire ne pouvait
+// le voir : chaque pièce était juste.
+test('des paroles introuvables ne font perdre aucun titre, et n’empêchent pas d’aller au bout',
+  { skip: SAUTER, timeout: 90_000 }, async () => {
+    const { musique, nettoyer } = préparer();
+    process.env.FAUX_ZOTIFY_SCENARIO = 'paroles-manquantes';
+    process.env.FAUX_ZOTIFY_PLAYLIST = 'Été 2026';
+
+    try {
+      const { bilan } = await synchroniser('manuelle');
+
+      assert.equal(bilan.nbFichiers, 3, 'les trois titres sont bien arrivés');
+      assert.equal(listerAudio(path.join(musique, 'Été 2026')).length, 3);
+
+      // Les lignes sont conservées — on ne les cache pas — mais elles ne
+      // comptent pas comme des titres perdus.
+      assert.ok(bilan.lignesErreur.length >= 3, 'les lignes doivent rester consultables');
+      assert.equal(bilan.nbErreurs, 0, 'aucun titre n’est perdu : ils sont tous sur le disque');
+      assert.equal(bilan.nbSignalements, bilan.lignesErreur.length);
+
+      assert.equal(bilan.phrase, '3 nouveaux titres',
+        'la phrase annonçait « 3 repris plus tard » alors que les trois étaient là');
+      assert.ok(!bilan.àReprendre?.length, 'rien à reprendre : la playlist est allée au bout');
+
+      // Le maillon qui coûtait le plus cher, et le plus invisible.
+      assert.ok(
+        étatModule.repriseEnAttente() === null
+        || étatModule.repriseEnAttente()?.playlistsTerminées?.includes('test-1'),
+        'la playlist doit être marquée terminée',
+      );
+    } finally {
+      nettoyer();
+    }
+  });
+
+// Une seule ecriture pour une meme chose : le journal melangeait « Deep dive »
+// et « https://open.spotify.com/playlist/2QZ… » dans la meme liste.
+test('une playlist est toujours designee de la meme facon', () => {
+  const url = 'https://open.spotify.com/playlist/2QZXaM9N2FaAoef9FYHFp8';
+  assert.equal(nomAffichable({ nom: 'Deep dive', url }), 'Deep dive');
+  assert.equal(nomAffichable({ nom: null, url }), 'playlist/2QZXaM9N2FaAoef9FYHFp8');
+  assert.equal(nomAffichable({ nom: null, url }, 'Nom deduit du dossier'), 'Nom deduit du dossier');
+  assert.equal(nomAffichable({ nom: null, url: 'spotify:album:abc123' }), 'album/abc123');
+  assert.equal(nomAffichable({}), 'playlist sans nom');
 });
 
 test.after(() => {
