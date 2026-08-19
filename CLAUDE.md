@@ -56,6 +56,17 @@ Ces points ont été vérifiés sur sources primaires en août 2026. Ils contrai
 - **Rythme : ~30 s entre les pistes** (`--bulk-wait-time`) pour éviter les erreurs de
   clé audio et limiter le risque de suspension de compte. Soit ~17 h pour 2 000 titres.
   L'interface doit annoncer cette durée, jamais la masquer.
+- **`--lyrics-to-file false` ne suffit PAS à couper les paroles.** `fetch_lyrics`
+  (`api.py`) ne renonce que si `lyrics_to_file` ET `lyrics_to_metadata` sont faux,
+  et le second vaut `True` par défaut. zotify interroge donc les paroles de chaque
+  titre, échoue le plus souvent, et écrit une ligne `SKIPPING: LYRICS FOR …
+  (FAILED TO FETCH)` qui contient le mot « failed ». Vérifié sur sa source et
+  sur trois exécutions réelles le 19 août 2026 : 19 des 22 « erreurs » venaient
+  de là.
+- **Toutes ses lignes ne sont pas des erreurs, même celles qui disent
+  « failed ».** Une ligne d'information comptée comme erreur ne gonfle pas
+  seulement un chiffre : elle empêche de marquer une playlist terminée, la remet
+  en tête de la file, et espace la prochaine tentative planifiée.
 
 ### Qualité et formats
 
@@ -114,11 +125,14 @@ Bloc lu par les commandes `/flow:*`. Chaque commande y figurant a été exécut�
 vérifiée le 16 août 2026 — jamais écrite au jugé.
 
 - **type** : web (moteur local + interface dans le navigateur)
-- **stack** : Node.js 24, runner de test natif, zéro dépendance npm
+- **stack** : Node.js 22, runner de test natif, zéro dépendance npm
+  (22.14.0 dans le paquet, `22` en intégration continue, `>=20` déclaré)
 - **format** : aucun
 - **lint** : aucun
 - **typecheck** : aucun
-- **test** : `node --test` → 432 tests, 419 verts, 13 ignorés
+- **test** : `node --test` → 432 tests. **432 verts sur macOS**, la cible ;
+  419 verts et 13 ignorés sur le PC Windows, qui ne peut pas lancer le leurre
+  zotify
 - **build** : aucun en local ; le paquet est construit par
   `.github/workflows/publication.yml`
 - **run** : `node server.js` → http://127.0.0.1:8787
@@ -137,10 +151,17 @@ node --test               # lance les tests (runner natif de Node, aucune dépen
 
 Sur le Mac, `Zotijean - Mac.command` fait la même chose par double-clic.
 
-**`node --test tests/` ne fonctionne plus.** Sous Node 24, passer le dossier ne
-découvre plus les fichiers : la commande rapporte un test unique et un échec, ce qui
-donne l'illusion d'une suite cassée alors qu'elle est verte. Utiliser `node --test`
-sans argument, comme le script `test` du `package.json`.
+**`node --test tests/` ne fonctionne pas.** Passer le dossier ne découvre plus les
+fichiers : la commande rapporte un test unique et un échec, ce qui donne l'illusion
+d'une suite cassée alors qu'elle est verte. Utiliser `node --test` sans argument,
+comme le script `test` du `package.json`. Revérifié sous Node 22.14.0 le 19 août
+2026 — ce n'est pas propre à une version récente.
+
+**Le Mac de destination n'a AUCUN Node installé** : le paquet embarque le sien
+dans `Contents/Resources/outils/node/`. Un script de test qui appelle « node » par
+le `PATH` y sort en 127 — c'est ce qui faisait tomber six tests d'intégration sur
+la machine cible pendant qu'ils passaient partout ailleurs. Utiliser
+`process.execPath`.
 
 **Lancer le serveur démarre le planificateur** (`planificateur.démarrer`, à la fin de
 `server.js`), qui peut déclencher une synchronisation réelle. Sur le PC de
@@ -155,9 +176,16 @@ lancer le serveur n'est pas un geste neutre.
 des menus macOS sont écrits ; le paquet embarque Node, Python, ffmpeg et zotify, tous en
 arm64. Voir `CHANGELOG.md`.
 
-**La 1.0.7 n'a jamais été regardée sur un Mac.** Elle corrige presque exclusivement du
-rendu — contrastes, mises en page, repliements — et tout a été mesuré sous Chromium sur
-Windows. Le paquet est publié pour être essayé, pas parce qu'il a été vu.
+**La 1.0.7 tourne sur le Mac depuis le 19 août 2026**, avec le vrai zotify et une
+vraie bibliothèque. Ce que cette mise en service a trouvé — six tests qui
+tombaient sur la machine cible, les paroles comptées comme des erreurs, une
+conversion qui ne rattrape jamais une interruption — est dans
+`docs/reste-a-faire.md`, relevé du 19 août. Rien de tout cela n'était visible
+depuis Windows.
+
+**Personne ne l'a encore REGARDÉE.** Tout a été mesuré par le moteur de rendu,
+pas vu par un œil : les couleurs sont conformes, la mise en page tient, et
+personne ne sait si c'est beau.
 
 Le nombre de tests ne figure QUE dans le bloc « Profil projet » ci-dessus. Il était
 écrit ici aussi, et les deux comptes ont divergé de cent tests sans que personne ne le
