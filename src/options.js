@@ -379,13 +379,62 @@ export const RYTHMES = [
 // Planification
 // ---------------------------------------------------------------------------
 
+// CHAQUE INTERVALLE PORTE SA LIGNE D'EXPLICATION, comme tous les autres choix
+// de ce fichier. C'était le seul groupe qui n'en avait pas : six libellés nus au
+// milieu de réglages qui disent tous ce qu'on y perd. Mesuré sur l'app réelle le
+// 19 août 2026 — 6 explications vides sur 32, toutes ici.
+//
+// L'arbitrage est toujours le même, et il n'est pas « plus souvent, c'est
+// mieux » : chaque vérification réveille le téléchargeur, qui parcourt vos
+// playlists titre par titre. Vérifier souvent, c'est donc parler souvent à
+// Spotify — le vrai coût, parce que c'est ce qui expose le compte.
 export const INTERVALLES = [
-  { id: 6, libellé: 'Toutes les 6 heures' },
-  { id: 12, libellé: 'Deux fois par jour' },
-  { id: 24, libellé: 'Une fois par jour' },
-  { id: 48, libellé: 'Tous les deux jours', recommandé: true },
-  { id: 72, libellé: 'Tous les trois jours' },
-  { id: 168, libellé: 'Une fois par semaine' },
+  {
+    id: 6,
+    libellé: 'Toutes les 6 heures',
+    explication:
+      "Quatre passages par jour. À réserver à une playlist collaborative qui bouge " +
+      "vraiment dans la journée : le reste du temps, ce sont quatre conversations avec " +
+      "Spotify pour ne rien trouver, et c'est ce qui finit par faire brider un compte.",
+  },
+  {
+    id: 12,
+    libellé: 'Deux fois par jour',
+    explication:
+      "Matin et soir. Un morceau ajouté le midi est chez vous le soir. Reste beaucoup " +
+      "pour une playlist qui ne change qu'une fois par semaine.",
+  },
+  {
+    id: 24,
+    libellé: 'Une fois par jour',
+    explication:
+      "Le bon choix si vous jouez souvent et voulez vos nouveautés le lendemain. " +
+      "Deux fois plus de sollicitations qu'en 48 h, pour une demi-journée gagnée.",
+  },
+  {
+    id: 48,
+    libellé: 'Tous les deux jours',
+    recommandé: true,
+    explication:
+      "L'équilibre retenu : assez fréquent pour ne rien manquer d'une semaine de sorties, " +
+      "assez espacé pour que Spotify ne voie jamais un rythme inhabituel. Vous attendez " +
+      "au pire deux jours un titre ajouté juste après un passage.",
+  },
+  {
+    id: 72,
+    libellé: 'Tous les trois jours',
+    explication:
+      "Deux passages par semaine. Prudent, et suffisant si vos playlists vivent surtout " +
+      "le week-end. Un titre ajouté le lundi peut n'arriver que le jeudi.",
+  },
+  {
+    id: 168,
+    libellé: 'Une fois par semaine',
+    explication:
+      "Le plus discret. Convient à une bibliothèque déjà constituée qu'on complète de " +
+      "temps en temps. En contrepartie, un gros lot s'accumule entre deux passages — et " +
+      "un rattrapage de deux cents titres demande plus d'une heure et demie.",
+  },
 ];
 
 export const NOTE_PLANIFICATION =

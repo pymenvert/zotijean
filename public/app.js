@@ -570,11 +570,15 @@ function rendrePlanification() {
   $('#bascule-planif').checked = état.config.planification.actif;
   $('#note-planification').textContent = notePlanification;
 
+  // `i.explication`, PAS une chaîne vide. Elle était écrite en dur ici, et c'est
+  // ce qui rendait ces six réglages muets — pas l'absence du texte dans le
+  // catalogue, comme on l'a d'abord cru. Deux endroits pouvaient produire le
+  // même symptôme ; seul celui-ci le produisait vraiment.
   remplir($('#choix-intervalle'), intervalles.map((i) =>
     fabriquerOption({
       id: i.id,
       libellé: i.libellé,
-      explication: '',
+      explication: i.explication,
       recommandé: i.recommandé,
       choisi: état.config.planification.intervalleHeures === i.id,
       surChoix: async (id) => {

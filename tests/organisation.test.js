@@ -376,3 +376,89 @@ test('aperçu tronque réellement le titre très long', () => {
     assert.ok(Buffer.byteLength(segment, 'utf8') <= 255);
   }
 });
+
+// ---------------------------------------------------------------------------
+// La règle du projet, gardée pour de bon
+// ---------------------------------------------------------------------------
+//
+// « Tout ce qui est arbitrable est configurable, avec une ligne d'explication
+// honnête sous chaque choix, incluant l'inconvénient. Ce texte fait partie du
+// livrable, pas de la documentation. »
+//
+// Cette règle est écrite en tête d'`options.js` et dans `CLAUDE.md`, et rien ne
+// la gardait. Mesuré sur l'app réelle le 19 août 2026 : 6 explications vides sur
+// 32, toutes dans les intervalles de vérification. On choisissait un rythme de
+// synchronisation sans qu'on vous dise ce que chacun coûte — au milieu de vingt-
+// six autres options qui, elles, le disaient.
+test('aucune option arbitrable ne reste sans explication', async () => {
+  const options = await import('../src/options.js');
+
+  const listes = {
+    QUALITÉS: options.QUALITÉS,
+    FORMATS: options.FORMATS,
+    SCHÉMAS: options.SCHÉMAS,
+    POLITIQUES_RETRAIT: options.POLITIQUES_RETRAIT,
+    SOURCES_APRÈS_CONVERSION: options.SOURCES_APRÈS_CONVERSION,
+    RYTHMES: options.RYTHMES,
+    INTERVALLES: options.INTERVALLES,
+    EXPORTS_DJ: options.EXPORTS_DJ,
+    SOURCES_ACHATS: options.SOURCES_ACHATS,
+  };
+
+  const nues = [];
+  for (const [nom, liste] of Object.entries(listes)) {
+    assert.ok(Array.isArray(liste) && liste.length, `${nom} est vide ou absente`);
+    for (const entrée of liste) {
+      if (!String(entrée.explication ?? '').trim()) nues.push(`${nom} → ${entrée.libellé}`);
+    }
+  }
+
+  assert.deepEqual(nues, [], `des choix sans explication :\n  ${nues.join('\n  ')}`);
+});
+
+// Une explication qui ne dit que du bien n'est pas une explication honnête :
+// c'est un argumentaire. La règle exige l'inconvénient.
+test('une explication n’est pas un slogan', async () => {
+  const { INTERVALLES } = await import('../src/options.js');
+  for (const intervalle of INTERVALLES) {
+    assert.ok(
+      intervalle.explication.length >= 80,
+      `« ${intervalle.libellé} » : ${intervalle.explication.length} caractères, trop court `
+      + 'pour dire à la fois ce qu’on y gagne et ce qu’on y perd.',
+    );
+  }
+});
+
+// ET LE GARDE QUI COMPTE VRAIMENT, parce que le premier ne suffisait pas.
+//
+// Les six intervalles étaient muets à l'écran, et le relevé accusait
+// `options.js`. Le catalogue n'était que la moitié de l'histoire :
+// `public/app.js` écrivait `explication: ''` EN DUR au moment de fabriquer ces
+// options. Le texte aurait pu être parfaitement rédigé dans le catalogue, il
+// n'aurait jamais atteint l'écran.
+//
+// Encore la même forme de défaut : deux pièces justes, un assemblage qui ment.
+// Un test sur le catalogue seul serait resté vert sur une app muette.
+test('l’interface ne vide l’explication d’aucune option', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const source = fs.readFileSync(
+    path.join(import.meta.dirname, '..', 'public', 'app.js'), 'utf8',
+  );
+
+  // Cas positif d'abord : le scanner doit prouver qu'il détecte. Un scanner qui
+  // ne trouve rien parce qu'il cherche mal a déjà coûté deux balayages à ce dépôt.
+  const MOTIF = /explication\s*:\s*(''|""|`\s*`)/g;
+  assert.equal(
+    ("      explication: '',").match(MOTIF)?.length,
+    1,
+    'le scanner ne reconnaît même pas le défaut qu’il est écrit pour attraper',
+  );
+
+  const trouvés = source.match(MOTIF) || [];
+  assert.deepEqual(
+    trouvés, [],
+    'public/app.js vide une explication au lieu de passer celle du catalogue : '
+    + 'le réglage sera muet à l’écran quoi qu’on écrive dans options.js.',
+  );
+});
