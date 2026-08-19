@@ -514,8 +514,73 @@ test('un arrêt en milieu de playlist ne laisse aucun fichier non converti',
     }
   });
 
+// ---------------------------------------------------------------------------
+// La politique de retrait, enfin applicable — et jamais aveuglément
+// ---------------------------------------------------------------------------
+//
+// `saitReprendreSansLeFichier()` renvoyait `false` en dur : le choix
+// « Archiver » ou « Corbeille » était donc refusé en silence à CHAQUE
+// synchronisation. L'utilisateur a posé « Corbeille » le 19 août 2026 à 15 h 27,
+// et l'app le lui a repris sans le dire, indéfiniment.
+
+test('un retrait demandé s’applique quand zotify a bien inscrit le morceau',
+  { skip: SAUTER, timeout: 120_000 }, async () => {
+    const { musique, nettoyer } = préparer({
+      qualité: { niveau: 'tres_elevee', format: 'mp3_320', paroles: false },
+      retrait: { politique: 'conserver', sourcesAprèsConversion: 'archiver' },
+    });
+    process.env.FAUX_ZOTIFY_SCENARIO = 'normal';
+    process.env.FAUX_ZOTIFY_PLAYLIST = 'Été 2026';
+    delete process.env.FAUX_ZOTIFY_SANS_JOURNAL;
+
+    try {
+      const { bilan } = await synchroniser('manuelle');
+
+      const dossier = path.join(musique, 'Été 2026');
+      assert.equal(bilan.playlists[0].nbConvertis, 3);
+      assert.equal(fs.readdirSync(dossier).filter((f) => f.endsWith('.ogg')).length, 0,
+        'les sources devaient partir : le journal les connaît');
+      assert.equal(fs.readdirSync(dossier).filter((f) => f.endsWith('.mp3')).length, 3);
+      assert.ok(fs.existsSync(path.join(musique, '_Archive')), 'archivées, donc récupérables');
+
+      // Le journal vaut desormais la bibliotheque : il doit exister ET etre copie.
+      assert.ok(fs.existsSync(path.join(DONNÉES, '.song_archive')));
+      assert.ok(fs.existsSync(path.join(DONNÉES, '.song_archive.sauvegarde')));
+    } finally {
+      nettoyer();
+    }
+  });
+
+// LE CAS OÙ LA GARDE EST SEULE À POUVOIR REFUSER. Tout est en place — l'option
+// déclarée, le journal créé, la politique demandée — mais zotify n'a rien
+// inscrit. Sans ce filtre, on jetterait des sources qu'il ne saurait pas
+// reprendre, et la bibliothèque repartirait par le réseau.
+test('un morceau absent du journal garde sa source, même retrait demandé',
+  { skip: SAUTER, timeout: 120_000 }, async () => {
+    const { musique, nettoyer } = préparer({
+      qualité: { niveau: 'tres_elevee', format: 'mp3_320', paroles: false },
+      retrait: { politique: 'conserver', sourcesAprèsConversion: 'archiver' },
+    });
+    process.env.FAUX_ZOTIFY_SCENARIO = 'normal';
+    process.env.FAUX_ZOTIFY_PLAYLIST = 'Été 2026';
+    process.env.FAUX_ZOTIFY_SANS_JOURNAL = '1';
+
+    try {
+      const { bilan } = await synchroniser('manuelle');
+      const dossier = path.join(musique, 'Été 2026');
+
+      assert.equal(fs.readdirSync(dossier).filter((f) => f.endsWith('.ogg')).length, 3,
+        'aucune source ne doit partir sans trace dans le journal');
+      assert.equal(bilan.playlists[0].nbConvertis, 3, 'la conversion, elle, a bien eu lieu');
+    } finally {
+      delete process.env.FAUX_ZOTIFY_SANS_JOURNAL;
+      nettoyer();
+    }
+  });
+
 test.after(() => {
   delete process.env.FAUX_ZOTIFY_SCENARIO;
+  delete process.env.FAUX_ZOTIFY_SANS_JOURNAL;
   delete process.env.FAUX_ZOTIFY_PLAYLIST;
   fs.rmSync(DONNÉES, { recursive: true, force: true });
 });

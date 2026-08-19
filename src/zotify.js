@@ -38,7 +38,16 @@ const OPTIONS_CANDIDATES = {
   qualité: ['download-quality', 'quality', 'audio-quality'],
   format: ['audio-format', 'codec', 'download-format', 'format'],
   attente: ['bulk-wait-time', 'download-delay', 'wait-time'],
-  ignorerExistants: ['skip-existing', 'skip-previously-downloaded', 'no-overwrite'],
+  // « skip-previously-downloaded » a ete RETIRE de cette liste : ce n'est pas un
+  // synonyme de « skip-existing », c'est une autre porte — celle du journal
+  // global, qui ne regarde pas les fichiers presents. Les confondre sur un fork
+  // qui ne declare que la seconde ferait passer un reglage pour un autre.
+  ignorerExistants: ['skip-existing', 'no-overwrite'],
+  // La troisieme porte de check_skippable : reprendre d'apres le journal, sans
+  // dependre des fichiers presents. C'est elle qui rend la politique de retrait
+  // applicable. Les trois graphies sont des alias declares par zotify 0.17.4.
+  journalPrécédents: ['skip-prev-downloaded', 'skip-previously-downloaded'],
+  emplacementJournal: ['song-archive-location'],
   interfaceSimple: ['standard-interface', 'no-interactive', 'simple-output'],
   sansArchiveDossier: ['disable-directory-archives'],
   paroles: ['lyrics-to-file', 'download-lyrics'],
@@ -84,7 +93,9 @@ function optionSupportée(clé, optionsDéclarées) {
  * Renvoie aussi la liste des réglages qui n'ont pas pu être appliqués, pour que
  * l'interface le dise franchement plutôt que de laisser croire qu'ils le sont.
  */
-export function construireArguments({ url, config, attente, capacités, modèle, dossierRacine }) {
+export function construireArguments({
+  url, config, attente, capacités, modèle, dossierRacine, dossierJournal = null,
+}) {
   const déclarées = new Set(capacités.options || []);
   const arguments_ = [];
   const nonAppliqués = [];
@@ -248,6 +259,34 @@ export function construireArguments({ url, config, attente, capacités, modèle,
       'la reprise des morceaux effacés ou incomplets (votre version de zotify ' +
       'garde sa propre liste et ne relit pas le dossier)',
     );
+  }
+
+  // LA TROISIÈME PORTE, OUVERTE SEULEMENT QUAND ELLE SERT.
+  //
+  // `--skip-prev-downloaded` fait reprendre zotify d'après son journal plutôt
+  // que d'après les fichiers présents. C'est ce qui rend applicable le retrait
+  // des Ogg après conversion — sans lui, retirer un fichier d'origine ferait
+  // tout retélécharger, et le garde-fou refusait donc la politique en silence.
+  //
+  // ON NE L'ACTIVE PAS PAR DÉFAUT, et c'est délibéré. La règle du projet est
+  // « LE DISQUE FAIT FOI » : supprimer un morceau à la main doit continuer à le
+  // faire revenir à la synchronisation suivante. Activer le journal pour tout le
+  // monde retirerait ce comportement à ceux qui n'ont rien demandé.
+  //
+  // L'emplacement du journal est imposé plutôt que laissé au défaut de zotify,
+  // qui l'écrirait dans SON dossier système. Chez nous il vit avec la
+  // configuration et l'état : sauvegardable, effaçable avec le reste, et il suit
+  // une installation portable. zotify ajoute lui-même « .song_archive » au
+  // dossier qu'on lui donne, et le crée si besoin.
+  if (config.retrait?.sourcesAprèsConversion
+    && config.retrait.sourcesAprèsConversion !== 'conserver') {
+    if (dossierJournal) ajouter('emplacementJournal', dossierJournal, null);
+    if (!pousserBooléen('journalPrécédents', { valeurParDéfaut: true })) {
+      nonAppliqués.push(
+        'le retrait des fichiers d’origine (votre version de zotify ne sait pas ' +
+        'reprendre sans eux)',
+      );
+    }
   }
 
   const supplémentaires = String(config.zotify?.argumentsSupplémentaires || '').trim();
@@ -497,8 +536,107 @@ export const DOSSIER_INCOMPLETS = '_incomplets';
  * journal ouvrait le garde-fou censé en dépendre. La réponse appartient au
  * pilote, pas à une heuristique posée ailleurs.
  */
-export function saitReprendreSansLeFichier() {
-  return false;
+/** Nom imposé par zotify : il l'ajoute lui-même au dossier qu'on lui donne. */
+const NOM_JOURNAL = '.song_archive';
+
+/**
+ * Crée le journal des téléchargements s'il n'existe pas. Ne l'écrase JAMAIS.
+ *
+ * LE DÉTAIL QUI DÉCIDE DE TOUT, et il est contre-intuitif. Relevé dans
+ * `utils.py:320` de zotify 0.17.4 :
+ *
+ *     self.disabled = not Path(self.filepath).exists() or …
+ *     def add_obj(self, obj, item_path): if self.disabled: return
+ *
+ * Un journal absent est tenu pour DÉSACTIVÉ : zotify n'y écrit donc rien, et il
+ * reste absent — pour toujours. Vérifié sur la machine le 19 août 2026 : après
+ * dix-sept titres téléchargés, le fichier n'existait pas. Le créer vide une
+ * fois est le seul geste qui débloque la reprise indépendante des fichiers.
+ *
+ * Ce fichier devient alors aussi précieux que la configuration : le perdre après
+ * avoir retiré les Ogg ferait retélécharger toute la bibliothèque. D'où
+ * `sauvegarderJournalTéléchargements`, et d'où le refus absolu d'écraser.
+ */
+export function assurerJournalTéléchargements(dossier) {
+  const chemin = path.join(dossier, NOM_JOURNAL);
+  try {
+    fs.mkdirSync(dossier, { recursive: true });
+    // « wx » échoue si le fichier existe : c'est ce qui rend la création sûre,
+    // sans lecture préalable et sans fenêtre entre le test et l'écriture.
+    fs.writeFileSync(chemin, '', { flag: 'wx' });
+  } catch (erreur) {
+    if (erreur.code !== 'EEXIST') {
+      journal.avertir(`Le journal des téléchargements n’a pas pu être créé : ${erreur.message}`);
+    }
+  }
+  return chemin;
+}
+
+/**
+ * Les chemins que zotify dit avoir déjà téléchargés.
+ *
+ * Une ligne vaut « id, date, artiste, titre, chemin », séparés par des
+ * tabulations — le format est lu dans `SongArchive.add_entry`.
+ *
+ * À QUOI ÇA SERT ICI : à ne retirer un fichier d'origine QUE s'il est
+ * réellement inscrit. Sans ce filtre, activer la politique de retrait jetterait
+ * aussi les Ogg descendus AVANT l'existence du journal — et ceux-là seraient
+ * retéléchargés, ce que toute cette mécanique cherche justement à empêcher.
+ */
+export function cheminsDéjàTéléchargés(dossier) {
+  try {
+    const texte = fs.readFileSync(path.join(dossier, NOM_JOURNAL), 'utf8');
+    return new Set(
+      texte.split('\n')
+        .map((ligne) => ligne.split('\t').at(-1)?.trim())
+        .filter(Boolean),
+    );
+  } catch {
+    return new Set();
+  }
+}
+
+/** Une copie de sûreté du journal. Il vaut désormais la bibliothèque entière. */
+export function sauvegarderJournalTéléchargements(dossier) {
+  const source = path.join(dossier, NOM_JOURNAL);
+  try {
+    if (!fs.existsSync(source) || fs.statSync(source).size === 0) return null;
+    const copie = `${source}.sauvegarde`;
+    // Par un temporaire puis renommage : une coupure ne doit pas laisser une
+    // sauvegarde à moitié écrite à la place de la précédente, qui était bonne.
+    const temporaire = `${copie}.tmp`;
+    fs.copyFileSync(source, temporaire);
+    fs.renameSync(temporaire, copie);
+    return copie;
+  } catch (erreur) {
+    journal.avertir(`La sauvegarde du journal des téléchargements a échoué : ${erreur.message}`);
+    return null;
+  }
+}
+
+/**
+ * zotify sait-il reprendre sans se fier aux fichiers présents ?
+ *
+ * CETTE FONCTION RENVOYAIT `false` EN DUR, et ce n'est plus vrai. La conséquence
+ * était concrète : l'utilisateur a choisi « Corbeille » le 19 août 2026 à
+ * 15 h 27, et son choix était refusé en silence à chaque synchronisation. Un
+ * réglage qu'on peut poser et que l'app refuse toujours n'est pas un réglage.
+ *
+ * TROIS CONDITIONS, ET CHACUNE DOIT POUVOIR REFUSER SEULE :
+ *
+ * 1. zotify déclare l'option — un vieux fork ne la connaît pas ;
+ * 2. l'utilisateur a demandé un retrait — sinon on ne touche à rien, parce que
+ *    le comportement par défaut du projet est « LE DISQUE FAIT FOI » : supprimer
+ *    un fichier à la main doit continuer à le faire retélécharger ;
+ * 3. le journal existe — sans lui, zotify le tient pour désactivé et n'y écrit
+ *    jamais rien, donc il ne saurait rien reprendre.
+ */
+export function saitReprendreSansLeFichier({ config = {}, capacités = {}, dossierJournal = null } = {}) {
+  if (config.retrait?.sourcesAprèsConversion === 'conserver'
+    || !config.retrait?.sourcesAprèsConversion) return false;
+  if (!optionSupportée('journalPrécédents', new Set(capacités.options || []))) return false;
+  if (!dossierJournal) return false;
+  return fs.existsSync(path.join(dossierJournal, NOM_JOURNAL));
 }
 
 /**

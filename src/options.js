@@ -315,21 +315,31 @@ export const SOURCES_APRÈS_CONVERSION = [
     id: 'archiver',
     libellé: 'Les déplacer dans « _Archive »',
     explication:
-      "SANS EFFET pour l'instant, et mieux vaut le dire : le téléchargeur repère les " +
-      "morceaux déjà pris en regardant les fichiers présents. Déplacer l'Ogg d'origine " +
-      "lui ferait tout retélécharger à chaque synchronisation — 17 heures à chaque " +
-      "fois. Tant que ce n'est pas résolu, les fichiers sont conservés quoi qu'il " +
-      "arrive, et l'app vous le rappelle après chaque conversion.",
+      "L'Ogg part dans un sous-dossier daté, à la racine de votre bibliothèque : il ne " +
+      "gêne plus, mais vous pouvez le récupérer. Pour que ce soit sûr, le téléchargeur " +
+      "tient désormais un journal de ce qu'il a pris, à côté de vos réglages — sans " +
+      "lui, retirer un fichier le ferait retélécharger. Ce journal devient donc aussi " +
+      "précieux que votre configuration : l'app en garde une copie de sûreté à chaque " +
+      "synchronisation. Les morceaux descendus AVANT sa mise en service restent en " +
+      "place, faute de garantie sur eux.",
   },
   {
     id: 'corbeille',
     libellé: 'Les mettre à la corbeille',
     explication:
-      "SANS EFFET pour l'instant, pour la même raison que l'archivage : retirer les " +
-      "fichiers d'origine déclencherait leur retéléchargement complet à chaque " +
-      "synchronisation. Les fichiers sont conservés quoi qu'il arrive.",
+      "Même chose, mais dans la corbeille du système : vous la videz quand vous voulez, " +
+      "et macOS sait annuler. Si la corbeille refuse le fichier, il est archivé plutôt " +
+      "que perdu. Le même journal de téléchargement s'applique, avec la même réserve " +
+      "sur les morceaux plus anciens que lui.",
   },
 ];
+
+/** Affiché sous les trois choix. Il doit rester exact. */
+export const NOTE_SOURCES_APRÈS_CONVERSION =
+  "Ce que ces réglages changent vraiment : le téléchargeur cesse de se fier aux fichiers " +
+  "présents pour savoir ce qu'il a déjà pris, et se fie à son journal. Conséquence à " +
+  "connaître — tant qu'un retrait est demandé, supprimer un morceau à la main ne le fera " +
+  "plus revenir tout seul. Repassez sur « Garder » pour retrouver ce comportement.";
 
 // ---------------------------------------------------------------------------
 // Rythme de téléchargement
@@ -539,6 +549,7 @@ export function catalogueComplet() {
     noteRetrait: NOTE_RETRAIT,
     noteRetraitPourquoi: NOTE_RETRAIT_POURQUOI,
     sourcesAprèsConversion: SOURCES_APRÈS_CONVERSION,
+    noteSourcesAprèsConversion: NOTE_SOURCES_APRÈS_CONVERSION,
     rythmes: RYTHMES,
     intervalles: INTERVALLES,
     notePlanification: NOTE_PLANIFICATION,

@@ -24,7 +24,10 @@ import {
 import { fichierVerrou, assurerDossier, dossierDonnées, volumeMonté, espaceLibre } from './chemins.js';
 import { journal } from './journal.js';
 import { diagnostiquer, GRAVITÉ } from './diagnostic.js';
-import { construireArguments, télécharger, saitReprendreSansLeFichier } from './zotify.js';
+import {
+  construireArguments, télécharger, saitReprendreSansLeFichier,
+  assurerJournalTéléchargements, cheminsDéjàTéléchargés, sauvegarderJournalTéléchargements,
+} from './zotify.js';
 import { modèleActif } from './organisation.js';
 import {
   nécessiteConversion, convertirLot, PROFILS,
@@ -276,6 +279,18 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
       }
     }
 
+    // --- Le journal des telechargements -----------------------------------
+    //
+    // Cree AVANT toute execution de zotify, et seulement si l'utilisateur a
+    // demande un retrait des fichiers d'origine. Sans ce fichier, zotify tient
+    // son journal pour desactive et n'y ecrit jamais rien : il resterait absent
+    // pour toujours, et la politique de retrait resterait refusee en silence.
+    // Verifie dans sa source (utils.py:320), et sur la machine — apres dix-sept
+    // titres, le fichier n'existait pas.
+    if (c.retrait?.sourcesAprèsConversion && c.retrait.sourcesAprèsConversion !== 'conserver') {
+      assurerJournalTéléchargements(dossierDonnées());
+    }
+
     // --- Rattrapage des conversions laissees en plan ----------------------
     //
     // POURQUOI CE PASSAGE EXISTE. Avant lui, une execution interrompue laissait
@@ -423,6 +438,7 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
         capacités,
         modèle,
         dossierRacine: racine,
+        dossierJournal: dossierDonnées(),
       });
 
       // Un réglage bloquant arrête tout : renseigner `bilan.échec` empêche
@@ -674,6 +690,13 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
     // On n'avance la date de référence que si l'exécution est allée au bout :
     // une synchronisation interrompue doit repartir à la prochaine occasion,
     // pas attendre 48 h de plus.
+    // Le journal des téléchargements vaut désormais la bibliothèque entière :
+    // le perdre après avoir retiré les Ogg ferait tout revenir par le réseau.
+    // Une copie de sûreté à chaque exécution coûte quelques kilo-octets.
+    if (c.retrait?.sourcesAprèsConversion && c.retrait.sourcesAprèsConversion !== 'conserver') {
+      sauvegarderJournalTéléchargements(dossierDonnées());
+    }
+
     if (!bilan.interrompu && !bilan.échec) {
       étatModule.marquerSuccès(new Date());
       étatModule.fermerReprise();
@@ -798,7 +821,9 @@ export async function finaliserPlaylist({
     // DÉSACTIVER le journal ouvrait le garde-fou censé en dépendre, et le
     // retrait des Ogg aurait déclenché le retéléchargement complet qu'il devait
     // empêcher.
-    const journalisePrécédents = saitReprendreSansLeFichier();
+    const journalisePrécédents = saitReprendreSansLeFichier({
+      config: c, capacités, dossierJournal: dossierDonnées(),
+    });
 
     if (politiqueSources !== 'conserver' && !journalisePrécédents) {
       résultat.sourcesNonTraitées =
@@ -809,9 +834,31 @@ export async function finaliserPlaylist({
       politiqueSources = 'conserver';
     }
 
-    if (politiqueSources !== 'conserver' && réussis.length) {
+    // ON NE RETIRE QUE CE QUE ZOTIFY A INSCRIT DANS SON JOURNAL.
+    //
+    // Le garde-fou précédent dit que le journal EXISTE ; celui-ci dit que CE
+    // morceau-là y figure. Sans lui, activer la politique jetterait aussi les
+    // Ogg descendus AVANT que le journal n'existe — et ceux-là seraient
+    // retéléchargés, exactement ce que toute cette mécanique cherche à
+    // empêcher. Le cas n'est pas théorique : dix-sept titres étaient déjà sur ce
+    // disque quand le journal a été créé.
+    const inscrits = politiqueSources !== 'conserver'
+      ? cheminsDéjàTéléchargés(dossierDonnées())
+      : new Set();
+    const retirables = réussis.filter(({ source }) => inscrits.has(path.resolve(source)));
+
+    if (politiqueSources !== 'conserver' && réussis.length > retirables.length) {
+      résultat.sourcesHorsJournal = réussis.length - retirables.length;
+      journal.info(
+        `${résultat.sourcesHorsJournal} fichier(s) d'origine ont été conservés : ils ont `
+        + 'été téléchargés avant la mise en service du journal, et rien ne garantit '
+        + 'qu’ils ne seraient pas repris. Les prochains suivront la politique choisie.',
+      );
+    }
+
+    if (politiqueSources !== 'conserver' && retirables.length) {
       résultat.sourcesTraitées = 0;
-      for (const { source } of réussis) {
+      for (const { source } of retirables) {
         try {
           if (politiqueSources === 'archiver') {
             archiver(source, racine);
