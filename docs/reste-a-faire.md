@@ -24,16 +24,23 @@ Quatre sections, et les distinctions comptent :
   gravité.
 - **Relevés datés** — ce qu'une vérification a trouvé, et qu'elle n'a pas corrigé.
 
-Dernière mise à jour : 19 août 2026, après la première mise en service réelle sur
-le Mac.
+Dernière mise à jour : 19 août 2026, après la préparation de la 1.1.0 — sept lots
+issus de la première mise en service réelle sur le Mac.
 
 ---
 
 ## Défauts constatés
 
-Tous ceux qui suivent ont été vus le 19 août 2026 sur le Mac, sur la 1.0.7
-installée, avec le vrai zotify et une vraie bibliothèque. Aucun n'est déduit
-d'une lecture : chacun porte la trace qui l'a montré.
+*Rien en attente ici.* Les six défauts vus le 19 août 2026 sur le Mac — avec le
+vrai zotify et une vraie bibliothèque — ont tous été corrigés dans la 1.1.0. Le
+détail de chacun, et ce que sa correction a appris en marge, est dans les relevés
+datés en fin de fichier.
+
+Deux constats de ce jour-là n'y figuraient pas et restent ouverts ; ils sont
+écrits comme relevés parce qu'ils appellent une décision plutôt qu'un correctif :
+il existe un **second zotify** sur cette machine, plus récent en numéro et
+dépourvu de `--skip-existing`, et **personne n'a encore regardé l'app à l'œil**
+sur cet écran.
 
 ## Chantiers en pause
 
