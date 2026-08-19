@@ -22,7 +22,7 @@ const DONNÉES = fs.mkdtempSync(path.join(os.tmpdir(), 'zotijean-integ-'));
 process.env.ZOTIJEAN_DONNEES = DONNÉES;
 
 const { enregistrer, recharger, config } = await import('../src/config.js');
-const { synchroniser, prendreVerrou, rendreVerrou, exécutionEnCours } =
+const { synchroniser, prendreVerrou, rendreVerrou, exécutionEnCours, demanderArrêt } =
   await import('../src/synchronisation.js');
 const { listerAudio } = await import('../src/bibliotheque.js');
 const { nomAffichable } = await import('../src/synchronisation.js');
@@ -64,15 +64,22 @@ function fabriquerLanceur(dossier) {
  * Un ffmpeg factice, posé dans le PATH le temps des tests.
  *
  * Le diagnostic refuse — à raison — de synchroniser sans ffmpeg : son absence
- * fait détruire des morceaux en silence. Mais ces tests utilisent le format
- * « copie », donc ils ne convertissent rien : ils n'ont pas à dépendre de la
- * présence réelle de ffmpeg sur la machine, qui manque notamment sur les
- * serveurs macOS d'intégration continue. On satisfait donc la vérification sans
- * prétendre tester la conversion, qui a ses propres tests.
+ * fait détruire des morceaux en silence. Et depuis que la conversion tourne
+ * PENDANT le téléchargement, deux de ces tests convertissent pour de bon : il ne
+ * suffit plus de répondre à `-version`, il faut produire un fichier.
+ *
+ * Ce leurre ne code rien — il recopie et rallonge, ce qui suffit à passer la
+ * garde de vraisemblance. Ce qui est éprouvé ici, c'est l'ORCHESTRATION : quand
+ * un fichier est vu, quand il est converti, ce que la liste de lecture désigne.
+ * La conversion elle-même a ses propres tests, qui appellent le vrai binaire.
+ * Et la machine cible n'a de toute façon pas ffmpeg dans son PATH.
  */
 function poserFfmpegFactice(dossier) {
   const chemin = path.join(dossier, 'ffmpeg');
-  fs.writeFileSync(chemin, '#!/bin/sh\necho "ffmpeg version 7.1 (factice)"\nexit 0\n');
+  const cible = path.join(ICI, 'aide-faux-ffmpeg.js').split(path.sep).join('/');
+  // Même raison que pour le leurre zotify : `process.execPath`, jamais « node ».
+  // Le Mac de destination n'a pas de Node dans son PATH.
+  fs.writeFileSync(chemin, `#!/bin/sh\nexec "${process.execPath}" "${cible}" "$@"\n`);
   fs.chmodSync(chemin, 0o755);
   process.env.PATH = `${dossier}${path.delimiter}${process.env.PATH}`;
   return chemin;
@@ -389,6 +396,123 @@ test('une playlist est toujours designee de la meme facon', () => {
   assert.equal(nomAffichable({ nom: null, url: 'spotify:album:abc123' }), 'album/abc123');
   assert.equal(nomAffichable({}), 'playlist sans nom');
 });
+
+// ---------------------------------------------------------------------------
+// Aucun fichier ne reste dans le mauvais format
+// ---------------------------------------------------------------------------
+//
+// CE QUE CES DEUX TESTS ATTRAPENT, et qui s'est produit en vrai : le 19 août
+// 2026, deux exécutions arrêtées en cours de route ont laissé TREIZE fichiers en
+// Ogg alors que le réglage demandait du MP3. `convertirLot` sortait à la
+// première boucle quand l'arrêt était déjà demandé, et rien ne les rattrapait
+// jamais — la conversion ne regardait que les nouveautés de l'exécution en
+// cours, pendant que `--skip-existing` empêchait zotify de les reproposer. Les
+// listes `.m3u8` pointaient donc des fichiers que Rekordbox ne lit pas.
+
+/** Les sources restées sans jumeau converti, sous toute la bibliothèque. */
+function orphelins(racine, extensionCible) {
+  const trouvés = [];
+  const parcourir = (dossier) => {
+    for (const entrée of fs.readdirSync(dossier, { withFileTypes: true })) {
+      const complet = path.join(dossier, entrée.name);
+      if (entrée.isDirectory()) { parcourir(complet); continue; }
+      if (!entrée.name.toLowerCase().endsWith('.ogg')) continue;
+      const jumeau = `${complet.slice(0, -4)}.${extensionCible}`;
+      if (!fs.existsSync(jumeau)) trouvés.push(path.relative(racine, complet));
+    }
+  };
+  parcourir(racine);
+  return trouvés;
+}
+
+test('une synchronisation ne laisse aucun fichier dans le mauvais format',
+  { skip: SAUTER, timeout: 120_000 }, async () => {
+    const { musique, nettoyer } = préparer({
+      qualité: { niveau: 'tres_elevee', format: 'mp3_320', paroles: false },
+    });
+    process.env.FAUX_ZOTIFY_SCENARIO = 'normal';
+    process.env.FAUX_ZOTIFY_PLAYLIST = 'Été 2026';
+
+    try {
+      const { bilan } = await synchroniser('manuelle');
+
+      assert.deepEqual(orphelins(musique, 'mp3'), [], 'des Ogg sont restés sans converti');
+      assert.equal(bilan.nbConvertis, 3);
+
+      // Et la liste de lecture doit pointer les fichiers convertis, pas les
+      // sources. C'est le second visage du même défaut : les .mp3 étaient
+      // parfois là, mais le .m3u8 renvoyait quand même vers les .ogg.
+      const liste = fs.readFileSync(
+        path.join(musique, 'Été 2026', 'Été 2026.m3u8'), 'utf8',
+      );
+      assert.ok(!liste.includes('.ogg'), `la liste pointe encore des sources :\n${liste}`);
+      assert.equal((liste.match(/\.mp3/g) || []).length, 3);
+    } finally {
+      nettoyer();
+    }
+  });
+
+// LE CAS OÙ LA GARDE EST SEULE À POUVOIR REFUSER : la bibliothèque porte déjà
+// des fichiers laissés dans le mauvais format par une exécution précédente, et
+// zotify ne redescendra rien puisque les fichiers sont là. Sans le rattrapage,
+// ces Ogg restent en Ogg pour toujours — c'est exactement l'état trouvé sur le
+// disque du Mac.
+test('les fichiers laissés dans le mauvais format sont rattrapés au démarrage',
+  { skip: SAUTER, timeout: 120_000 }, async () => {
+    const { musique, nettoyer } = préparer({
+      qualité: { niveau: 'tres_elevee', format: 'mp3_320', paroles: false },
+    });
+    process.env.FAUX_ZOTIFY_SCENARIO = 'normal';
+    process.env.FAUX_ZOTIFY_PLAYLIST = 'Été 2026';
+
+    try {
+      // L'état exact du 19 août, en miniature : des Ogg seuls, dans une playlist
+      // que la synchronisation ne touchera pas.
+      const abandonnée = path.join(musique, 'Interrompue');
+      fs.mkdirSync(abandonnée, { recursive: true });
+      for (const nom of ['01 - A.ogg', '02 - B.ogg', '03 - C.ogg']) {
+        fs.writeFileSync(path.join(abandonnée, nom), Buffer.alloc(5_000_000, 1));
+      }
+
+      const { bilan } = await synchroniser('manuelle');
+
+      assert.deepEqual(orphelins(musique, 'mp3'), [], 'le rattrapage n’a pas eu lieu');
+      assert.equal(bilan.rattrapés, 3, 'le rattrapage doit être compté et annoncé');
+    } finally {
+      nettoyer();
+    }
+  });
+
+// LE TEST QUE CE LOT DEVAIT PRODUIRE, et le plus proche de ce qui est arrivé :
+// on appuie sur « Arrêter » au milieu d'une playlist. Avant, `convertirLot`
+// sortait à la première boucle parce que l'arrêt était déjà demandé — les
+// fichiers descendus restaient en Ogg, et plus rien ne les reprenait.
+test('un arrêt en milieu de playlist ne laisse aucun fichier non converti',
+  { skip: SAUTER, timeout: 120_000 }, async () => {
+    const { musique, nettoyer } = préparer({
+      qualité: { niveau: 'tres_elevee', format: 'mp3_320', paroles: false },
+    });
+    process.env.FAUX_ZOTIFY_SCENARIO = 'lent';
+    process.env.FAUX_ZOTIFY_PLAYLIST = 'Été 2026';
+
+    try {
+      const enCours = synchroniser('manuelle');
+      await new Promise((r) => { setTimeout(r, 1100); });
+      assert.equal(demanderArrêt(), true, 'l’arrêt n’a pas été pris en compte');
+
+      const { bilan } = await enCours;
+
+      assert.equal(bilan.interrompu, true, 'le scénario devait bien être interrompu');
+      const convertis = fs.existsSync(path.join(musique, 'Été 2026'))
+        ? fs.readdirSync(path.join(musique, 'Été 2026')).filter((f) => f.endsWith('.mp3'))
+        : [];
+      assert.ok(convertis.length >= 1, 'au moins un titre devait être descendu puis converti');
+      assert.deepEqual(orphelins(musique, 'mp3'), [],
+        'des fichiers sont restés dans le mauvais format après l’arrêt');
+    } finally {
+      nettoyer();
+    }
+  });
 
 test.after(() => {
   delete process.env.FAUX_ZOTIFY_SCENARIO;

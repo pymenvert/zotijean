@@ -35,23 +35,6 @@ Tous ceux qui suivent ont été vus le 19 août 2026 sur le Mac, sur la 1.0.7
 installée, avec le vrai zotify et une vraie bibliothèque. Aucun n'est déduit
 d'une lecture : chacun porte la trace qui l'a montré.
 
-### Une synchronisation interrompue laisse ses fichiers dans le mauvais format
-
-Constaté sur le disque : **13 fichiers en Ogg, 4 en MP3**, alors que le réglage
-demande du MP3 320 pour tout.
-
-Les deux exécutions arrêtées en cours de route ont bien téléchargé (12 et 1
-titres) mais n'ont rien converti : `convertirLot` sort à la première boucle
-quand `signalArrêt` est déjà levé. Et rien ne les rattrapera — la conversion ne
-regarde que les fichiers de l'exécution en cours (`finaliserPlaylist` sort
-immédiatement si `nouveaux` est vide), pendant que `--skip-existing` empêche
-zotify de les proposer à nouveau. Vérifié : aucun rattrapage nulle part dans
-`src/`.
-
-Conséquence visible : les listes `.m3u8` de ces deux playlists pointent des
-`.ogg`, que Rekordbox ne lit pas — précisément ce que le choix du format devait
-éviter.
-
 ### La politique de retrait des sources ne peut jamais s'appliquer
 
 `saitReprendreSansLeFichier()` (`src/zotify.js:483`) renvoie `false`, en dur.
@@ -800,3 +783,47 @@ C'est écrit dans un test, parce que c'est contre-intuitif.
 scénario `paroles-manquantes` qui écrit la ligne réelle du 19 août pendant que
 les trois titres arrivent entiers. Aucun test unitaire ne pouvait voir ce
 défaut : chaque pièce était juste.
+
+### 19 août 2026 — convertir pendant, plus seulement après
+
+L'ancienne chaîne était : inventaire avant, zotify jusqu'au bout, inventaire
+après, conversion du lot. Deux exécutions arrêtées en cours de route ont donc
+téléchargé sans rien convertir — `convertirLot` sortait à la première boucle
+quand l'arrêt était déjà demandé — et **rien ne rattrapait jamais** ces
+fichiers : la conversion ne regarde que les nouveautés de l'exécution en cours,
+pendant que `--skip-existing` empêche zotify de les reproposer. Treize titres
+sont restés en Ogg, dans des listes `.m3u8` que Rekordbox ne sait pas lire.
+
+Trois changements, et un quatrième trouvé en chemin :
+
+- **La conversion tourne pendant le téléchargement.** zotify écrit en `.tmp`
+  puis renomme : un fichier portant une extension audio est complet, et ses
+  trente secondes d'attente entre deux titres laissent tout le temps à ffmpeg.
+  À l'instant d'un arrêt, tout ce qui est descendu est déjà converti.
+- **Un rattrapage passe sur toute la bibliothèque au démarrage**, après le
+  diagnostic — donc après la vérification de ffmpeg. C'est la même moisson,
+  jouée une fois : une seule mécanique à garder juste.
+- **Un arrêt ne coupe plus la conversion** des fichiers déjà descendus, et le
+  journal explique pourquoi il prend ces quelques secondes. Les laisser
+  inutilisables serait la pire des deux options.
+- **Trouvé en marge, et c'est l'autre moitié du défaut** : quand la cible
+  existe, `convertir` refuse de la réécrire — à raison, un fichier réanalysé par
+  Serato porte des points de repère qui vivent dedans. Mais le lot rangeait
+  alors le fichier dans « ignorés » **sans sa destination**. L'appelant, ne
+  voyant aucune conversion, retombait sur les sources : les listes de lecture
+  pointaient des `.ogg` alors que les `.mp3` étaient là, à côté. Ce cas est
+  devenu le cas normal depuis que la moisson tourne — il fallait le traiter
+  d'abord, sinon le correctif principal produisait le défaut qu'il corrigeait.
+
+**Le leurre ffmpeg des tests produit maintenant un vrai fichier.** Il se
+contentait de répondre à `-version` : suffisant tant que les tests
+d'intégration utilisaient le format « copie », inutilisable pour prouver qu'une
+interruption ne laisse aucun orphelin. Le nouveau leurre ne code rien, il
+recopie et rallonge.
+
+**Épreuve du test, faite** : la moisson désactivée, le test d'interruption tombe ;
+rétablie, il passe. Il garde donc bien ce qu'il prétend garder.
+
+**Conséquence pratique pour la bibliothèque réelle** : les treize Ogg encore sur
+le disque seront convertis au démarrage de la prochaine synchronisation, sans
+rien retélécharger.
