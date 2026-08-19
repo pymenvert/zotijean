@@ -66,7 +66,22 @@ Ces points ont été vérifiés sur sources primaires en août 2026. Ils contrai
 - **Toutes ses lignes ne sont pas des erreurs, même celles qui disent
   « failed ».** Une ligne d'information comptée comme erreur ne gonfle pas
   seulement un chiffre : elle empêche de marquer une playlist terminée, la remet
-  en tête de la file, et espace la prochaine tentative planifiée.
+  en tête de la file, et espace la prochaine tentative planifiée. Trois chiffres
+  doivent rester distincts : les lignes signalées, les titres perdus, et le fait
+  d'être allé au bout.
+- **`GRAVITÉ.INFO` ne veut pas dire « sans importance », mais « rien à
+  reprendre ».** Un morceau retiré du catalogue n'arrivera jamais ; le compter
+  comme perdu ferait reprendre la playlist indéfiniment.
+- **Son journal global (`.song_archive`) ne se crée JAMAIS tout seul.**
+  `SongArchive.__init__` (`utils.py:320`) pose
+  `disabled = not Path(filepath).exists()`, et `add_obj` sort aussitôt : absent,
+  il le reste pour toujours. Le créer vide une fois est ce qui débloque
+  `--skip-prev-downloaded`, donc toute politique de retrait des fichiers
+  d'origine. `--song-archive-location` prend un DOSSIER, auquel zotify ajoute
+  lui-même le nom du fichier.
+- **Il télécharge en `.tmp` puis renomme** : un fichier portant une extension
+  audio est complet. C'est ce qui autorise à convertir PENDANT le téléchargement,
+  et donc à ne jamais laisser de fichier dans le mauvais format après un arrêt.
 
 ### Qualité et formats
 
@@ -130,7 +145,7 @@ vérifiée le 16 août 2026 — jamais écrite au jugé.
 - **format** : aucun
 - **lint** : aucun
 - **typecheck** : aucun
-- **test** : `node --test` → 467 tests. **467 verts sur macOS**, la cible ;
+- **test** : `node --test` → 500 tests. **500 verts sur macOS**, la cible ;
   le PC Windows en ignore 13, faute de pouvoir lancer le leurre zotify
 - **build** : aucun en local ; le paquet est construit par
   `.github/workflows/publication.yml`
@@ -175,20 +190,36 @@ lancer le serveur n'est pas un geste neutre.
 des menus macOS sont écrits ; le paquet embarque Node, Python, ffmpeg et zotify, tous en
 arm64. Voir `CHANGELOG.md`.
 
-**La 1.0.7 tourne sur le Mac depuis le 19 août 2026**, avec le vrai zotify et une
-vraie bibliothèque. Ce que cette mise en service a trouvé — six tests qui
-tombaient sur la machine cible, les paroles comptées comme des erreurs, une
-conversion qui ne rattrape jamais une interruption — est dans
-`docs/reste-a-faire.md`, relevé du 19 août. Rien de tout cela n'était visible
-depuis Windows.
+**Version 1.1.0 préparée** (19 août 2026), **non publiée** : elle n'est ni taguée
+ni poussée. C'est la première version écrite après avoir vu l'application tourner
+sur son Mac, avec le vrai zotify et une vraie bibliothèque.
 
-**Personne ne l'a encore REGARDÉE.** Tout a été mesuré par le moteur de rendu,
-pas vu par un œil : les couleurs sont conformes, la mise en page tient, et
-personne ne sait si c'est beau.
+Ce que cette mise en service a coûté, et qui est corrigé ici : une parole
+manquante comptée comme un titre perdu (et donc un horaire de synchronisation
+déplacé), treize fichiers coincés dans le mauvais format sans que rien ne les
+rattrape, une politique de retrait refusée en silence à chaque exécution, six
+réglages muets, et des pannes affichées en anglais brut. S'y ajoute une
+fonctionnalité : retrouver où racheter chaque morceau en sans-perte.
 
-Le nombre de tests ne figure QUE dans le bloc « Profil projet » ci-dessus. Il était
-écrit ici aussi, et les deux comptes ont divergé de cent tests sans que personne ne le
-voie — un chiffre répété est un chiffre qui vieillit deux fois plus vite.
+**Toujours pas vu à l'œil sur cet écran.** Tout ce qui est visuel a été mesuré
+par le moteur de rendu — contrastes composés, largeurs, nombres de lignes — et
+une partie regardée dans un navigateur, mais la capture d'écran système rend une
+image noire faute d'autorisation. Un chiffre conforme et un écran laid cohabitent
+toujours aussi bien.
+
+### La leçon qui revient : la pièce est juste, l'assemblage ment
+
+Quatre défauts de la 1.1.0 partagent exactement cette forme, et aucun test
+unitaire ne pouvait les voir :
+
+- le catalogue savait traduire les erreurs ; le journal recopiait l'anglais ;
+- les explications des réglages existaient ; l'interface écrivait `''` en dur ;
+- la conversion marchait ; personne ne rattrapait ce qu'une interruption laissait ;
+- `compterTitresPerdus` n'existait pas, mais chaque pièce du comptage était juste.
+
+Corollaire pour les tests : un garde posé sur une seule pièce reste vert sur une
+application cassée. Chaque lot de cette version ajoute donc un test qui rejoue le
+CHAÎNAGE, et chacun a été éprouvé en cassant le code exprès.
 
 ### La leçon de la 1.0.5 : confronter, pas supposer
 

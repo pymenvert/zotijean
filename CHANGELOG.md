@@ -1,6 +1,19 @@
 # Journal des versions
 
-## Non publié
+## 1.1.0 — 19 août 2026
+
+**La première version écrite APRÈS avoir vu l'application tourner sur son Mac.**
+Toutes les 1.0.x ont été mises au point sur un PC Windows, contre une doublure du
+téléchargeur. Trois synchronisations réelles ont suffi à montrer ce qu'aucun test
+ne pouvait voir — et à faire tomber six tests qui passaient partout ailleurs.
+
+Le fil commun de presque tout ce qui suit : **chaque pièce était juste, et
+l'assemblage mentait.** Une ligne d'information devenait une erreur, une erreur
+devenait un titre perdu, un titre perdu déplaçait un horaire de synchronisation.
+Le catalogue savait traduire les pannes, personne ne l'appelait. Le texte des
+réglages existait, l'interface le vidait. C'est ce genre de défaut que cette
+version corrige, et pour lequel elle ajoute des garde-fous qui éprouvent le
+CHAÎNAGE et non plus seulement les pièces.
 
 ### Les pannes s'expliquent en français
 
