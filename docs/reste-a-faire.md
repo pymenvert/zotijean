@@ -31,16 +31,36 @@ issus de la première mise en service réelle sur le Mac.
 
 ## Défauts constatés
 
-*Rien en attente ici.* Les six défauts vus le 19 août 2026 sur le Mac — avec le
+### Les actions de la chaîne d'intégration ciblent Node 20, qui est déprécié
+
+Vu le 19 août 2026 sur l'exécution `32280533751` : **les cinq tâches** annoncent
+la même chose, sur les trois systèmes.
+
+> Node.js 20 is deprecated. The following actions target Node.js 20 but are
+> being forced to run on Node.js 24.
+
+Trois actions, à cinq endroits :
+
+- `actions/checkout@v4` — `publication.yml:38`, `tests.yml:38`, `tests.yml:193`
+- `actions/setup-node@v4` — `publication.yml:40`, `tests.yml:40`, `tests.yml:194`
+- `actions/upload-artifact@v4` — `tests.yml:632`
+
+**Ça n'échoue pas aujourd'hui**, parce que les runners forcent Node 24 à leur
+place. Ça échouera le jour où GitHub retirera ce rattrapage — et ce jour-là, ce
+sera la chaîne de PUBLICATION qui tombera, c'est-à-dire au pire moment.
+
+Le correctif tient en cinq lignes : passer les trois actions en `@v5`. Il n'a pas
+été fait le 19 août parce que ç'aurait été un huitième sujet dans une branche qui
+en portait déjà sept, et que mélanger deux sujets rend un changement illisible
+six mois plus tard. Les six défauts vus le 19 août 2026 sur le Mac — avec le
 vrai zotify et une vraie bibliothèque — ont tous été corrigés dans la 1.1.0. Le
 détail de chacun, et ce que sa correction a appris en marge, est dans les relevés
 datés en fin de fichier.
 
-Deux constats de ce jour-là n'y figuraient pas et restent ouverts ; ils sont
-écrits comme relevés parce qu'ils appellent une décision plutôt qu'un correctif :
-il existe un **second zotify** sur cette machine, plus récent en numéro et
-dépourvu de `--skip-existing`, et **personne n'a encore regardé l'app à l'œil**
-sur cet écran.
+Deux autres constats de ce jour-là appellent une décision plutôt qu'un correctif,
+et sont écrits comme relevés plus bas : il existe un **second zotify** sur la
+machine de Pym, plus récent en numéro et dépourvu de `--skip-existing`, et
+**personne n'a encore regardé l'app à l'œil** sur cet écran.
 
 ## Chantiers en pause
 

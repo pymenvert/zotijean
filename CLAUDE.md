@@ -280,6 +280,20 @@ compléter `CHANGELOG.md`, commiter, **attendre la CI verte**, puis pousser le t
 `vX.Y.Z` — `.github/workflows/publication.yml` construit et publie la release. Il refuse
 un paquet incomplet ou non natif Apple Silicon.
 
+Trois choses qui ne se devinent pas, et qui ont chacune coûté du temps le 19 août 2026 :
+
+- **La CI ne se déclenche PAS quand on pousse une branche.** `tests.yml` écoute
+  `push` sur `main`, les demandes de fusion, et `workflow_dispatch`. Pousser
+  `release/1.1.0` ne lance donc rien, et on croit la branche vérifiée alors que
+  rien n'a tourné. Pour l'éprouver : ouvrir la demande de fusion, ou
+  `gh workflow run Tests --ref <branche>`.
+- **Toucher à un fichier de `.github/workflows/` exige la portée `workflow`**
+  sur le jeton, en plus de `repo`. Sans elle GitHub REFUSE la poussée entière —
+  pas seulement ce fichier — avec un message explicite. `gh auth refresh -s workflow`.
+- **Une machine neuve n'a aucun identifiant git** : ni clé SSH, ni jeton dans le
+  trousseau. `git push` échoue sur « could not read Username ». Il faut
+  s'authentifier une fois avant toute publication.
+
 ### Ce qui reste ouvert : `docs/reste-a-faire.md`
 
 Défauts connus non corrigés, chantiers en pause, et surtout **ce qui n'a jamais été
