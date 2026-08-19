@@ -129,7 +129,14 @@ export function construireCommande({ source, destination, format, pochette }) {
 
   // Report des étiquettes existantes. Sans ça, un FLAC issu d'un Ogg étiqueté
   // ressort vierge.
-  arguments_.push('-map_metadata', '0');
+  //
+  // `0:s:0`, PAS `0`. La source est un Ogg, et l'Ogg range ses commentaires sur
+  // le FLUX : au niveau du conteneur il n'y a rien à recopier. Écrit `0`, ffmpeg
+  // rendait donc un fichier sans artiste, sans titre, sans album et sans ISRC —
+  // exactement le vide que ce commentaire prétendait empêcher, et une clé
+  // perdue pour retrouver le morceau à l'achat. Reproduit puis corrigé le
+  // 19 août 2026 sur un vrai fichier.
+  arguments_.push('-map_metadata', '0:s:0');
 
   arguments_.push(destination);
   return arguments_;

@@ -717,3 +717,31 @@ Rien n'a été **rendu** par un navigateur. Tout est calculé depuis la source, 
 un poste Windows, pour une application dont la cible est un Mac sous Safari. Les
 valeurs composées — mélanges translucides, opacités — sont des calculs, pas ce
 que Safari peint.
+
+### 19 août 2026 — les étiquettes perdues entre le flux et le conteneur
+
+Deux défauts, une seule cause, trouvés en préparant le rapport des rachats :
+**l'Ogg range ses étiquettes sur le FLUX, pas sur le conteneur**, et deux
+endroits du code ne lisaient que le conteneur. Reproduits sur de vrais fichiers
+avec `ffprobe`, corrigés, revérifiés.
+
+- `src/conversion.js` passait `-map_metadata 0`. Sur une source Ogg il n'y a
+  rien à cet endroit — `[FORMAT]` est vide : **tout fichier converti sortait
+  sans artiste, sans titre, sans album et sans ISRC.** Constaté sur les quatre
+  MP3 de « Deep dive », dont les seules étiquettes étaient `TSSE=Lavf`.
+  Corrigé en `0:s:0` ; le même fichier ressort alors complet, et `ffprobe` relit
+  bien `isrc` sans qu'il faille toucher à la trame ID3.
+- `src/exports-dj.js` ne lisait que `format.tags`. **Les exports Rekordbox et
+  Serato ne voyaient donc AUCUNE étiquette des fichiers Ogg** — le format que
+  l'app produit par défaut : ni album, ni année, ni tonalité, ni label, ni
+  remixeur, ni ISRC. Seuls artiste et titre survivaient, déduits du nom de
+  fichier. C'était précisément ce que l'export XML était censé apporter, et que
+  Rekordbox ne lirait jamais autrement.
+
+**Le test qui gardait la première ligne épinglait `'0'`** : il vérifiait la
+présence du drapeau, jamais son effet. Encore la même forme de trou que le
+17 août — une garde testée sur un cas où elle n'est pas seule à décider.
+
+**Ce qui n'est pas rattrapé :** les fichiers déjà convertis restent sans
+étiquettes. Le correctif ne vaut que pour les conversions à venir, et rien ne
+repasse sur l'existant.

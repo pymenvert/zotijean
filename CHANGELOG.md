@@ -1,5 +1,27 @@
 # Journal des versions
 
+## Non publié
+
+### Les fichiers convertis perdaient toutes leurs étiquettes
+
+Un morceau converti en MP3, FLAC ou AIFF sortait **sans artiste, sans titre, sans
+album et sans identifiant** — alors que le fichier d'origine les portait tous.
+
+La cause tient à une particularité de l'Ogg : il range ses étiquettes sur le flux
+audio, pas sur le fichier. La conversion recopiait celles du fichier, où il n'y
+avait rien. Le test qui gardait cette ligne vérifiait la présence de l'option,
+jamais son effet.
+
+Les fichiers déjà convertis restent sans étiquettes : le correctif ne vaut que
+pour les conversions à venir.
+
+### Les exports Rekordbox et Serato ignoraient les étiquettes des Ogg
+
+Même cause, deuxième endroit, et il touchait le format que l'app produit par
+défaut. Album, année, tonalité, label, remixeur, identifiant : rien n'arrivait
+jusqu'à Rekordbox, qui ne recevait qu'un artiste et un titre déduits du nom de
+fichier. C'était précisément ce que l'export XML était censé apporter.
+
 ## 1.0.7 — 17 août 2026
 
 Une version qui ne change rien à ce que fait l'application, et beaucoup à ce
