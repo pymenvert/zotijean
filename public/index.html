@@ -214,6 +214,33 @@
           </span>
         </label>
       </div>
+
+      <!-- Cette carte est dans « Qualité » et pas ailleurs, parce que c'est ici
+           qu'on apprend que Spotify plafonne à 320 kb/s et que convertir ne
+           récupère rien. La question « et si je le rachetais ? » se pose à cet
+           endroit précis, pas trois onglets plus loin. -->
+      <div class="carte">
+        <h2>Racheter en sans-perte</h2>
+        <p class="aide">
+          Zotijean cherche où chaque morceau de votre bibliothèque est vendu en
+          vraie qualité sans perte, et écrit un rapport de liens cliquables.
+          Il n’achète rien et ne télécharge rien.
+        </p>
+        <div id="choix-sources-achats" class="choix"></div>
+        <div class="ligne-formulaire">
+          <button class="bouton primaire" id="btn-achats">
+            <svg class="ic"><use href="#i-loupe"/></svg><span>Chercher les liens</span>
+          </button>
+          <button class="bouton" id="btn-ouvrir-achats" hidden>Ouvrir le rapport</button>
+        </div>
+        <p class="aide" id="estimation-achats"></p>
+        <div class="progression" id="progression-achats" hidden>
+          <div class="progression-barre"><span id="progression-achats-jauge"></span></div>
+          <p class="progression-ligne" id="progression-achats-ligne"></p>
+        </div>
+        <div class="note" id="note-achats"></div>
+        <div id="resultat-achats"></div>
+      </div>
     </section>
 
     <!-- RANGEMENT -->

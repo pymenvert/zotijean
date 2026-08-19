@@ -2,6 +2,30 @@
 
 ## Non publié
 
+### Racheter en sans-perte
+
+Spotify plafonne à 320 kb/s et convertir ne récupère rien : le seul vrai FLAC est
+celui qu'on rachète ailleurs. L'onglet Qualité gagne un bouton qui cherche, pour
+chaque morceau de la bibliothèque, où il est vendu — et écrit une page de liens
+cliquables à la racine du dossier de musique, plus un CSV.
+
+Mesuré sur la bibliothèque réelle : **15 morceaux sur 17 ont un lien d'achat en
+sans-perte**, dont 12 vers le morceau lui-même.
+
+Le rapport ne ment pas sur ce qu'il sait. Quatre niveaux, écrits en toutes
+lettres : un lien vers le morceau dont la vente a été vérifiée sur la page, un
+lien vers l'album quand le morceau n'est pas vendu seul, un lien d'achat
+seulement référencé ailleurs — et, pour le reste, une recherche à faire à la
+main. Une boutique qui ne vend pas de sans-perte est signalée comme telle, même
+quand le catalogue l'annonce en « achat ».
+
+La durée est annoncée avant de cliquer, l'avancement défile pendant, et une
+recherche interrompue reprend là où elle s'est arrêtée.
+
+Ce qui avait été imaginé au départ — chercher par ISRC — a été mesuré puis
+abandonné : sur ce répertoire, cette clé ne rendait **aucun lien sur treize**.
+Le détail des chiffres est dans `docs/specs/racheter-en-sans-perte.md`.
+
 ### Les fichiers convertis perdaient toutes leurs étiquettes
 
 Un morceau converti en MP3, FLAC ou AIFF sortait **sans artiste, sans titre, sans

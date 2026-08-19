@@ -79,11 +79,36 @@ function relever(texte, étiquette = '') {
   return trouvés;
 }
 
+/**
+ * Le seul fichier exempté, et pourquoi. Ce n'est PAS un contournement.
+ *
+ * Ce que Safari 16.3 a mesuré sur cette machine le 19 août 2026, et qui décide
+ * de tout :
+ *
+ *   - un bloc `<style>` SERVI par le moteur est bien **bloqué** — violation
+ *     `style-src-elem`, et `feuille.sheet` vaut `null`. La règle que garde ce
+ *     fichier est donc réelle, et il ne faut pas l'affaiblir ;
+ *   - **aucune politique ne s'applique à un fichier ouvert en `file://`.**
+ *
+ * `src/achats.js` fabrique un document autonome — le rapport des morceaux
+ * rachetables — qui est ÉCRIT SUR LE DISQUE et ouvert par le système, jamais
+ * servi. Il tombe donc du bon côté de ces deux mesures. Et il n'a aucune feuille
+ * de style à côté de lui : lui interdire d'embarquer la sienne reviendrait à
+ * exiger une page sans mise en forme, ou à servir le rapport — ce qui le
+ * casserait, précisément à cause de la première mesure.
+ *
+ * L'exemption n'est pas gratuite. Deux tests d'`achats.test.js` la paient : le
+ * rapport doit rester autonome, et aucune route de `src/api.js` ne doit le
+ * servir. Le jour où quelqu'un le publierait sur le serveur, ces tests tombent
+ * et l'exemption redevient un défaut.
+ */
+const HORS_BALAYAGE = new Set(['src/achats.js']);
+
 /** Les fichiers qui produisent du balisage destiné au navigateur. */
 function fichiersDeBalisage() {
-  const listés = ['public', 'src'].flatMap((dossier) =>
-    listerFichiers(RACINE, dossier, /\.(html|js)$/i),
-  );
+  const listés = ['public', 'src']
+    .flatMap((dossier) => listerFichiers(RACINE, dossier, /\.(html|js)$/i))
+    .filter((relatif) => !HORS_BALAYAGE.has(relatif.split(path.sep).join('/')));
   // server.js fabrique du HTML à la main : la page de retour de Spotify, celle
   // qui portait justement le bloc <style> à l'origine de ce test.
   listés.push('server.js');

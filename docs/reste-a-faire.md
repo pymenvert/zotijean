@@ -745,3 +745,64 @@ présence du drapeau, jamais son effet. Encore la même forme de trou que le
 **Ce qui n'est pas rattrapé :** les fichiers déjà convertis restent sans
 étiquettes. Le correctif ne vaut que pour les conversions à venir, et rien ne
 repasse sur l'existant.
+
+
+### 19 août 2026 — « Racheter en sans-perte », et deux défauts trouvés en chemin
+
+Un sondage devait dire si la fonctionnalité décrite dans
+`docs/specs/liens-flac-par-isrc.md` valait la peine d'être écrite. Réponse
+mesurée : **non, pas telle quelle** — sa clé de recherche rendait zéro lien sur
+treize. La spécification a été refondue et renommée
+`docs/specs/racheter-en-sans-perte.md`, qui porte les chiffres.
+
+Les deux défauts de métadonnées trouvés en chemin ont leur propre relevé
+ci-dessus — ils avaient leur propre cause et leur propre correctif.
+
+**Ce qui reste ouvert sur ce sujet :**
+
+- Le rapport ne couvre que les morceaux **déjà téléchargés**, pas les playlists
+  entières. Il faut pour cela l'API Spotify, aujourd'hui inactive (`spotify.actif`
+  à `false`, aucun identifiant client). Et `inventaireComplet` (`src/analyse.js`)
+  plafonne à 50 manquants par playlist.
+- La couverture est mesurée sur **17 morceaux**. Les intervalles à 95 % sont
+  larges. À rejouer sur la bibliothèque complète.
+- La source Bandcamp passe par un point d'entrée **non documenté**. Elle est
+  débrayable et sa panne est prévue, mais elle peut disparaître sans préavis.
+- Les quatre MP3 déjà convertis restent sans étiquettes : le correctif ne vaut
+  que pour les conversions à venir. Rien ne rattrape les fichiers existants.
+
+### 19 août 2026 — la jauge de progression, mesurée sur le Mac
+
+Le relevé du 17 août demandait de vérifier « en priorité sur le Mac » si la
+politique de sécurité bloque les styles posés sur les barres de progression.
+Mesuré ici, dans un moteur Chromium tournant sur le Mac, avec la vraie politique
+servie par le serveur (`style-src 'self'`, sans `unsafe-inline`) :
+
+- **aucun message dans la console au chargement**, et **aucun événement
+  `securitypolicyviolation`** en écoutant l'événement dédié ;
+- l'écriture en ligne s'applique : `height` posé à 9 px est calculé à 9 px, et
+  une jauge posée à 73 % mesure 237,5 px pour un parent de 325,4 px ;
+- la quatrième jauge de l'app — celle du rapport des rachats — a été regardée
+  pendant une vraie exécution : 33 %, 67 %, 100 %, avec le nom du morceau en
+  cours à côté.
+
+**Deux pièges de mesure, tous deux rencontrés, et qui expliquent probablement les
+observations contradictoires du 17 août :**
+
+- tant que le bloc `#progression` est `hidden`, `getComputedStyle` renvoie
+  fidèlement « 73% » **sans que rien ne soit rendu**. On croit avoir vérifié ;
+- dans un onglet dont `visibilityState` vaut `hidden`, les transitions CSS sont
+  **gelées** : la jauge reste à zéro indéfiniment, `playState` bloqué sur
+  `running`. C'est un artefact de l'outil d'observation, pas un défaut de l'app.
+
+**Recoupé avec la mesure Safari du même jour** (relevé « la jauge n'est pas
+bloquée » plus haut) : les deux passes disent la même chose sur deux moteurs
+différents. `élément.style.width` s'applique et ne déclenche aucune violation ;
+c'est `setAttribute('style', …)` qui est bloqué, et l'app n'écrit jamais ainsi.
+
+**Ce que la même mesure impose au rapport des rachats :** un bloc `<style>`
+SERVI par le moteur, lui, est bien bloqué — violation `style-src-elem`, et
+`feuille.sheet` vaut `null`. Le rapport embarque son style et doit donc rester
+un fichier ouvert par le système, jamais une page servie. C'est écrit dans
+`tests/styles-en-ligne.test.js`, et deux tests d'`achats.test.js` empêchent
+qu'on l'oublie.

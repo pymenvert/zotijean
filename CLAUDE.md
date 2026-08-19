@@ -130,9 +130,8 @@ vérifiée le 16 août 2026 — jamais écrite au jugé.
 - **format** : aucun
 - **lint** : aucun
 - **typecheck** : aucun
-- **test** : `node --test` → 432 tests. **432 verts sur macOS**, la cible ;
-  419 verts et 13 ignorés sur le PC Windows, qui ne peut pas lancer le leurre
-  zotify
+- **test** : `node --test` → 467 tests. **467 verts sur macOS**, la cible ;
+  le PC Windows en ignore 13, faute de pouvoir lancer le leurre zotify
 - **build** : aucun en local ; le paquet est construit par
   `.github/workflows/publication.yml`
 - **run** : `node server.js` → http://127.0.0.1:8787
