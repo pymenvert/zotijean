@@ -296,6 +296,8 @@ jobs:
           fi
           curl -sf -o /dev/null "http://127.0.0.1:8799/notice.css" \
             || echouer "notice.css est introuvable."
+          grep -q 'href="palette.css"' notice.html \
+            || echouer "La notice ne charge pas la palette : elle s'afficherait sans aucune couleur."
 
           echo "--- La page de retour Spotify suit la politique commune ---"
           # Elle portait un bloc <style>, ce qui obligeait à lui écrire une
@@ -312,6 +314,19 @@ jobs:
             || echouer "La page de retour ne charge pas de feuille de style externe : la politique de sécurité la rendrait illisible."
           curl -sf -o /dev/null "http://127.0.0.1:8799/retour.css" \
             || echouer "retour.css est introuvable."
+          grep -q 'href="/palette.css"' retour.html \
+            || echouer "La page de retour ne charge pas la palette."
+
+          echo "--- La palette partagee est servie, et elle porte bien les couleurs ---"
+          # Une seule ecriture des couleurs pour les trois pages : si ce fichier
+          # manque ou se vide, les trois s'affichent dans les couleurs par defaut
+          # du navigateur. Aucune des trois ne le signalerait autrement.
+          curl -sf "http://127.0.0.1:8799/palette.css" > palette.css \
+            || echouer "palette.css est introuvable."
+          grep -q -- '--accent:' palette.css \
+            || echouer "palette.css ne declare pas --accent : les trois pages seraient sans couleurs."
+          grep -q 'data-theme="light"' palette.css \
+            || echouer "palette.css ne gere pas la bascule manuelle de theme de la notice."
           # Le verdict doit être écrit, pas seulement coloré : c'est la page qui
           # annonce si l'authentification a abouti, et elle doit rester lisible
           # même si sa feuille de style ne se charge pas.

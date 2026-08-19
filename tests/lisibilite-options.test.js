@@ -43,7 +43,17 @@ const RACINE = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 // tous indentés, et l'ancrage en début de ligne les écarte déjà. Elle est
 // conservée parce que la même feuille est lue par les deux fichiers, et qu'un
 // jour un commentaire non indenté suffirait à ouvrir le trou.
-const FEUILLE = sansCommentaires(fs.readFileSync(path.join(RACINE, 'public', 'app.css'), 'utf8'));
+/* LA PALETTE ET LA FEUILLE, DANS CET ORDRE, ET IL FAUT LES DEUX.
+   Les couleurs vivent désormais dans palette.css, partagée par les trois pages
+   de l'app ; app.css n'en déclare plus aucune. Lire app.css seul rendait ces
+   gardes muets — trente et un tests sont tombés d'un coup en annonçant des
+   variables introuvables, ce qui est le bon symptôme : une lecture qui ne
+   trouve plus rien doit ÉCHOUER, jamais passer. */
+const FEUILLE = sansCommentaires(
+  ['palette.css', 'app.css']
+    .map((f) => fs.readFileSync(path.join(RACINE, 'public', f), 'utf8'))
+    .join('\n'),
+);
 
 const { couleur, règle, variableDe } = lecteurDe(FEUILLE);
 

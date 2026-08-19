@@ -2,6 +2,17 @@
 
 ## Non publié
 
+### La notice ressemble enfin à l'application
+
+Les deux ne se ressemblaient pas, et ce n'était pas qu'une affaire de goût : la
+notice avait sa propre copie des couleurs, figée à une version d'avant les
+corrections de lisibilité. Ses petits textes gris étaient donc trop pâles —
+huit endroits, tous mesurés, tous déjà corrigés une fois ailleurs.
+
+Les couleurs vivent maintenant dans un seul fichier, partagé par les trois pages.
+Les huit défauts ont disparu sans avoir été touchés un par un, et un contrôle
+empêche désormais qu'une couleur soit réécrite ailleurs.
+
 ### Ce qui se voyait mal se voit
 
 Le bouton principal désactivé — l'état de l'application au repos, sur les sept

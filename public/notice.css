@@ -6,53 +6,42 @@
      comme des numéros de voie sur une table de mixage.
      --------------------------------------------------------------- */
 
+  /* LES NOMS DE LA NOTICE, LES VALEURS DE LA PALETTE.
+     ---------------------------------------------------------------------
+     Cette feuille déclarait sa propre palette — TROIS FOIS dans le même
+     fichier — sous des noms d'atelier : « --seam » pour un bord, « --panneau »
+     pour une carte, « --argent-bas » pour du texte discret. Les valeurs
+     étaient celles d'AVANT la correction de contraste de la 1.0.2 : c'était
+     l'ancêtre non corrigé d'app.css, sous pseudonyme.
+     Ce n'était pas de la redondance inoffensive. Les huit défauts de contraste
+     relevés ici le 17 août 2026 n'étaient pas nouveaux — c'étaient les mêmes,
+     déjà corrigés une fois ailleurs. « --argent-bas » à 3,38 pour 1 en thème
+     clair habillait du texte de 11 à 14 px ; « --ambre » à 4,36 habillait les
+     noms des sept onglets et le seul bouton mis en avant de la page.
+     Les noms restent, en alias : renommer une cinquantaine de renvois aurait
+     mélangé deux sujets dans un même changement, et le vocabulaire de la
+     notice a sa raison d'être. Ce qui compte est que plus aucune VALEUR ne
+     vive ici. Les trois thèmes — système, clair forcé, sombre forcé — sont
+     désormais tenus par palette.css, une seule fois. */
   :root {
-    --rack:        #101114;
-    --panneau:     #16181c;
-    --panneau-2:   #1c1f24;
-    --seam:        #262a31;
-    --seam-vif:    #343941;
-    --serigraphie: #eceef1;
-    --argent:      #a2a8b2;
-    --argent-bas:  #6d747e;
-    --ambre:       #f0a836;
-    --ambre-vif:   #ffc061;
-    --ambre-voile: rgba(240,168,54,.12);
-    --cue:         #e8564a;
-    --signal:      #4ec98a;
+    --rack:        var(--fond);
+    --panneau:     var(--carte);
+    --panneau-2:   var(--carte-haut);
+    --seam:        var(--bord);
+    --seam-vif:    var(--bord-vif);
+    --serigraphie: var(--texte);
+    --argent:      var(--texte-2);
+    --argent-bas:  var(--texte-3);
+    --ambre:       var(--accent);
+    --ambre-vif:   var(--accent-fort);
+    --ambre-voile: var(--accent-doux);
+    --cue:         var(--erreur);
+    --signal:      var(--ok);
 
+    /* Propres à la notice : une mesure de ligne et un pas d'espacement, qui ne
+       sont pas des couleurs et n'ont donc rien à faire dans la palette. */
     --mesure: 66ch;
     --pas: clamp(1.5rem, 1rem + 2vw, 2.75rem);
-  }
-
-  @media (prefers-color-scheme: light) {
-    :root {
-      --rack:        #f2f2f3;
-      --panneau:     #ffffff;
-      --panneau-2:   #fbfbfc;
-      --seam:        #e0e1e4;
-      --seam-vif:    #c9ccd1;
-      --serigraphie: #16181c;
-      --argent:      #545a63;
-      --argent-bas:  #7d848d;
-      --ambre:       #a86c07;
-      --ambre-vif:   #8a5805;
-      --ambre-voile: rgba(168,108,7,.09);
-      --cue:         #c0392c;
-      --signal:      #1a8f5a;
-    }
-  }
-  :root[data-theme="light"] {
-    --rack:#f2f2f3; --panneau:#fff; --panneau-2:#fbfbfc; --seam:#e0e1e4; --seam-vif:#c9ccd1;
-    --serigraphie:#16181c; --argent:#545a63; --argent-bas:#7d848d;
-    --ambre:#a86c07; --ambre-vif:#8a5805; --ambre-voile:rgba(168,108,7,.09);
-    --cue:#c0392c; --signal:#1a8f5a;
-  }
-  :root[data-theme="dark"] {
-    --rack:#101114; --panneau:#16181c; --panneau-2:#1c1f24; --seam:#262a31; --seam-vif:#343941;
-    --serigraphie:#eceef1; --argent:#a2a8b2; --argent-bas:#6d747e;
-    --ambre:#f0a836; --ambre-vif:#ffc061; --ambre-voile:rgba(240,168,54,.12);
-    --cue:#e8564a; --signal:#4ec98a;
   }
 
   * { box-sizing: border-box; }

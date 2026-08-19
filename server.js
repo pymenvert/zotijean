@@ -208,6 +208,7 @@ export function pageRetour({ titre, message, réussi }) {
   return `<!doctype html><html lang="fr"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Zotijean — ${échapperHTML(titre)}</title>
+<link rel="stylesheet" href="/palette.css">
 <link rel="stylesheet" href="/retour.css">
 </head><body class="${aAbouti ? 'reussi' : 'echec'}"><main class="boite">
   <p class="verdict"><span class="pastille" aria-hidden="true"></span><strong>${verdict}</strong></p>

@@ -412,17 +412,10 @@ C'est la cause commune du point précédent, et le vrai sujet. `public/app.css`,
   accident, ce sont les mêmes défauts, déjà payés une fois. Elle déclare en outre
   sa palette **trois fois** dans le même fichier.
 
-**Ce que ça coûterait de régler :** un fichier `public/palette.css` d'une
-trentaine de lignes, une cinquantaine de renvois à renommer dans `notice.css`,
-un lien à ajouter dans les deux pages et dans le serveur. Une demi-journée.
-**Attention**, deux endroits de la chaîne de publication vérifient que chaque
-feuille est bien servie : les oublier ferait passer un paquet où la palette
-manque et où les trois pages s'afficheraient dans les couleurs par défaut du
-navigateur.
-
-**Ce que ça ferait gagner :** les huit défauts disparaissent comme effet de bord,
-et `tests/contraste.test.js` — qui ne lit aujourd'hui qu'`app.css` — garderait
-les trois pages au lieu d'une.
+~~**Ce que ça coûterait de régler :** un fichier `public/palette.css`…~~
+**FAIT le 19 août 2026.** Voir le relevé daté en fin de fichier : les huit
+défauts ont bien disparu comme effet de bord, et la mesure le confirme sur la
+page réelle — zéro texte sous son seuil, dans les deux thèmes.
 
 #### Trois défauts de l'app mesurés, confirmés, et laissés en place
 
@@ -915,3 +908,41 @@ venv manquerait ou serait cassé, l'app se rabattrait dessus en silence et
 Le diagnostic le signalerait — il l'a fait, tout de suite — mais son message ne
 dit pas QUEL zotify il a trouvé. C'est ce qui a fait perdre dix minutes à croire
 à une régression. Faire nommer le chemin par ce contrôle coûterait deux lignes.
+
+### 19 août 2026 — une couleur ne s'écrit plus qu'à un seul endroit
+
+`public/palette.css` existe. Les trois pages la chargent — l'interface, la notice
+et la page de retour Spotify — et **plus aucune valeur de couleur ne vit
+ailleurs** : un test le vérifie fichier par fichier, après avoir prouvé qu'il
+sait attraper une couleur en dur.
+
+Ce qui a été fait, et ce qui a été délibérément laissé :
+
+- `retour.css` redéclarait cinq couleurs sous les mêmes noms et les mêmes
+  valeurs qu'`app.css`. Supprimées.
+- `notice.css` déclarait sa palette **trois fois**, sous des noms d'atelier, avec
+  les valeurs d'avant la 1.0.2. Les **noms restent, en alias** vers la palette :
+  renommer une cinquantaine de renvois aurait mélangé deux sujets dans un même
+  changement, et le vocabulaire de la notice a sa raison d'être.
+- La palette porte **trois états de thème** — système, clair forcé, sombre forcé.
+  Il en faut bien trois : la notice offre une bascule manuelle, et une couleur
+  dont la seule définition vivrait dans une requête de média serait absente pour
+  qui a basculé à la main.
+
+**Vérifié à l'écran, pas déduit** : un balayage de TOUT le texte de la notice,
+dans les deux thèmes, ne trouve plus aucun contraste sous son seuil. Les huit
+défauts du 17 août ont disparu sans être touchés un par un — ils n'étaient que
+le reflet d'une palette recopiée.
+
+**Les deux contrôles de la chaîne de publication ont été étendus**, comme le
+relevé le demandait : le paquet vérifie que `palette.css` est présent, et le
+contrôle des pages vérifie qu'elle est servie, qu'elle déclare bien `--accent`,
+et que les deux pages la chargent. C'est le fichier le plus sensible de la
+chaîne depuis qu'il existe : il ne sert aucune page à lui seul, mais les trois
+autres n'ont plus une seule couleur sans lui.
+
+**Trente et un tests sont tombés d'un coup** au moment de la scission, en
+annonçant des variables introuvables. C'est le bon symptôme : les gardes de
+contraste lisaient `app.css`, où il n'y a plus de couleurs. Ils lisent désormais
+les deux feuilles. Une lecture qui ne trouve plus rien doit échouer, jamais
+passer.

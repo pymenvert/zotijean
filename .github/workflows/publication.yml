@@ -124,7 +124,11 @@ jobs:
           # page dont la feuille manque ne s'affiche plus mal, elle s'affiche
           # NUE. retour.css est le cas sensible — c'est la page qui annonce si la
           # connexion à Spotify a abouti.
-          for feuille in app.css notice.css retour.css; do
+          # palette.css est le cas le PLUS sensible depuis qu'il existe : il ne
+          # sert aucune page à lui seul, mais les trois autres n'ont plus une
+          # seule couleur sans lui. Son absence ne dégraderait pas l'app, elle
+          # la rendrait dans les couleurs par défaut du navigateur, partout.
+          for feuille in palette.css app.css notice.css retour.css; do
             test -f "$APP/Contents/Resources/moteur/public/$feuille" \
               || manque "La feuille de style $feuille est absente : la page correspondante s'afficherait sans aucune mise en forme."
           done
