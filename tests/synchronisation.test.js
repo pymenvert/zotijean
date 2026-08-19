@@ -47,7 +47,13 @@ const SAUTER = process.platform === 'win32'
 function fabriquerLanceur(dossier) {
   const cible = path.join(ICI, 'aide-faux-zotify.js').split(path.sep).join('/');
   const chemin = path.join(dossier, 'faux-zotify.sh');
-  fs.writeFileSync(chemin, `#!/bin/sh\nexec node "${cible}" "$@"\n`);
+  // `process.execPath` et non « node » : le Mac de destination n'a PAS de Node
+  // installé — le paquet embarque le sien. Un lanceur qui appelle « node » y
+  // sort en 127, le leurre ne répond donc pas à `--help`, le diagnostic conclut
+  // que cette version de zotify n'accepte aucun dossier de destination, et six
+  // tests d'intégration tombent. Ils passaient partout ailleurs : l'intégration
+  // continue, elle, a bien un Node dans son PATH.
+  fs.writeFileSync(chemin, `#!/bin/sh\nexec "${process.execPath}" "${cible}" "$@"\n`);
   fs.chmodSync(chemin, 0o755);
   return chemin;
 }
