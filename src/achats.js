@@ -74,8 +74,34 @@ import { listerAudio, sansSourcesConverties } from './bibliotheque.js';
 import { lireMétadonnées } from './exports-dj.js';
 import { trouver, FORMATS } from './options.js';
 
+/**
+ * La version du paquet, LUE et non recopiée.
+ *
+ * Elle était écrite en dur juste en dessous, et elle annonçait encore « 1.0.7 »
+ * le jour où l'on préparait la 1.1.0. C'est le troisième endroit du projet où un
+ * numéro de version vit — après `package.json` et `macos/Info.plist` — et le
+ * seul que la procédure de publication ne regardait pas. Le paquet se serait
+ * présenté à MusicBrainz sous le numéro de la version précédente, dont la
+ * politique porte précisément sur cet en-tête.
+ *
+ * `package.json` est copié à côté de `src/` dans le paquet macOS
+ * (`macos/construire.sh`) : le chemin relatif vaut ici comme là-bas. Le repli
+ * existe quand même — un en-tête approximatif vaut mieux qu'un module qui
+ * refuse de se charger.
+ */
+function versionDuPaquet() {
+  try {
+    return JSON.parse(
+      fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+    ).version || 'inconnue';
+  } catch {
+    return 'inconnue';
+  }
+}
+
 /** Requis par MusicBrainz, et simple politesse ailleurs. Jamais d'adresse personnelle. */
-export const AGENT_UTILISATEUR = 'Zotijean/1.0.7 ( https://github.com/pymenvert/zotijean )';
+export const AGENT_UTILISATEUR =
+  `Zotijean/${versionDuPaquet()} ( https://github.com/pymenvert/zotijean )`;
 
 /** MusicBrainz plafonne à ~1 requête/seconde. La marge évite les 503. */
 const RYTHME_MS = { 'musicbrainz.org': 1100, défaut: 1000 };
