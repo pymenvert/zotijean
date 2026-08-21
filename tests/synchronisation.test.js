@@ -22,9 +22,12 @@ const DONNÉES = fs.mkdtempSync(path.join(os.tmpdir(), 'zotijean-integ-'));
 process.env.ZOTIJEAN_DONNEES = DONNÉES;
 
 const { enregistrer, recharger, config } = await import('../src/config.js');
-const { synchroniser, prendreVerrou, rendreVerrou, exécutionEnCours } =
+const { synchroniser, prendreVerrou, rendreVerrou, exécutionEnCours, demanderArrêt } =
   await import('../src/synchronisation.js');
 const { listerAudio } = await import('../src/bibliotheque.js');
+const { nomAffichable } = await import('../src/synchronisation.js');
+const étatModule = await import('../src/etat.js');
+const { journal } = await import('../src/journal.js');
 
 /**
  * Ces tests ne s'exécutent pas sous Windows.
@@ -47,7 +50,13 @@ const SAUTER = process.platform === 'win32'
 function fabriquerLanceur(dossier) {
   const cible = path.join(ICI, 'aide-faux-zotify.js').split(path.sep).join('/');
   const chemin = path.join(dossier, 'faux-zotify.sh');
-  fs.writeFileSync(chemin, `#!/bin/sh\nexec node "${cible}" "$@"\n`);
+  // `process.execPath` et non « node » : le Mac de destination n'a PAS de Node
+  // installé — le paquet embarque le sien. Un lanceur qui appelle « node » y
+  // sort en 127, le leurre ne répond donc pas à `--help`, le diagnostic conclut
+  // que cette version de zotify n'accepte aucun dossier de destination, et six
+  // tests d'intégration tombent. Ils passaient partout ailleurs : l'intégration
+  // continue, elle, a bien un Node dans son PATH.
+  fs.writeFileSync(chemin, `#!/bin/sh\nexec "${process.execPath}" "${cible}" "$@"\n`);
   fs.chmodSync(chemin, 0o755);
   return chemin;
 }
@@ -56,15 +65,22 @@ function fabriquerLanceur(dossier) {
  * Un ffmpeg factice, posé dans le PATH le temps des tests.
  *
  * Le diagnostic refuse — à raison — de synchroniser sans ffmpeg : son absence
- * fait détruire des morceaux en silence. Mais ces tests utilisent le format
- * « copie », donc ils ne convertissent rien : ils n'ont pas à dépendre de la
- * présence réelle de ffmpeg sur la machine, qui manque notamment sur les
- * serveurs macOS d'intégration continue. On satisfait donc la vérification sans
- * prétendre tester la conversion, qui a ses propres tests.
+ * fait détruire des morceaux en silence. Et depuis que la conversion tourne
+ * PENDANT le téléchargement, deux de ces tests convertissent pour de bon : il ne
+ * suffit plus de répondre à `-version`, il faut produire un fichier.
+ *
+ * Ce leurre ne code rien — il recopie et rallonge, ce qui suffit à passer la
+ * garde de vraisemblance. Ce qui est éprouvé ici, c'est l'ORCHESTRATION : quand
+ * un fichier est vu, quand il est converti, ce que la liste de lecture désigne.
+ * La conversion elle-même a ses propres tests, qui appellent le vrai binaire.
+ * Et la machine cible n'a de toute façon pas ffmpeg dans son PATH.
  */
 function poserFfmpegFactice(dossier) {
   const chemin = path.join(dossier, 'ffmpeg');
-  fs.writeFileSync(chemin, '#!/bin/sh\necho "ffmpeg version 7.1 (factice)"\nexit 0\n');
+  const cible = path.join(ICI, 'aide-faux-ffmpeg.js').split(path.sep).join('/');
+  // Même raison que pour le leurre zotify : `process.execPath`, jamais « node ».
+  // Le Mac de destination n'a pas de Node dans son PATH.
+  fs.writeFileSync(chemin, `#!/bin/sh\nexec "${process.execPath}" "${cible}" "$@"\n`);
   fs.chmodSync(chemin, 0o755);
   process.env.PATH = `${dossier}${path.delimiter}${process.env.PATH}`;
   return chemin;
@@ -323,8 +339,275 @@ test('une playlist désactivée est ignorée', { skip: SAUTER, timeout: 90_000 }
   }
 });
 
+// ---------------------------------------------------------------------------
+// Une ligne d'information n'est pas un titre perdu — la chaîne entière
+// ---------------------------------------------------------------------------
+//
+// CE TEST EST LE PLUS IMPORTANT DE CE LOT, parce qu'il rejoue la situation
+// exacte du 19 août 2026 : trois titres arrivent entiers sur le disque, et
+// zotify écrit à côté une ligne par titre disant qu'il n'a pas trouvé les
+// paroles. Cette ligne contient « failed ».
+//
+// Avant le correctif, chaque maillon faisait son travail et l'ensemble mentait :
+// la ligne devenait une erreur, l'erreur devenait un titre perdu, le titre perdu
+// empêchait « allé au bout », et « allé au bout » commandait l'enregistrement de
+// la version Spotify — donc la playlist repartait de zéro à chaque fois et le
+// planificateur espaçait la tentative suivante. Aucun test unitaire ne pouvait
+// le voir : chaque pièce était juste.
+test('des paroles introuvables ne font perdre aucun titre, et n’empêchent pas d’aller au bout',
+  { skip: SAUTER, timeout: 90_000 }, async () => {
+    const { musique, nettoyer } = préparer();
+    process.env.FAUX_ZOTIFY_SCENARIO = 'paroles-manquantes';
+    process.env.FAUX_ZOTIFY_PLAYLIST = 'Été 2026';
+
+    try {
+      const { bilan } = await synchroniser('manuelle');
+
+      assert.equal(bilan.nbFichiers, 3, 'les trois titres sont bien arrivés');
+      assert.equal(listerAudio(path.join(musique, 'Été 2026')).length, 3);
+
+      // Les lignes sont conservées — on ne les cache pas — mais elles ne
+      // comptent pas comme des titres perdus.
+      assert.ok(bilan.lignesErreur.length >= 3, 'les lignes doivent rester consultables');
+      assert.equal(bilan.nbErreurs, 0, 'aucun titre n’est perdu : ils sont tous sur le disque');
+      assert.equal(bilan.nbSignalements, bilan.lignesErreur.length);
+
+      assert.equal(bilan.phrase, '3 nouveaux titres',
+        'la phrase annonçait « 3 repris plus tard » alors que les trois étaient là');
+      assert.ok(!bilan.àReprendre?.length, 'rien à reprendre : la playlist est allée au bout');
+
+      // Le maillon qui coûtait le plus cher, et le plus invisible.
+      assert.ok(
+        étatModule.repriseEnAttente() === null
+        || étatModule.repriseEnAttente()?.playlistsTerminées?.includes('test-1'),
+        'la playlist doit être marquée terminée',
+      );
+    } finally {
+      nettoyer();
+    }
+  });
+
+// Une seule ecriture pour une meme chose : le journal melangeait « Deep dive »
+// et « https://open.spotify.com/playlist/2QZ… » dans la meme liste.
+test('une playlist est toujours designee de la meme facon', () => {
+  const url = 'https://open.spotify.com/playlist/2QZXaM9N2FaAoef9FYHFp8';
+  assert.equal(nomAffichable({ nom: 'Deep dive', url }), 'Deep dive');
+  assert.equal(nomAffichable({ nom: null, url }), 'playlist/2QZXaM9N2FaAoef9FYHFp8');
+  assert.equal(nomAffichable({ nom: null, url }, 'Nom deduit du dossier'), 'Nom deduit du dossier');
+  assert.equal(nomAffichable({ nom: null, url: 'spotify:album:abc123' }), 'album/abc123');
+  assert.equal(nomAffichable({}), 'playlist sans nom');
+});
+
+// ---------------------------------------------------------------------------
+// Aucun fichier ne reste dans le mauvais format
+// ---------------------------------------------------------------------------
+//
+// CE QUE CES DEUX TESTS ATTRAPENT, et qui s'est produit en vrai : le 19 août
+// 2026, deux exécutions arrêtées en cours de route ont laissé TREIZE fichiers en
+// Ogg alors que le réglage demandait du MP3. `convertirLot` sortait à la
+// première boucle quand l'arrêt était déjà demandé, et rien ne les rattrapait
+// jamais — la conversion ne regardait que les nouveautés de l'exécution en
+// cours, pendant que `--skip-existing` empêchait zotify de les reproposer. Les
+// listes `.m3u8` pointaient donc des fichiers que Rekordbox ne lit pas.
+
+/** Les sources restées sans jumeau converti, sous toute la bibliothèque. */
+function orphelins(racine, extensionCible) {
+  const trouvés = [];
+  const parcourir = (dossier) => {
+    for (const entrée of fs.readdirSync(dossier, { withFileTypes: true })) {
+      const complet = path.join(dossier, entrée.name);
+      if (entrée.isDirectory()) { parcourir(complet); continue; }
+      if (!entrée.name.toLowerCase().endsWith('.ogg')) continue;
+      const jumeau = `${complet.slice(0, -4)}.${extensionCible}`;
+      if (!fs.existsSync(jumeau)) trouvés.push(path.relative(racine, complet));
+    }
+  };
+  parcourir(racine);
+  return trouvés;
+}
+
+test('une synchronisation ne laisse aucun fichier dans le mauvais format',
+  { skip: SAUTER, timeout: 120_000 }, async () => {
+    const { musique, nettoyer } = préparer({
+      qualité: { niveau: 'tres_elevee', format: 'mp3_320', paroles: false },
+    });
+    process.env.FAUX_ZOTIFY_SCENARIO = 'normal';
+    process.env.FAUX_ZOTIFY_PLAYLIST = 'Été 2026';
+
+    try {
+      const { bilan } = await synchroniser('manuelle');
+
+      assert.deepEqual(orphelins(musique, 'mp3'), [], 'des Ogg sont restés sans converti');
+      assert.equal(bilan.nbConvertis, 3);
+
+      // Et la liste de lecture doit pointer les fichiers convertis, pas les
+      // sources. C'est le second visage du même défaut : les .mp3 étaient
+      // parfois là, mais le .m3u8 renvoyait quand même vers les .ogg.
+      const liste = fs.readFileSync(
+        path.join(musique, 'Été 2026', 'Été 2026.m3u8'), 'utf8',
+      );
+      assert.ok(!liste.includes('.ogg'), `la liste pointe encore des sources :\n${liste}`);
+      assert.equal((liste.match(/\.mp3/g) || []).length, 3);
+    } finally {
+      nettoyer();
+    }
+  });
+
+// LE CAS OÙ LA GARDE EST SEULE À POUVOIR REFUSER : la bibliothèque porte déjà
+// des fichiers laissés dans le mauvais format par une exécution précédente, et
+// zotify ne redescendra rien puisque les fichiers sont là. Sans le rattrapage,
+// ces Ogg restent en Ogg pour toujours — c'est exactement l'état trouvé sur le
+// disque du Mac.
+test('les fichiers laissés dans le mauvais format sont rattrapés au démarrage',
+  { skip: SAUTER, timeout: 120_000 }, async () => {
+    const { musique, nettoyer } = préparer({
+      qualité: { niveau: 'tres_elevee', format: 'mp3_320', paroles: false },
+    });
+    process.env.FAUX_ZOTIFY_SCENARIO = 'normal';
+    process.env.FAUX_ZOTIFY_PLAYLIST = 'Été 2026';
+
+    try {
+      // L'état exact du 19 août, en miniature : des Ogg seuls, dans une playlist
+      // que la synchronisation ne touchera pas.
+      const abandonnée = path.join(musique, 'Interrompue');
+      fs.mkdirSync(abandonnée, { recursive: true });
+      for (const nom of ['01 - A.ogg', '02 - B.ogg', '03 - C.ogg']) {
+        fs.writeFileSync(path.join(abandonnée, nom), Buffer.alloc(5_000_000, 1));
+      }
+
+      const { bilan } = await synchroniser('manuelle');
+
+      assert.deepEqual(orphelins(musique, 'mp3'), [], 'le rattrapage n’a pas eu lieu');
+      assert.equal(bilan.rattrapés, 3, 'le rattrapage doit être compté et annoncé');
+    } finally {
+      nettoyer();
+    }
+  });
+
+// LE TEST QUE CE LOT DEVAIT PRODUIRE, et le plus proche de ce qui est arrivé :
+// on appuie sur « Arrêter » au milieu d'une playlist. Avant, `convertirLot`
+// sortait à la première boucle parce que l'arrêt était déjà demandé — les
+// fichiers descendus restaient en Ogg, et plus rien ne les reprenait.
+test('un arrêt en milieu de playlist ne laisse aucun fichier non converti',
+  { skip: SAUTER, timeout: 120_000 }, async () => {
+    const { musique, nettoyer } = préparer({
+      qualité: { niveau: 'tres_elevee', format: 'mp3_320', paroles: false },
+    });
+    process.env.FAUX_ZOTIFY_SCENARIO = 'lent';
+    process.env.FAUX_ZOTIFY_PLAYLIST = 'Été 2026';
+
+    try {
+      const enCours = synchroniser('manuelle');
+      await new Promise((r) => { setTimeout(r, 1100); });
+      assert.equal(demanderArrêt(), true, 'l’arrêt n’a pas été pris en compte');
+
+      const { bilan } = await enCours;
+
+      assert.equal(bilan.interrompu, true, 'le scénario devait bien être interrompu');
+      const convertis = fs.existsSync(path.join(musique, 'Été 2026'))
+        ? fs.readdirSync(path.join(musique, 'Été 2026')).filter((f) => f.endsWith('.mp3'))
+        : [];
+      assert.ok(convertis.length >= 1, 'au moins un titre devait être descendu puis converti');
+      assert.deepEqual(orphelins(musique, 'mp3'), [],
+        'des fichiers sont restés dans le mauvais format après l’arrêt');
+    } finally {
+      nettoyer();
+    }
+  });
+
+// ---------------------------------------------------------------------------
+// La politique de retrait, enfin applicable — et jamais aveuglément
+// ---------------------------------------------------------------------------
+//
+// `saitReprendreSansLeFichier()` renvoyait `false` en dur : le choix
+// « Archiver » ou « Corbeille » était donc refusé en silence à CHAQUE
+// synchronisation. L'utilisateur a posé « Corbeille » le 19 août 2026 à 15 h 27,
+// et l'app le lui a repris sans le dire, indéfiniment.
+
+test('un retrait demandé s’applique quand zotify a bien inscrit le morceau',
+  { skip: SAUTER, timeout: 120_000 }, async () => {
+    const { musique, nettoyer } = préparer({
+      qualité: { niveau: 'tres_elevee', format: 'mp3_320', paroles: false },
+      retrait: { politique: 'conserver', sourcesAprèsConversion: 'archiver' },
+    });
+    process.env.FAUX_ZOTIFY_SCENARIO = 'normal';
+    process.env.FAUX_ZOTIFY_PLAYLIST = 'Été 2026';
+    delete process.env.FAUX_ZOTIFY_SANS_JOURNAL;
+
+    try {
+      const { bilan } = await synchroniser('manuelle');
+
+      const dossier = path.join(musique, 'Été 2026');
+      assert.equal(bilan.playlists[0].nbConvertis, 3);
+      assert.equal(fs.readdirSync(dossier).filter((f) => f.endsWith('.ogg')).length, 0,
+        'les sources devaient partir : le journal les connaît');
+      assert.equal(fs.readdirSync(dossier).filter((f) => f.endsWith('.mp3')).length, 3);
+      assert.ok(fs.existsSync(path.join(musique, '_Archive')), 'archivées, donc récupérables');
+
+      // Le journal vaut desormais la bibliotheque : il doit exister ET etre copie.
+      assert.ok(fs.existsSync(path.join(DONNÉES, '.song_archive')));
+      assert.ok(fs.existsSync(path.join(DONNÉES, '.song_archive.sauvegarde')));
+    } finally {
+      nettoyer();
+    }
+  });
+
+// LE CAS OÙ LA GARDE EST SEULE À POUVOIR REFUSER. Tout est en place — l'option
+// déclarée, le journal créé, la politique demandée — mais zotify n'a rien
+// inscrit. Sans ce filtre, on jetterait des sources qu'il ne saurait pas
+// reprendre, et la bibliothèque repartirait par le réseau.
+test('un morceau absent du journal garde sa source, même retrait demandé',
+  { skip: SAUTER, timeout: 120_000 }, async () => {
+    const { musique, nettoyer } = préparer({
+      qualité: { niveau: 'tres_elevee', format: 'mp3_320', paroles: false },
+      retrait: { politique: 'conserver', sourcesAprèsConversion: 'archiver' },
+    });
+    process.env.FAUX_ZOTIFY_SCENARIO = 'normal';
+    process.env.FAUX_ZOTIFY_PLAYLIST = 'Été 2026';
+    process.env.FAUX_ZOTIFY_SANS_JOURNAL = '1';
+
+    try {
+      const { bilan } = await synchroniser('manuelle');
+      const dossier = path.join(musique, 'Été 2026');
+
+      assert.equal(fs.readdirSync(dossier).filter((f) => f.endsWith('.ogg')).length, 3,
+        'aucune source ne doit partir sans trace dans le journal');
+      assert.equal(bilan.playlists[0].nbConvertis, 3, 'la conversion, elle, a bien eu lieu');
+    } finally {
+      delete process.env.FAUX_ZOTIFY_SANS_JOURNAL;
+      nettoyer();
+    }
+  });
+
+// LE CHAÎNAGE, ET NON LA PIÈCE. `phraseJournal` a son propre test unitaire ;
+// celui-ci vérifie qu'elle est bien APPELÉE — c'est exactement le maillon qui
+// manquait, puisque le catalogue savait déjà traduire et que le journal
+// l'ignorait.
+test('le journal ne recopie plus l’anglais brut de zotify',
+  { skip: SAUTER, timeout: 90_000 }, async () => {
+    const { nettoyer } = préparer();
+    process.env.FAUX_ZOTIFY_SCENARIO = 'echec-total';
+
+    try {
+      await synchroniser('manuelle');
+      const lignes = journal.récent(200).map((e) => e.message);
+      const anglaises = lignes.filter((m) => /Errno|Rate limit exceeded|Failed fetching audio key/.test(m));
+      assert.deepEqual(
+        anglaises, [],
+        `des lignes techniques anglaises sont arrivées telles quelles :\n  ${anglaises.join('\n  ')}`,
+      );
+      assert.ok(
+        lignes.some((m) => /Spotify a refusé de livrer un morceau/.test(m)),
+        'la traduction française n’apparaît pas',
+      );
+    } finally {
+      nettoyer();
+    }
+  });
+
 test.after(() => {
   delete process.env.FAUX_ZOTIFY_SCENARIO;
+  delete process.env.FAUX_ZOTIFY_SANS_JOURNAL;
   delete process.env.FAUX_ZOTIFY_PLAYLIST;
   fs.rmSync(DONNÉES, { recursive: true, force: true });
 });

@@ -24,9 +24,15 @@ import {
 import { fichierVerrou, assurerDossier, dossierDonnées, volumeMonté, espaceLibre } from './chemins.js';
 import { journal } from './journal.js';
 import { diagnostiquer, GRAVITÉ } from './diagnostic.js';
-import { construireArguments, télécharger, saitReprendreSansLeFichier } from './zotify.js';
+import {
+  construireArguments, télécharger, saitReprendreSansLeFichier,
+  assurerJournalTéléchargements, cheminsDéjàTéléchargés, sauvegarderJournalTéléchargements,
+} from './zotify.js';
 import { modèleActif } from './organisation.js';
-import { nécessiteConversion, convertirLot, PROFILS } from './conversion.js';
+import {
+  nécessiteConversion, convertirLot, PROFILS,
+  démarrerConversionContinue, rattraperConversions,
+} from './conversion.js';
 import { exporterDepuisConfig } from './exports-dj.js';
 import { analyserPlaylist } from './analyse.js';
 import {
@@ -35,7 +41,28 @@ import {
 } from './bibliotheque.js';
 import * as étatModule from './etat.js';
 import { conditionToujoursRemplie, empêcherLaVeille } from './energie.js';
-import { phraseBilan } from './erreurs.js';
+import { phraseBilan, compterTitresPerdus } from './erreurs.js';
+
+/**
+ * Le nom sous lequel une playlist est désignée à l'utilisateur.
+ *
+ * `bilan.àReprendre` contenait tantôt un nom (« Deep dive »), tantôt une URL
+ * complète, selon que la playlist avait déjà été nommée. Deux formes pour la
+ * même chose : illisible dans le journal, et impossible à rapprocher d'une ligne
+ * à l'autre. On tranche pour le nom.
+ *
+ * Le repli n'est PAS l'URL entière mais son identifiant, qui est déjà ce que
+ * l'accueil affiche sous chaque playlist non nommée : une seule écriture pour
+ * une même chose, partout dans l'app.
+ */
+export function nomAffichable(playlist, nomDéduit = null) {
+  if (nomDéduit) return nomDéduit;
+  if (playlist?.nom) return playlist.nom;
+
+  const url = String(playlist?.url ?? '');
+  const trouvé = /(playlist|album|artist|track)[/:]([A-Za-z0-9]+)/.exec(url);
+  return trouvé ? `${trouvé[1]}/${trouvé[2]}` : (url || 'playlist sans nom');
+}
 
 // ---------------------------------------------------------------------------
 // Verrou d'exécution
@@ -195,6 +222,13 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
     playlists: [],
     nbFichiers: 0,
     nbConvertis: 0,
+    // DEUX CHIFFRES, PAS UN. Ils étaient confondus, et cette confusion a coûté
+    // au projet un horaire de synchronisation reporté pour une parole
+    // manquante. `nbSignalements` compte les LIGNES que zotify a marquées ;
+    // `nbErreurs` compte les TITRES réellement perdus. Une ligne d'information
+    // — paroles introuvables, morceau retiré du catalogue — pèse sur le premier
+    // et jamais sur le second.
+    nbSignalements: 0,
     nbErreurs: 0,
     interrompu: false,
     réglagesNonAppliqués: [],
@@ -242,6 +276,53 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
         );
         bilan.reprise = { déjàTraitées: playlists.length - restantes.length };
         playlists = restantes;
+      }
+    }
+
+    // --- Le journal des telechargements -----------------------------------
+    //
+    // Cree AVANT toute execution de zotify, et seulement si l'utilisateur a
+    // demande un retrait des fichiers d'origine. Sans ce fichier, zotify tient
+    // son journal pour desactive et n'y ecrit jamais rien : il resterait absent
+    // pour toujours, et la politique de retrait resterait refusee en silence.
+    // Verifie dans sa source (utils.py:320), et sur la machine — apres dix-sept
+    // titres, le fichier n'existait pas.
+    if (c.retrait?.sourcesAprèsConversion && c.retrait.sourcesAprèsConversion !== 'conserver') {
+      assurerJournalTéléchargements(dossierDonnées());
+    }
+
+    // --- Rattrapage des conversions laissees en plan ----------------------
+    //
+    // POURQUOI CE PASSAGE EXISTE. Avant lui, une execution interrompue laissait
+    // ses fichiers dans le mauvais format et RIEN ne les reprenait jamais : la
+    // conversion ne regardait que les nouveautes de l'execution en cours, et
+    // « --skip-existing » empeche zotify de reproposer un fichier deja present.
+    // Le 19 aout 2026, treize titres sont ainsi restes en Ogg, dans des listes
+    // de lecture que Rekordbox ne sait pas lire.
+    //
+    // Il est place APRES le diagnostic, donc apres la verification de ffmpeg :
+    // sans lui, chaque fichier remonterait une erreur separee.
+    if (nécessiteConversion(c.qualité.format)) {
+      const rattrapage = await rattraperConversions({
+        dossier: c.général.dossierMusique,
+        format: c.qualité.format,
+        signalArrêt: courante.contrôleur.signal,
+        surProgrès: ({ nom }) => {
+          courante.dernièreLigne = `Rattrapage de conversion — ${nom}`;
+          diffuser({ type: 'ligne', texte: courante.dernièreLigne, sousType: 'conversion' });
+        },
+      });
+      if (rattrapage.convertis.length) {
+        bilan.nbConvertis += rattrapage.convertis.length;
+        bilan.rattrapés = rattrapage.convertis.length;
+        journal.info(
+          `${rattrapage.convertis.length} fichier(s) restes dans le mauvais format ont ete `
+          + `convertis avant de commencer.`,
+        );
+      }
+      if (rattrapage.échecs.length) {
+        bilan.nbSignalements += rattrapage.échecs.length;
+        bilan.nbErreurs += rattrapage.échecs.length;
       }
     }
 
@@ -357,6 +438,7 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
         capacités,
         modèle,
         dossierRacine: racine,
+        dossierJournal: dossierDonnées(),
       });
 
       // Un réglage bloquant arrête tout : renseigner `bilan.échec` empêche
@@ -383,26 +465,70 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
         }
       }
 
-      const résultat = await télécharger({
-        commande: capacités.chemin,
-        arguments: args,
-        dossierRacine: racine,
-        signalArrêt: courante.contrôleur.signal,
-        surÉvénement: (événement) => {
-          if (événement.type === 'ligne') {
-            courante.dernièreLigne = événement.texte;
-            if (typeof événement.pourcentage === 'number') {
-              courante.pourcentage = événement.pourcentage;
+      // LA CONVERSION TOURNE PENDANT LE TÉLÉCHARGEMENT, PAS APRÈS.
+      //
+      // Sinon, une interruption laisse les fichiers dans le mauvais format et
+      // rien ne les rattrape jamais : c'est ce qui a laissé treize Ogg sur le
+      // disque le 19 août 2026, dans des listes de lecture que Rekordbox ne sait
+      // pas lire. zotify écrit en .tmp puis renomme, donc tout fichier portant
+      // une extension audio est complet ; et ses trente secondes d'attente entre
+      // deux titres laissent tout le temps à ffmpeg.
+      const moisson = nécessiteConversion(cp.qualité.format)
+        ? démarrerConversionContinue({
+          dossier: racine,
+          format: cp.qualité.format,
+          signalArrêt: courante.contrôleur.signal,
+          surProgrès: ({ nom }) => {
+            // L'avancement doit dire la conversion, pas seulement le
+            // téléchargement : sans ça, la moitié du travail est invisible.
+            courante.dernièreLigne = `Conversion — ${nom}`;
+            diffuser({
+              type: 'ligne', texte: courante.dernièreLigne,
+              sousType: 'conversion', playlist: courante.playlistActuelle,
+            });
+          },
+        })
+        : null;
+
+      let résultat;
+      let convertisAuFilDeLEau = { convertis: [], échecs: [] };
+      try {
+        résultat = await télécharger({
+          commande: capacités.chemin,
+          arguments: args,
+          dossierRacine: racine,
+          signalArrêt: courante.contrôleur.signal,
+          surÉvénement: (événement) => {
+            if (événement.type === 'ligne') {
+              courante.dernièreLigne = événement.texte;
+              if (typeof événement.pourcentage === 'number') {
+                courante.pourcentage = événement.pourcentage;
+              }
             }
-          }
-          diffuser({ ...événement, playlist: courante.playlistActuelle });
-        },
-      });
+            diffuser({ ...événement, playlist: courante.playlistActuelle });
+          },
+        });
+      } finally {
+        // Dans un `finally` : une exception du téléchargement ne doit pas
+        // laisser une minuterie tourner sur un moteur qui croit avoir fini.
+        if (moisson) convertisAuFilDeLEau = await moisson.arrêter();
+      }
+
+      // Les fichiers PRODUITS par la moisson sont apparus dans le dossier
+      // pendant que zotify tournait : l'inventaire avant/après les voit comme
+      // des nouveautés. Les compter ferait annoncer deux fois chaque morceau.
+      const produits = new Set(convertisAuFilDeLEau.convertis.map((c2) => c2.destination));
+      if (produits.size && résultat.nouveaux) {
+        résultat.nouveaux = résultat.nouveaux.filter((f) => !produits.has(f.chemin));
+      }
 
       const nbNouveaux = résultat.nouveaux?.length ?? 0;
       courante.fichiersTéléchargés += nbNouveaux;
       bilan.nbFichiers += nbNouveaux;
-      bilan.nbErreurs += résultat.erreurs?.length ?? 0;
+      const lignesSignalées = résultat.erreurs ?? [];
+      const titresPerdus = compterTitresPerdus(lignesSignalées);
+      bilan.nbSignalements += lignesSignalées.length;
+      bilan.nbErreurs += titresPerdus;
       if (résultat.interrompu) bilan.interrompu = true;
 
       // zotify a demandé une connexion Spotify et rien n'est arrivé : chaque
@@ -441,7 +567,10 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
         },
       });
 
+      // Un échec de conversion EST une perte : le fichier attendu n'existe pas
+      // dans le format demandé. Il compte donc dans les deux chiffres.
       bilan.nbConvertis += aprèsTéléchargement.nbConvertis;
+      bilan.nbSignalements += aprèsTéléchargement.échecsConversion.length;
       bilan.nbErreurs += aprèsTéléchargement.échecsConversion.length;
 
       bilan.playlists.push({
@@ -450,7 +579,8 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
         nbFichiers: nbNouveaux,
         nbConvertis: aprèsTéléchargement.nbConvertis,
         nbSuspects: résultat.suspects?.length ?? 0,
-        nbErreurs: résultat.erreurs?.length ?? 0,
+        nbSignalements: lignesSignalées.length,
+        nbErreurs: titresPerdus + aprèsTéléchargement.échecsConversion.length,
         duréeMs: résultat.duréeMs,
         échec: résultat.lancé ? null : résultat.erreur,
       });
@@ -466,9 +596,19 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
       }
 
       const infos = étatModule.infosPlaylist(playlist.id) || {};
+      // « Allée au bout » ne regarde QUE les titres perdus, jamais le nombre de
+      // lignes. Avec l'ancienne condition, une seule parole introuvable suffisait
+      // à ne jamais marquer une playlist terminée : sa version Spotify n'était
+      // jamais enregistrée, elle repartait de zéro à chaque exécution, et le
+      // planificateur espaçait la tentative suivante. Constaté le 19 août 2026 —
+      // les trois playlists étaient sans `versionSpotify` après trois passages.
+      //
+      // Un morceau retiré du catalogue est de gravité INFO pour la même raison,
+      // en sens inverse : il n'arrivera jamais, donc reprendre la playlist
+      // indéfiniment ne servirait qu'à repayer l'attente.
       const alléAuBout = !résultat.interrompu
         && !résultat.expiré
-        && (résultat.erreurs?.length ?? 0) === 0;
+        && titresPerdus === 0;
 
       étatModule.majPlaylist(playlist.id, {
         dernierSuccès: new Date().toISOString(),
@@ -481,19 +621,23 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
         ...(alléAuBout && analyse.version ? { versionSpotify: analyse.version, nbManquants: 0 } : {}),
       });
 
-      // Une playlist qui n'a RIEN produit alors qu'elle a signalé des erreurs
-      // mérite une seconde chance : une coupure réseau passagère ou une
-      // limitation temporaire de Spotify se résorbent souvent en quelques
-      // minutes. Une playlist sans nouveauté et sans erreur, elle, est
-      // simplement à jour — la reprendre ne servirait à rien.
       // Une playlist n'est « terminée » que si zotify est allé au bout. Une
       // interruption — bouton Arrêter, veille du Mac — au milieu d'une playlist
       // de 200 titres en laisse 160 non téléchargés : la marquer terminée
-      // ferait sauter ces 160 titres à la reprise.
+      // ferait sauter ces 160 titres à la reprise. Un titre réellement perdu
+      // mérite la même seconde chance : une coupure réseau ou une limitation
+      // temporaire de Spotify se résorbent souvent en quelques minutes.
+      //
+      // Le commentaire qui vivait ici parlait d'une playlist « qui n'a RIEN
+      // produit » : cette règle-là n'existe plus depuis longtemps, et le message
+      // affiché à l'utilisateur la répétait encore.
       const mériteReprise = !alléAuBout;
 
-      if (mériteReprise) àReprendre.push(playlist);
-      else étatModule.noterPlaylistTerminée(playlist.id);
+      if (mériteReprise) {
+        àReprendre.push({ id: playlist.id, nom: nomAffichable(playlist, aprèsTéléchargement.nom) });
+      } else {
+        étatModule.noterPlaylistTerminée(playlist.id);
+      }
 
       diffuser({
         type: 'playlist-fin',
@@ -510,10 +654,11 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
     // seconde tentative immédiate — qui échouerait de toute façon si la cause
     // est une limitation de débit, justement la plus fréquente.
     if (àReprendre.length) {
-      bilan.àReprendre = àReprendre.map((p) => p.nom || p.url);
+      bilan.àReprendre = àReprendre.map((p) => p.nom);
+      const quelles = àReprendre.map((p) => `« ${p.nom} »`).join(', ');
       journal.avertir(
-        `${àReprendre.length} playlist(s) n'ont rien donné et ont signalé des erreurs. ` +
-          'Elles seront reprises en priorité à la prochaine synchronisation.',
+        `${àReprendre.length} playlist(s) ne sont pas allées au bout : ${quelles}. `
+        + 'Elles seront reprises en priorité à la prochaine synchronisation.',
       );
     }
 
@@ -545,6 +690,13 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
     // On n'avance la date de référence que si l'exécution est allée au bout :
     // une synchronisation interrompue doit repartir à la prochaine occasion,
     // pas attendre 48 h de plus.
+    // Le journal des téléchargements vaut désormais la bibliothèque entière :
+    // le perdre après avoir retiré les Ogg ferait tout revenir par le réseau.
+    // Une copie de sûreté à chaque exécution coûte quelques kilo-octets.
+    if (c.retrait?.sourcesAprèsConversion && c.retrait.sourcesAprèsConversion !== 'conserver') {
+      sauvegarderJournalTéléchargements(dossierDonnées());
+    }
+
     if (!bilan.interrompu && !bilan.échec) {
       étatModule.marquerSuccès(new Date());
       étatModule.fermerReprise();
@@ -576,10 +728,16 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
 
     étatModule.enregistrerExécution(bilan);
 
-    journal.info(
-      `Synchronisation terminée — ${bilan.phrase} ` +
-        `(${bilan.nbErreurs} erreur(s) au total).`,
-    );
+    // On ne dit « erreur » que s'il y en a une. Le compte des lignes signalées
+    // vient APRÈS, entre parenthèses, et seulement s'il diffère : c'est une
+    // information de mise au point, pas un motif d'inquiétude. Le journal
+    // annonçait « 4 erreur(s) au total » pour quatre paroles introuvables.
+    const détail = bilan.nbErreurs > 0
+      ? ` (${bilan.nbErreurs} titre(s) perdu(s))`
+      : bilan.nbSignalements > 0
+        ? ` (${bilan.nbSignalements} ligne(s) signalée(s), aucun titre perdu)`
+        : '';
+    journal.info(`Synchronisation terminée — ${bilan.phrase}${détail}.`);
     diffuser({ type: 'synchro-fin', bilan });
 
     return { lancé: true, bilan };
@@ -626,7 +784,13 @@ export async function finaliserPlaylist({
       signalArrêt,
     });
 
-    résultat.nbConvertis = bilan.convertis.length;
+    // « Déjà converti » compte comme converti : depuis que la moisson tourne
+    // pendant le téléchargement, c'est même le cas NORMAL — à l'arrivée ici,
+    // tout est déjà fait. Les ignorer ferait retomber les listes de lecture sur
+    // les .ogg, exactement le défaut que la moisson devait supprimer.
+    const réussis = [...bilan.convertis, ...(bilan.déjàPrêts ?? [])];
+
+    résultat.nbConvertis = réussis.length;
     résultat.échecsConversion = bilan.échecs;
 
     if (bilan.échecs.length) {
@@ -636,7 +800,7 @@ export async function finaliserPlaylist({
       );
     }
 
-    fichiersFinaux = bilan.convertis.map((c2) => c2.destination);
+    fichiersFinaux = réussis.map((c2) => c2.destination);
     if (fichiersFinaux.length === 0) fichiersFinaux = nouveaux;
 
     // Sort des fichiers d'origine. Par défaut on les garde : un Ogg permet de
@@ -657,7 +821,9 @@ export async function finaliserPlaylist({
     // DÉSACTIVER le journal ouvrait le garde-fou censé en dépendre, et le
     // retrait des Ogg aurait déclenché le retéléchargement complet qu'il devait
     // empêcher.
-    const journalisePrécédents = saitReprendreSansLeFichier();
+    const journalisePrécédents = saitReprendreSansLeFichier({
+      config: c, capacités, dossierJournal: dossierDonnées(),
+    });
 
     if (politiqueSources !== 'conserver' && !journalisePrécédents) {
       résultat.sourcesNonTraitées =
@@ -668,9 +834,31 @@ export async function finaliserPlaylist({
       politiqueSources = 'conserver';
     }
 
-    if (politiqueSources !== 'conserver' && bilan.convertis.length) {
+    // ON NE RETIRE QUE CE QUE ZOTIFY A INSCRIT DANS SON JOURNAL.
+    //
+    // Le garde-fou précédent dit que le journal EXISTE ; celui-ci dit que CE
+    // morceau-là y figure. Sans lui, activer la politique jetterait aussi les
+    // Ogg descendus AVANT que le journal n'existe — et ceux-là seraient
+    // retéléchargés, exactement ce que toute cette mécanique cherche à
+    // empêcher. Le cas n'est pas théorique : dix-sept titres étaient déjà sur ce
+    // disque quand le journal a été créé.
+    const inscrits = politiqueSources !== 'conserver'
+      ? cheminsDéjàTéléchargés(dossierDonnées())
+      : new Set();
+    const retirables = réussis.filter(({ source }) => inscrits.has(path.resolve(source)));
+
+    if (politiqueSources !== 'conserver' && réussis.length > retirables.length) {
+      résultat.sourcesHorsJournal = réussis.length - retirables.length;
+      journal.info(
+        `${résultat.sourcesHorsJournal} fichier(s) d'origine ont été conservés : ils ont `
+        + 'été téléchargés avant la mise en service du journal, et rien ne garantit '
+        + 'qu’ils ne seraient pas repris. Les prochains suivront la politique choisie.',
+      );
+    }
+
+    if (politiqueSources !== 'conserver' && retirables.length) {
       résultat.sourcesTraitées = 0;
-      for (const { source } of bilan.convertis) {
+      for (const { source } of retirables) {
         try {
           if (politiqueSources === 'archiver') {
             archiver(source, racine);
@@ -822,11 +1010,20 @@ export function variablesImpossibles(c = config()) {
 export function ouvrirDossierMusique() {
   const dossier = config().général.dossierMusique;
   assurerDossier(dossier);
+  ouvrirDansLeSystème(dossier);
+}
+
+/** Ouvre un fichier avec l'application que le système lui associe. */
+export function ouvrirFichier(chemin) {
+  ouvrirDansLeSystème(chemin);
+}
+
+function ouvrirDansLeSystème(cible) {
   const commande = process.platform === 'darwin'
     ? 'open'
     : process.platform === 'win32' ? 'explorer' : 'xdg-open';
   import('node:child_process').then(({ spawn }) => {
-    const processus = spawn(commande, [path.resolve(dossier)], {
+    const processus = spawn(commande, [path.resolve(cible)], {
       detached: true, stdio: 'ignore',
     });
     // Un exécutable absent — xdg-open n'est pas garanti sous Linux — émet
@@ -835,7 +1032,7 @@ export function ouvrirDossierMusique() {
     // ouvrir un dossier dans l'explorateur de fichiers.
     processus.on('error', (erreur) => {
       journal.avertir(
-        'Le dossier n’a pas pu être ouvert dans l’explorateur de fichiers.',
+        'Cet élément n’a pas pu être ouvert par le système.',
         erreur.message,
       );
     });

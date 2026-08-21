@@ -20,6 +20,27 @@ export const GRAVITÉ = {
  * spécifiques sont placés avant les plus généraux.
  */
 export const CATALOGUE = [
+  // EN PREMIER, ET CE N'EST PAS UN DÉTAIL D'ORDRE.
+  //
+  // Cette ligne contient « FAILED TO FETCH » : sans entrée dédiée elle tombait
+  // en « erreur non identifiée », gravité ATTENTION, c'est-à-dire « le titre est
+  // perdu ». Le 19 août 2026, 19 des 22 « erreurs » de la journée étaient
+  // celle-ci — pendant que les titres arrivaient entiers sur le disque.
+  //
+  // Elle ne devrait plus apparaître du tout depuis que Zotijean passe
+  // « --lyrics-to-metadata false », mais un vieux fork qui ignore cette option
+  // continuera de l'écrire. La reconnaître coûte trois lignes ; ne pas la
+  // reconnaître coûtait un horaire de synchronisation reporté.
+  {
+    code: 'paroles_absentes',
+    motif: /skipping:?\s*lyrics|lyrics (?:for|not)/i,
+    titre: 'Paroles introuvables pour un morceau',
+    gravité: GRAVITÉ.INFO,
+    explication:
+      'Le morceau est téléchargé normalement : seules ses paroles manquent, et vous ' +
+      'ne les avez pas demandées. Rien n’est perdu.',
+    geste: 'Rien à faire.',
+  },
   {
     code: 'cle_audio',
     motif: /audio.?key|failed fetching audio/i,
@@ -185,6 +206,59 @@ export function synthétiser(lignes) {
   return [...parCode.values()].sort(
     (a, b) => ordre[a.gravité] - ordre[b.gravité] || b.nombre - a.nombre,
   );
+}
+
+/**
+ * Ce qu'une ligne de zotify doit devenir dans le journal.
+ *
+ * CE QU'ELLE RÉPARE. Le 19 août 2026, l'utilisateur a lu ceci, tel quel :
+ *
+ *     zotify : ConnectionResetError: [Errno 54] Connection reset by peer
+ *     zotify : ConnectionRefusedError: [Errno 61] Connection refused
+ *
+ * Le catalogue savait pourtant les traduire — c'est le journal qui recopiait la
+ * ligne d'origine AVANT de passer par lui. Toute la taxonomie de ce fichier
+ * était contournée à l'endroit précis où elle sert le plus : le seul endroit où
+ * l'utilisateur regarde quand quelque chose ne va pas.
+ *
+ * La règle du projet : « ce qui s'est passé, ce que ça implique, quoi faire. »
+ * Un numéro d'erreur système ne dit aucune des trois.
+ *
+ * La ligne d'origine n'est pas jetée pour autant : elle part en détail, pour
+ * qu'un rapport de panne reste exploitable. Et une ligne que le catalogue ne
+ * reconnaît PAS est conservée telle quelle — la traduire au jugé effacerait la
+ * seule information exploitable qu'elle contient.
+ */
+export function phraseJournal(ligne) {
+  const diagnostic = reconnaître(ligne);
+  if (!diagnostic.reconnu) return { texte: `zotify : ${ligne}` };
+
+  const geste = diagnostic.geste ? ` ${diagnostic.geste}` : '';
+  return {
+    texte: `${diagnostic.titre} — ${diagnostic.explication}${geste}`,
+    détail: String(ligne),
+  };
+}
+
+/**
+ * Combien de TITRES ont réellement été perdus.
+ *
+ * TROIS CHOSES ÉTAIENT CONFONDUES DANS UN SEUL CHIFFRE, et le projet l'a payé :
+ *
+ *   1. le nombre de lignes que zotify a signalées,
+ *   2. le nombre de titres réellement perdus,
+ *   3. le fait qu'une playlist soit allée jusqu'au bout.
+ *
+ * Une ligne d'information — des paroles introuvables — gonflait les trois. Elle
+ * ne doit peser sur aucune des deux dernières : le morceau est sur le disque.
+ *
+ * Cette fonction répond à la deuxième question, et à elle seule. Un SÉRIEUX
+ * compte aussi : une limitation de débit signifie bien un morceau non obtenu.
+ */
+export function compterTitresPerdus(lignes) {
+  return synthétiser(lignes)
+    .filter((s) => s.gravité === GRAVITÉ.ATTENTION || s.gravité === GRAVITÉ.SÉRIEUX)
+    .reduce((somme, s) => somme + s.nombre, 0);
 }
 
 /** Une phrase résumant l'état d'une exécution, pour la notification et le bandeau. */

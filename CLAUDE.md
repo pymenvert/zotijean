@@ -56,6 +56,32 @@ Ces points ont été vérifiés sur sources primaires en août 2026. Ils contrai
 - **Rythme : ~30 s entre les pistes** (`--bulk-wait-time`) pour éviter les erreurs de
   clé audio et limiter le risque de suspension de compte. Soit ~17 h pour 2 000 titres.
   L'interface doit annoncer cette durée, jamais la masquer.
+- **`--lyrics-to-file false` ne suffit PAS à couper les paroles.** `fetch_lyrics`
+  (`api.py`) ne renonce que si `lyrics_to_file` ET `lyrics_to_metadata` sont faux,
+  et le second vaut `True` par défaut. zotify interroge donc les paroles de chaque
+  titre, échoue le plus souvent, et écrit une ligne `SKIPPING: LYRICS FOR …
+  (FAILED TO FETCH)` qui contient le mot « failed ». Vérifié sur sa source et
+  sur trois exécutions réelles le 19 août 2026 : 19 des 22 « erreurs » venaient
+  de là.
+- **Toutes ses lignes ne sont pas des erreurs, même celles qui disent
+  « failed ».** Une ligne d'information comptée comme erreur ne gonfle pas
+  seulement un chiffre : elle empêche de marquer une playlist terminée, la remet
+  en tête de la file, et espace la prochaine tentative planifiée. Trois chiffres
+  doivent rester distincts : les lignes signalées, les titres perdus, et le fait
+  d'être allé au bout.
+- **`GRAVITÉ.INFO` ne veut pas dire « sans importance », mais « rien à
+  reprendre ».** Un morceau retiré du catalogue n'arrivera jamais ; le compter
+  comme perdu ferait reprendre la playlist indéfiniment.
+- **Son journal global (`.song_archive`) ne se crée JAMAIS tout seul.**
+  `SongArchive.__init__` (`utils.py:320`) pose
+  `disabled = not Path(filepath).exists()`, et `add_obj` sort aussitôt : absent,
+  il le reste pour toujours. Le créer vide une fois est ce qui débloque
+  `--skip-prev-downloaded`, donc toute politique de retrait des fichiers
+  d'origine. `--song-archive-location` prend un DOSSIER, auquel zotify ajoute
+  lui-même le nom du fichier.
+- **Il télécharge en `.tmp` puis renomme** : un fichier portant une extension
+  audio est complet. C'est ce qui autorise à convertir PENDANT le téléchargement,
+  et donc à ne jamais laisser de fichier dans le mauvais format après un arrêt.
 
 ### Qualité et formats
 
@@ -114,11 +140,13 @@ Bloc lu par les commandes `/flow:*`. Chaque commande y figurant a été exécut�
 vérifiée le 16 août 2026 — jamais écrite au jugé.
 
 - **type** : web (moteur local + interface dans le navigateur)
-- **stack** : Node.js 24, runner de test natif, zéro dépendance npm
+- **stack** : Node.js 22, runner de test natif, zéro dépendance npm
+  (22.14.0 dans le paquet, `22` en intégration continue, `>=20` déclaré)
 - **format** : aucun
 - **lint** : aucun
 - **typecheck** : aucun
-- **test** : `node --test` → 432 tests, 419 verts, 13 ignorés
+- **test** : `node --test` → 500 tests. **500 verts sur macOS**, la cible ;
+  le PC Windows en ignore 13, faute de pouvoir lancer le leurre zotify
 - **build** : aucun en local ; le paquet est construit par
   `.github/workflows/publication.yml`
 - **run** : `node server.js` → http://127.0.0.1:8787
@@ -137,10 +165,17 @@ node --test               # lance les tests (runner natif de Node, aucune dépen
 
 Sur le Mac, `Zotijean - Mac.command` fait la même chose par double-clic.
 
-**`node --test tests/` ne fonctionne plus.** Sous Node 24, passer le dossier ne
-découvre plus les fichiers : la commande rapporte un test unique et un échec, ce qui
-donne l'illusion d'une suite cassée alors qu'elle est verte. Utiliser `node --test`
-sans argument, comme le script `test` du `package.json`.
+**`node --test tests/` ne fonctionne pas.** Passer le dossier ne découvre plus les
+fichiers : la commande rapporte un test unique et un échec, ce qui donne l'illusion
+d'une suite cassée alors qu'elle est verte. Utiliser `node --test` sans argument,
+comme le script `test` du `package.json`. Revérifié sous Node 22.14.0 le 19 août
+2026 — ce n'est pas propre à une version récente.
+
+**Le Mac de destination n'a AUCUN Node installé** : le paquet embarque le sien
+dans `Contents/Resources/outils/node/`. Un script de test qui appelle « node » par
+le `PATH` y sort en 127 — c'est ce qui faisait tomber six tests d'intégration sur
+la machine cible pendant qu'ils passaient partout ailleurs. Utiliser
+`process.execPath`.
 
 **Lancer le serveur démarre le planificateur** (`planificateur.démarrer`, à la fin de
 `server.js`), qui peut déclencher une synchronisation réelle. Sur le PC de
@@ -155,13 +190,36 @@ lancer le serveur n'est pas un geste neutre.
 des menus macOS sont écrits ; le paquet embarque Node, Python, ffmpeg et zotify, tous en
 arm64. Voir `CHANGELOG.md`.
 
-**La 1.0.7 n'a jamais été regardée sur un Mac.** Elle corrige presque exclusivement du
-rendu — contrastes, mises en page, repliements — et tout a été mesuré sous Chromium sur
-Windows. Le paquet est publié pour être essayé, pas parce qu'il a été vu.
+**Version 1.1.0 préparée** (19 août 2026), **non publiée** : elle n'est ni taguée
+ni poussée. C'est la première version écrite après avoir vu l'application tourner
+sur son Mac, avec le vrai zotify et une vraie bibliothèque.
 
-Le nombre de tests ne figure QUE dans le bloc « Profil projet » ci-dessus. Il était
-écrit ici aussi, et les deux comptes ont divergé de cent tests sans que personne ne le
-voie — un chiffre répété est un chiffre qui vieillit deux fois plus vite.
+Ce que cette mise en service a coûté, et qui est corrigé ici : une parole
+manquante comptée comme un titre perdu (et donc un horaire de synchronisation
+déplacé), treize fichiers coincés dans le mauvais format sans que rien ne les
+rattrape, une politique de retrait refusée en silence à chaque exécution, six
+réglages muets, et des pannes affichées en anglais brut. S'y ajoute une
+fonctionnalité : retrouver où racheter chaque morceau en sans-perte.
+
+**Toujours pas vu à l'œil sur cet écran.** Tout ce qui est visuel a été mesuré
+par le moteur de rendu — contrastes composés, largeurs, nombres de lignes — et
+une partie regardée dans un navigateur, mais la capture d'écran système rend une
+image noire faute d'autorisation. Un chiffre conforme et un écran laid cohabitent
+toujours aussi bien.
+
+### La leçon qui revient : la pièce est juste, l'assemblage ment
+
+Quatre défauts de la 1.1.0 partagent exactement cette forme, et aucun test
+unitaire ne pouvait les voir :
+
+- le catalogue savait traduire les erreurs ; le journal recopiait l'anglais ;
+- les explications des réglages existaient ; l'interface écrivait `''` en dur ;
+- la conversion marchait ; personne ne rattrapait ce qu'une interruption laissait ;
+- `compterTitresPerdus` n'existait pas, mais chaque pièce du comptage était juste.
+
+Corollaire pour les tests : un garde posé sur une seule pièce reste vert sur une
+application cassée. Chaque lot de cette version ajoute donc un test qui rejoue le
+CHAÎNAGE, et chacun a été éprouvé en cassant le code exprès.
 
 ### La leçon de la 1.0.5 : confronter, pas supposer
 
@@ -221,6 +279,20 @@ Publier une version : bumper `package.json` **et** `macos/Info.plist` (mêmes nu
 compléter `CHANGELOG.md`, commiter, **attendre la CI verte**, puis pousser le tag
 `vX.Y.Z` — `.github/workflows/publication.yml` construit et publie la release. Il refuse
 un paquet incomplet ou non natif Apple Silicon.
+
+Trois choses qui ne se devinent pas, et qui ont chacune coûté du temps le 19 août 2026 :
+
+- **La CI ne se déclenche PAS quand on pousse une branche.** `tests.yml` écoute
+  `push` sur `main`, les demandes de fusion, et `workflow_dispatch`. Pousser
+  `release/1.1.0` ne lance donc rien, et on croit la branche vérifiée alors que
+  rien n'a tourné. Pour l'éprouver : ouvrir la demande de fusion, ou
+  `gh workflow run Tests --ref <branche>`.
+- **Toucher à un fichier de `.github/workflows/` exige la portée `workflow`**
+  sur le jeton, en plus de `repo`. Sans elle GitHub REFUSE la poussée entière —
+  pas seulement ce fichier — avec un message explicite. `gh auth refresh -s workflow`.
+- **Une machine neuve n'a aucun identifiant git** : ni clé SSH, ni jeton dans le
+  trousseau. `git push` échoue sur « could not read Username ». Il faut
+  s'authentifier une fois avant toute publication.
 
 ### Ce qui reste ouvert : `docs/reste-a-faire.md`
 

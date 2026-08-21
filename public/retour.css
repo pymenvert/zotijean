@@ -3,32 +3,21 @@
    contenu interdit les styles en ligne, et n'a plus à être réécrite pour cette
    page. Voir src/securite.js, qui est la seule politique du projet.
 
-   Les couleurs reprennent celles de app.css plutôt que de les réinventer : la
+   Les couleurs viennent de palette.css, comme pour les deux autres pages : la
    page se lit deux secondes, mais elle ne doit pas ressembler à un autre
    logiciel. */
 
+/* LA PALETTE N'EST PLUS ICI. Cette feuille redéclarait cinq couleurs sous les
+   mêmes noms et les mêmes valeurs qu'app.css : une duplication littérale, sans
+   aucun argument pour. Elles vivent désormais dans palette.css, chargée avant
+   celle-ci par la page — vérifié à l'identique dans src/api.js et par les deux
+   contrôles de la chaîne de publication.
+   Ne subsiste ici que ce qui est propre à cette page. */
 :root {
-  --fond:    #0e1014;
-  --texte:   #e8ecf2;
-  --texte-2: #9aa4b2;
-  --ok:      #4ec98a;
-  --erreur:  #f4685f;
   /* Repli : le corps porte toujours .reussi ou .echec, mais si cette classe
      venait à sauter, le verdict resterait lisible en couleur de texte plutôt
      que de disparaître. */
   --verdict: var(--texte);
-}
-
-/* Recalculées pour le fond clair, pas éclaircies : les teintes pensées sur fond
-   sombre tombent sous le seuil de 4,5 pour 1 une fois posées sur du blanc. */
-@media (prefers-color-scheme: light) {
-  :root {
-    --fond:    #f4f5f7;
-    --texte:   #1a1d23;
-    --texte-2: #4d5764;
-    --ok:      #14784a;
-    --erreur:  #c1352b;
-  }
 }
 
 body.reussi { --verdict: var(--ok); }

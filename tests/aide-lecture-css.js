@@ -131,9 +131,18 @@ export function lecteurDe(feuille) {
    * les sélecteurs indentés, et app.css en contient — ceux des requêtes de
    * média. Aucun n'est gardé aujourd'hui ; le jour où il faudra en garder un,
    * c'est cette fonction qu'il faudra étendre.
+   *
+   * UN SÉLECTEUR GROUPÉ COMPTE, et il a fallu l'apprendre : le jour où la coche
+   * a été partagée entre l'option cochée et la case « Suivre » du journal, la
+   * règle est devenue « A,\nB { … } ». Trois tests sont tombés en annonçant que
+   * la règle avait DISPARU — alors qu'elle était intacte et peignait toujours.
+   * Un message trompeur envoie chercher au mauvais endroit ; on accepte donc
+   * qu'un sélecteur soit suivi d'une virgule, à condition qu'il ouvre bien la
+   * ligne. Ce qui reste refusé n'a pas changé : deux règles distinctes pour le
+   * même sélecteur, où c'est la cascade qui déciderait.
    */
   function règle(sélecteur) {
-    const trouvées = [...feuille.matchAll(new RegExp(`^${échapper(sélecteur)}\\s*\\{`, 'gm'))];
+    const trouvées = [...feuille.matchAll(new RegExp(`^${échapper(sélecteur)}\\s*[,{]`, 'gm'))];
     assert.equal(
       trouvées.length,
       1,

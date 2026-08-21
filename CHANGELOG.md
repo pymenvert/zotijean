@@ -1,5 +1,176 @@
 # Journal des versions
 
+## 1.1.0 — 19 août 2026
+
+**La première version écrite APRÈS avoir vu l'application tourner sur son Mac.**
+Toutes les 1.0.x ont été mises au point sur un PC Windows, contre une doublure du
+téléchargeur. Trois synchronisations réelles ont suffi à montrer ce qu'aucun test
+ne pouvait voir — et à faire tomber six tests qui passaient partout ailleurs.
+
+Le fil commun de presque tout ce qui suit : **chaque pièce était juste, et
+l'assemblage mentait.** Une ligne d'information devenait une erreur, une erreur
+devenait un titre perdu, un titre perdu déplaçait un horaire de synchronisation.
+Le catalogue savait traduire les pannes, personne ne l'appelait. Le texte des
+réglages existait, l'interface le vidait. C'est ce genre de défaut que cette
+version corrige, et pour lequel elle ajoute des garde-fous qui éprouvent le
+CHAÎNAGE et non plus seulement les pièces.
+
+### Les pannes s'expliquent en français
+
+Le journal affichait « ConnectionResetError: [Errno 54] Connection reset by
+peer ». L'application savait traduire cette ligne depuis longtemps — elle ne le
+faisait simplement pas à cet endroit-là, le seul qu'on regarde quand quelque
+chose ne va pas. Vous lisez maintenant ce qui s'est passé, ce que ça implique et
+quoi faire ; la ligne technique reste consultable à côté, pour un signalement.
+
+### La notice ressemble enfin à l'application
+
+Les deux ne se ressemblaient pas, et ce n'était pas qu'une affaire de goût : la
+notice avait sa propre copie des couleurs, figée à une version d'avant les
+corrections de lisibilité. Ses petits textes gris étaient donc trop pâles —
+huit endroits, tous mesurés, tous déjà corrigés une fois ailleurs.
+
+Les couleurs vivent maintenant dans un seul fichier, partagé par les trois pages.
+Les huit défauts ont disparu sans avoir été touchés un par un, et un contrôle
+empêche désormais qu'une couleur soit réécrite ailleurs.
+
+### Ce qui se voyait mal se voit
+
+Le bouton principal désactivé — l'état de l'application au repos, sur les sept
+écrans — était une bouillie de la couleur de son fond : son libellé passe de 1,4
+à 5,1 de contraste. Il ne s'estompe plus, il se repeint : on lit « Synchroniser »
+même quand on ne peut pas encore cliquer.
+
+La rainure de la barre de progression était invisible : on voyait où on en
+était, jamais par rapport à quoi. Elle a maintenant un contour, ce qui règle du
+même coup une tension qu'on croyait devoir arbitrer — l'éclaircir suffisamment
+l'aurait rapprochée de la jauge qu'elle contient.
+
+Les quatre tuiles de l'accueil ne se rangent plus en trois plus une, avec deux
+emplacements vides. La case « Suivre » du journal, seule case restée au dessin du
+système, ressemble enfin aux autres. Et plus rien ne déborde horizontalement,
+même sur une fenêtre de 356 pixels.
+
+### Le rythme de vérification dit enfin ce que chaque choix coûte
+
+Six réglages, six libellés nus, au milieu de vingt-six autres qui expliquent tous
+ce qu'on y perd. On choisissait « Toutes les 6 heures » ou « Une fois par
+semaine » sans qu'on vous dise ce que ça change — alors que c'est le réglage qui
+décide de la fréquence à laquelle l'application parle à Spotify, donc de
+l'exposition de votre compte.
+
+Chacun porte maintenant sa phrase, avec son inconvénient. Et comme ces
+explications prennent de la place, la liste passe en pleine largeur : au passage,
+« Tous les deux jours » ne se casse plus en deux à côté de son étiquette
+« Recommandé ».
+
+### « Archiver » et « Corbeille » fonctionnent enfin
+
+Ces deux réglages existaient, on pouvait les choisir, et l'application les
+reprenait en silence à chaque synchronisation : les fichiers d'origine étaient
+conservés quoi qu'il arrive. La raison était bonne — retirer un Ogg aurait fait
+tout retélécharger — mais elle avait cessé d'être vraie.
+
+Le téléchargeur sait tenir un journal de ce qu'il a pris, indépendant des
+fichiers présents. Il ne le crée jamais tout seul : c'est ce détail, et lui
+seul, qui bloquait tout. Zotijean le crée désormais, et le range avec vos
+réglages plutôt que dans un dossier système — il est sauvegardé après chaque
+synchronisation, parce qu'il vaut maintenant votre bibliothèque entière.
+
+Un fichier d'origine n'est retiré que si le téléchargeur a réellement inscrit le
+morceau. S'il ne l'a pas fait, l'Ogg reste en place et l'app vous le dit : mieux
+vaut un fichier en trop qu'un téléchargement de dix-sept heures.
+
+À savoir, et c'est écrit sous le réglage : tant qu'un retrait est demandé,
+supprimer un morceau à la main ne le fera plus revenir tout seul.
+
+### Les morceaux sont convertis pendant le téléchargement, plus après
+
+Une synchronisation arrêtée en cours de route laissait ses fichiers dans le
+format d'origine — et plus rien ne les reprenait jamais. Sur ce Mac, treize
+titres étaient ainsi restés en Ogg alors que le réglage demandait du MP3, dans
+des listes de lecture que Rekordbox ne sait pas lire. C'est précisément ce que
+le choix du format devait éviter.
+
+La conversion travaille désormais en même temps que le téléchargement : à
+l'instant où vous appuyez sur « Arrêter », ce qui est descendu est déjà
+converti. Un passage de rattrapage s'occupe en plus, au démarrage de chaque
+synchronisation, des fichiers laissés en plan par le passé — sans rien
+retélécharger.
+
+Et l'avancement dit maintenant la conversion, pas seulement le téléchargement :
+la moitié du travail était invisible.
+
+### Une parole manquante n'était pas une erreur, et l'app le croyait
+
+Le défaut le plus coûteux de la première mise en service. zotify allait chercher
+les paroles de chaque titre — alors qu'elles étaient décochées —, échouait, et
+écrivait une ligne contenant « failed ». Sur trois synchronisations réelles,
+**19 des 22 « erreurs » étaient celle-là**, pendant que les morceaux arrivaient
+entiers sur le disque.
+
+Ce n'était pas qu'un chiffre faux. Cette fausse erreur empêchait de marquer une
+playlist terminée, donc sa version Spotify n'était jamais enregistrée, donc elle
+était retéléchargée en entier à chaque fois — et le planificateur espaçait la
+tentative suivante. Une parole manquante déplaçait un horaire.
+
+Quatre choses ont changé. zotify reçoit désormais les deux options qu'il faut
+pour vraiment renoncer aux paroles. La ligne est reconnue pour ce qu'elle est :
+une information. Et surtout, trois chiffres qui n'en faisaient qu'un sont
+séparés — le nombre de lignes signalées, le nombre de titres réellement perdus,
+et le fait qu'une playlist soit allée au bout. Le bandeau d'accueil,
+l'historique et le rapport de diagnostic disaient tous « erreur » là où il n'y
+avait rien de perdu.
+
+Enfin, le message qui annonçait des playlists « qui n'ont rien donné » le disait
+de playlists ayant livré tous leurs titres. Il dit maintenant ce qui s'est passé,
+et nomme les playlists concernées au lieu d'afficher tantôt un nom, tantôt une
+adresse.
+
+### Racheter en sans-perte
+
+Spotify plafonne à 320 kb/s et convertir ne récupère rien : le seul vrai FLAC est
+celui qu'on rachète ailleurs. L'onglet Qualité gagne un bouton qui cherche, pour
+chaque morceau de la bibliothèque, où il est vendu — et écrit une page de liens
+cliquables à la racine du dossier de musique, plus un CSV.
+
+Mesuré sur la bibliothèque réelle : **15 morceaux sur 17 ont un lien d'achat en
+sans-perte**, dont 12 vers le morceau lui-même.
+
+Le rapport ne ment pas sur ce qu'il sait. Quatre niveaux, écrits en toutes
+lettres : un lien vers le morceau dont la vente a été vérifiée sur la page, un
+lien vers l'album quand le morceau n'est pas vendu seul, un lien d'achat
+seulement référencé ailleurs — et, pour le reste, une recherche à faire à la
+main. Une boutique qui ne vend pas de sans-perte est signalée comme telle, même
+quand le catalogue l'annonce en « achat ».
+
+La durée est annoncée avant de cliquer, l'avancement défile pendant, et une
+recherche interrompue reprend là où elle s'est arrêtée.
+
+Ce qui avait été imaginé au départ — chercher par ISRC — a été mesuré puis
+abandonné : sur ce répertoire, cette clé ne rendait **aucun lien sur treize**.
+Le détail des chiffres est dans `docs/specs/racheter-en-sans-perte.md`.
+
+### Les fichiers convertis perdaient toutes leurs étiquettes
+
+Un morceau converti en MP3, FLAC ou AIFF sortait **sans artiste, sans titre, sans
+album et sans identifiant** — alors que le fichier d'origine les portait tous.
+
+La cause tient à une particularité de l'Ogg : il range ses étiquettes sur le flux
+audio, pas sur le fichier. La conversion recopiait celles du fichier, où il n'y
+avait rien. Le test qui gardait cette ligne vérifiait la présence de l'option,
+jamais son effet.
+
+Les fichiers déjà convertis restent sans étiquettes : le correctif ne vaut que
+pour les conversions à venir.
+
+### Les exports Rekordbox et Serato ignoraient les étiquettes des Ogg
+
+Même cause, deuxième endroit, et il touchait le format que l'app produit par
+défaut. Album, année, tonalité, label, remixeur, identifiant : rien n'arrivait
+jusqu'à Rekordbox, qui ne recevait qu'un artiste et un titre déduits du nom de
+fichier. C'était précisément ce que l'export XML était censé apporter.
+
 ## 1.0.7 — 17 août 2026
 
 Une version qui ne change rien à ce que fait l'application, et beaucoup à ce

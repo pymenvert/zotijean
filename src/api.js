@@ -4,6 +4,7 @@
 // contenir de logique métier. Tout ce qui décide vit dans les modules dédiés.
 
 import crypto from 'node:crypto';
+import fs from 'node:fs';
 
 import { config, enregistrer, modifier, attenteEffective } from './config.js';
 import { catalogueComplet, VARIABLES, trouver, FORMATS, RYTHMES } from './options.js';
@@ -21,6 +22,7 @@ import { synthétiser } from './erreurs.js';
 import { lireContextePlateforme } from './energie.js';
 import * as spotify from './spotify.js';
 import { inventaireComplet } from './analyse.js';
+import { produireRapport, estimerRapport, cheminsDuRapport } from './achats.js';
 
 /**
  * L'adresse que Spotify appellera après autorisation.
@@ -149,6 +151,10 @@ function phraseHéros({ enCours, décision, dernier, résumé, installation }) {
   if (dernièreExéc?.échec) {
     return { texte: 'La dernière synchronisation a échoué', détail: dernièreExéc.échec, ton: 'erreur' };
   }
+  // `nbErreurs` compte des TITRES PERDUS, pas des lignes signalées : le bandeau
+  // annonçait « 4 titres en erreur » pour quatre paroles introuvables, sur des
+  // morceaux entiers et convertis. La distinction est faite dans le moteur ; ici
+  // il suffit de ne pas la défaire.
   if (dernièreExéc?.nbErreurs > 0) {
     return {
       texte: 'Tout est à jour, avec des avertissements',
@@ -495,7 +501,8 @@ export const routes = {
       section('DERNIÈRES EXÉCUTIONS'),
       ...(é.exécutions.slice(0, 10).map((e) =>
         `${new Date(e.date).toLocaleString('fr-FR')} — ${e.déclencheur} — ` +
-        `${e.nbFichiers} titre(s), ${e.nbErreurs} erreur(s)` +
+        `${e.nbFichiers} titre(s), ${e.nbErreurs} perdu(s)` +
+        (e.nbSignalements > e.nbErreurs ? `, ${e.nbSignalements} ligne(s) signalee(s)` : '') +
         (e.échec ? `\n    ÉCHEC : ${e.échec}` : '')) || ['aucune']),
       section('PROBLÈMES RENCONTRÉS'),
       ...(synthétiser(é.exécutions.flatMap((e) => e.lignesErreur || [])).map((s) =>
@@ -527,5 +534,67 @@ export const routes = {
   'POST /api/ouvrir-dossier': () => {
     synchro.ouvrirDossierMusique();
     return { ouvert: true };
+  },
+
+  /**
+   * Ce que coûterait le rapport des rachats — demandé AVANT de le lancer.
+   *
+   * Sans cet appel, l'interface proposerait un bouton dont personne ne peut
+   * savoir s'il rend la main dans dix secondes ou dans une heure. C'est le
+   * critère 6 de la spécification, et la règle du projet sur les opérations
+   * longues.
+   */
+  'GET /api/achats/estimation': async () => {
+    const e = await estimerRapport(config());
+    return {
+      ...e,
+      phrase: e.nbPistes === 0
+        ? 'Aucun morceau dans la bibliothèque : rien à chercher pour l’instant.'
+        : `${e.nbPistes} morceau(x) à examiner, environ ${duréeEnFrançais(e.secondes * 1000)}.`,
+    };
+  },
+
+  /**
+   * Cherche où racheter chaque morceau en sans-perte.
+   *
+   * Une nouvelle par morceau : c'est peu fréquent — trois secondes chacun — et
+   * l'utilisateur doit voir défiler les noms pour distinguer un travail qui
+   * avance d'un écran figé.
+   */
+  'POST /api/achats/rapport': async () => {
+    const résultat = await produireRapport(config(), {
+      surProgrès: ({ traités, total, piste, fiche, repris }) => {
+        synchro.diffuserÉvénement({
+          type: 'achats-progres',
+          traités,
+          total,
+          pourcentage: total ? Math.round((traités / total) * 100) : 0,
+          texte: `${piste.artiste} — ${piste.titre}`,
+          étage: fiche?.étage ?? null,
+          repris: repris === true,
+        });
+      },
+    });
+    if (résultat.vide) throw new ErreurRequête(résultat.message);
+    return résultat;
+  },
+
+  /**
+   * Ouvre le rapport dans le navigateur par défaut.
+   *
+   * Il n'est PAS servi par ce serveur, et c'est délibéré : la politique de
+   * sécurité du contenu efface les styles écrits dans la page, or ce fichier
+   * doit rester autonome pour être lisible depuis le Finder, envoyé par courriel
+   * ou gardé sur une clé. On le fait ouvrir par le système.
+   */
+  'POST /api/achats/ouvrir': () => {
+    const { html } = cheminsDuRapport(config());
+    if (!fs.existsSync(html)) {
+      throw new ErreurRequête(
+        'Le rapport n’a pas encore été produit. Lancez-le une première fois.',
+      );
+    }
+    synchro.ouvrirFichier(html);
+    return { ouvert: true, chemin: html };
   },
 };

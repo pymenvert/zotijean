@@ -24,21 +24,43 @@ Quatre sections, et les distinctions comptent :
   gravité.
 - **Relevés datés** — ce qu'une vérification a trouvé, et qu'elle n'a pas corrigé.
 
-Dernière mise à jour : 17 août 2026, pendant la préparation de la 1.0.7.
+Dernière mise à jour : 19 août 2026, après la préparation de la 1.1.0 — sept lots
+issus de la première mise en service réelle sur le Mac.
 
 ---
 
 ## Défauts constatés
 
-*Rien en attente ici pour le moment.*
+### Les actions de la chaîne d'intégration ciblent Node 20, qui est déprécié
 
-Les deux qui y figuraient — les encadrés d'explication indiscernables d'une
-option cochée, et le titre de l'option recommandée coupé en quatre — ont été
-corrigés le 17 août 2026, dans la 1.0.7.
+Vu le 19 août 2026 sur l'exécution `32280533751` : **les cinq tâches** annoncent
+la même chose, sur les trois systèmes.
 
-Ce qui reste constaté mais non corrigé se trouve plus bas, dans les **relevés
-datés** : ce sont des points qu'une vérification a trouvés en marge de son sujet,
-et qui attendent d'être pris pour eux-mêmes.
+> Node.js 20 is deprecated. The following actions target Node.js 20 but are
+> being forced to run on Node.js 24.
+
+Trois actions, à cinq endroits :
+
+- `actions/checkout@v4` — `publication.yml:38`, `tests.yml:38`, `tests.yml:193`
+- `actions/setup-node@v4` — `publication.yml:40`, `tests.yml:40`, `tests.yml:194`
+- `actions/upload-artifact@v4` — `tests.yml:632`
+
+**Ça n'échoue pas aujourd'hui**, parce que les runners forcent Node 24 à leur
+place. Ça échouera le jour où GitHub retirera ce rattrapage — et ce jour-là, ce
+sera la chaîne de PUBLICATION qui tombera, c'est-à-dire au pire moment.
+
+Le correctif tient en cinq lignes : passer les trois actions en `@v5`. Il n'a pas
+été fait le 19 août parce que ç'aurait été un huitième sujet dans une branche qui
+en portait déjà sept, et que mélanger deux sujets rend un changement illisible
+six mois plus tard. Les six défauts vus le 19 août 2026 sur le Mac — avec le
+vrai zotify et une vraie bibliothèque — ont tous été corrigés dans la 1.1.0. Le
+détail de chacun, et ce que sa correction a appris en marge, est dans les relevés
+datés en fin de fichier.
+
+Deux autres constats de ce jour-là appellent une décision plutôt qu'un correctif,
+et sont écrits comme relevés plus bas : il existe un **second zotify** sur la
+machine de Pym, plus récent en numéro et dépourvu de `--skip-existing`, et
+**personne n'a encore regardé l'app à l'œil** sur cet écran.
 
 ## Chantiers en pause
 
@@ -50,49 +72,49 @@ chemin sûr. Écrire dans les étiquettes exigerait de réécrire le fichier, l�
 Serato stocke points de repère et grilles rythmiques : à ne faire qu'**avec**
 l'utilisateur, sur ses vrais fichiers, en commençant par une simulation.
 
-### Brancher la politique de retrait (Archiver / Corbeille)
-
-Le code est écrit et testé, volontairement non câblé : déplacer ou jeter des
-fichiers de la bibliothèque se décide avec l'utilisateur. La note de l'interface
-dit la vérité sur cet état.
-
 ---
 
 ## Angles morts
 
-### Safari n'a jamais rendu ces styles
+### ~~Safari n'a jamais rendu ces styles~~ — levé le 19 août 2026
 
-Toute l'interface a été mesurée et regardée dans un moteur Chromium, sur un PC
-Windows. La cible est un Mac, où la fenêtre s'ouvrira dans Safari.
+Safari 16.3 a rendu la feuille, et les mesures sont dans le relevé daté du
+19 août plus bas. Les quatre propriétés surveillées passent, `backdrop-filter`
+grâce à son préfixe `-webkit-` déjà présent. Ce qui reste de cet angle mort
+tient en deux lignes, et il est descendu d'un cran :
 
-Ce n'est pas une inquiétude théorique : la feuille de style contient déjà au
-moins un contournement écrit pour Safari — la bibliothèque d'icônes ne peut pas
-être masquée par `display: none`, sinon Safari cesse de résoudre les renvois et
-toutes les icônes disparaissent. Ce piège-là a été trouvé par la lecture, pas par
-un rendu. Les autres, s'il y en a, sont encore là.
+- **`text-wrap: balance` est ignoré par Safari 16.3** (`public/notice.css`,
+  lignes 91 et 106). Sans conséquence : le texte s'affiche, il n'est simplement
+  pas équilibré.
+- **Le navigateur par défaut de ce Mac est Firefox, pas Safari.** L'app s'y
+  ouvrira donc par `open`. Gecko n'a été mesuré ni ici ni ailleurs. L'angle mort
+  n'a pas disparu, il a changé de moteur.
 
-Les points à regarder en premier, parce qu'ils utilisent des propriétés dont le
-support diffère : `:has()`, `color-mix()`, `backdrop-filter`, les pseudo-éléments
-qui dessinent la coche, et la grille des colonnes automatiques.
+~~Et la question que les tests ne savaient pas poser a sa réponse : « Tous les
+deux jours » ne tient PAS sur une ligne.~~ **Réglé le 19 août 2026** : la liste
+des intervalles n'est plus une grille compacte de 190 px. Mesuré après
+correction — une seule ligne à 420 px et au-delà ; en dessous, la mise en page
+est celle d'un téléphone et le repli y est légitime.
 
-**Ce qu'il faudrait pour le lever :** ouvrir l'app sur le Mac, dans les deux
-thèmes, et regarder. Rien d'autre ne remplace ça.
+### ~~L'harmonie générale des teintes n'a jamais été regardée~~ — regardée le 19 août 2026
 
-**Et il faut être précis sur ce que les tests ne font pas.** Aucun moteur de
-rendu n'a jamais lu cette feuille de style dans la chaîne de vérification. Les
-tests relisent le texte du fichier : ils savent qu'une propriété est écrite, pas
-qu'elle produit l'effet attendu. Aucun d'eux ne peut dire si « Tous les deux
-jours » tient sur une ligne — ça se calcule, et seul un navigateur le calcule.
-La relecture par expressions régulières *est* la doublure ; la première
-rencontre réelle sera le Mac.
+Les deux thèmes ont enfin été VUS, sur l'écran du Mac : Safari en thème sombre,
+puis les sept onglets dans les deux thèmes. Rien ne crie, rien ne jure. Gris
+neutres, un seul accent, espacements réguliers, icônes toutes rendues — le
+contournement `display: none` de la bibliothèque de symboles tient.
 
-### L'harmonie générale des teintes n'a jamais été regardée
+Deux remarques de goût, sans gravité et sans mesure derrière :
 
-Les contrastes de `public/app.css` ont été mesurés et corrigés — en 1.0.2 pour le
-texte, en 1.0.7 pour le contour des contrôles. Mais mesurer n'est pas regarder :
-personne n'a jamais jugé si les deux thèmes sont *beaux*, si les teintes
-s'accordent, si quelque chose crie. Un chiffre conforme et un écran laid
-cohabitent très bien.
+- **L'accent du thème clair est un brun**, pas un ambre. Il est parfaitement
+  lisible (c'est le prix payé pour les 7,02 et 5,09 du bouton principal) mais il
+  lit plus « sépia » que « ambre » : les deux thèmes ne se ressemblent pas
+  autant que leurs variables le laissent croire. À arbitrer, pas à corriger.
+- **Le fond des encadrés d'explication est effectivement invisible en clair**,
+  comme annoncé : seul le filet à gauche fait exister le bloc. Vu, et ça
+  fonctionne.
+
+Reste hors de portée d'un regard : la notice, jamais ouverte à l'écran, et dont
+le relevé du 17 août dit qu'elle n'a pas l'identité visuelle de l'app.
 
 ### Le vrai flux de connexion Spotify n'a jamais été joué
 
@@ -113,21 +135,186 @@ que verrait l'utilisateur n'a lui non plus jamais été vu.
 **Ce qu'il faudrait pour le lever :** une vraie connexion, avec un vrai compte,
 sur le Mac. Puis écrire ce qui s'est réellement passé, ici même.
 
-### zotify réel
+**Toujours ouvert au 19 août 2026.** L'app tourne sur le Mac, mais l'API Web de
+Spotify n'y est pas activée : `/api/spotify/etat` répond `actif: false`,
+`clientIdRenseigné: false`, `connecté: false`. Il n'y a donc rien à observer
+tant que Pym n'a pas saisi son identifiant d'application — c'est le seul angle
+mort de cette liste qui demande un geste de sa part, et non du temps machine.
+À noter : le téléchargement, lui, ne passe pas par là. Les identifiants que
+zotify utilise sont les siens, déjà en place
+(`~/Library/Application Support/Zotify/credentials.json`), et ils fonctionnent.
 
-Le format exact de sa sortie, ses codes d'erreur, son comportement quand une
-piste est indisponible dans le pays. Tout est testé contre une doublure. La
-leçon de la 1.0.5 — dix suppositions fausses découvertes en lisant sa source —
-dit assez ce que vaut une doublure qui accepte tout.
+### ~~zotify réel~~ — levé le 19 août 2026
 
-### Un vrai Mac
+zotify 0.17.4 a tourné trois fois et livré 17 titres. Le format de sa sortie,
+son code de sortie menteur, son comportement sur une piste indisponible : tout
+est vérifié, et consigné dans le relevé daté plus bas. Ce que ça a coûté est
+dans « Défauts constatés » : la doublure acceptait des lignes que le vrai zotify
+n'écrit pas de cette façon, et laissait passer celles qu'il écrit vraiment.
 
-La chaîne de publication construit le paquet et le démarre, mais personne n'a
-encore double-cliqué dessus sur la machine de destination.
+Ce qui n'a **pas** été vu, et qui reste supposé : une limitation de débit
+Spotify, un compte sans Premium, un rattrapage long (le plus long a duré
+20 minutes, pas 17 heures), et la veille du Mac pendant une synchronisation.
+
+### ~~Un vrai Mac~~ — levé le 19 août 2026
+
+Le paquet 1.0.7 est installé sur `~/Desktop/Zotijean.app`, lancé par
+double-clic, et il tourne : coquille de barre des menus, moteur Node 22.14.0 en
+sous-processus, environnement Python créé et zotify installé au premier
+démarrage en 4 secondes. Diagnostic complet au vert sur la machine réelle —
+zotify 0.17.4, ffmpeg 9.0 embarqué, identifiants Spotify présents, dossier de
+musique accessible avec 27,2 Go libres.
+
+**Détail qui contredit une hypothèse du projet** : l'écran de ce Mac rend à une
+densité de **1×**, pas 2×. Les traits d'un pixel y sont donc *plus fins* que sur
+le poste de développement où tout a été jugé à 1,5×, et non « un tiers plus
+marqués » comme le craignait le relevé du 17 août.
 
 ---
 
 ## Relevés datés
+
+### 19 août 2026 — première mise en service sur le Mac
+
+La 1.0.7 a été installée et lancée sur la machine de destination. Trois
+synchronisations réelles, 17 titres téléchargés, puis une passe de mesure dans
+Safari. Ce qui suit est ce que la machine a dit, pas ce qu'on attendait d'elle.
+
+#### La suite de tests n'était PAS verte sur le Mac
+
+**Six tests sur 432 tombaient**, tous dans `tests/synchronisation.test.js`,
+c'est-à-dire l'unique test d'intégration de bout en bout. Ils passent sur le PC,
+ils passent en intégration continue, et ils échouaient sur la seule machine qui
+compte.
+
+La cause tient en un mot. Le leurre est lancé par un script `#!/bin/sh` qui fait
+`exec node …` — or **ce Mac n'a pas de Node installé** : le paquet embarque le
+sien. Le lanceur sortait en 127, le faux zotify ne répondait donc pas à
+`--help`, le diagnostic en concluait que cette version de zotify n'accepte aucun
+dossier de destination, et la synchronisation était annulée avant de commencer.
+
+Corrigé en passant par `process.execPath`. **432 sur 432 depuis, sur le Mac** —
+et 0 ignoré, là où le PC en ignore 13.
+
+La leçon est celle que le fichier `CLAUDE.md` énonce déjà, mais retournée : un
+test ne doit pas hériter de `process.platform`, et il ne doit pas non plus
+hériter du `PATH`. Le commentaire de ce test affirmait que ces cas « tournent
+donc pour de bon sur macOS, qui est la plateforme cible ». Ils y tournaient au
+rouge depuis le début.
+
+#### La jauge n'est pas bloquée. La politique ne l'a jamais visée.
+
+C'était le point marqué « à vérifier en priorité sur le Mac ». Réponse mesurée,
+dans Safari 16.3 et dans un moteur Chromium :
+
+- `élément.style.width = '73%'` **s'applique** : jauge posée à 73 %, 970,2 px
+  mesurés pour 970,2 px attendus. **Aucune violation de politique.**
+- `élément.setAttribute('style', …)` **est bloqué**, avec une violation
+  `style-src-attr` — mais l'app n'écrit jamais de cette façon.
+- L'app réelle, chargée entièrement, ne déclenche **aucune** violation.
+
+`tests/styles-en-ligne.test.js` disait donc vrai, et la phrase du relevé du
+17 août qui l'accusait était fausse. La « rafale de messages à chaque
+chargement » n'est reproductible sur aucun des deux moteurs de cette machine.
+
+Au passage, la solution de rechange envisagée fonctionne aussi
+(`insertRule` sur une feuille servie) : elle n'est simplement pas nécessaire.
+
+#### Ce que Safari 16.3 gère, mesuré et non supposé
+
+| Propriété | Safari 16.3 |
+|---|---|
+| `:has()`, `:is()`, `:focus-visible` | oui |
+| `color-mix()` | oui |
+| `backdrop-filter` **sans préfixe** | **non** |
+| `-webkit-backdrop-filter` | oui — et `app.css:785` porte bien les deux |
+| `accent-color` | oui |
+| grille `auto-fit` / `minmax` | oui |
+| `text-wrap: balance` | **non** — ignoré dans `notice.css` |
+
+#### Les contrastes, cette fois calculés par le moteur
+
+Toutes les valeurs précédentes venaient d'un calcul sur la source. Celles-ci
+sortent de `getComputedStyle`, sur le vrai balisage, dans les deux palettes.
+Elles composent les mélanges (`color-mix`), les fonds translucides et les
+dégradés — ce qu'aucune relecture de fichier ne sait faire.
+
+Repère de confiance : le bouton principal actif donne 7,02 et 5,09 en thème
+clair, exactement les deux chiffres écrits en commentaire dans `app.css`. La
+méthode retrouve donc ce qui était déjà connu avant d'annoncer ce qui ne l'était
+pas.
+
+- **Bouton principal désactivé : 1,64 en sombre, 1,36 en clair.** Confirmé, et
+  pire que les « environ 1,5 » annoncés. C'est l'état au repos de l'app.
+- **Rainure de la barre de progression : 1,22 en sombre, 1,25 en clair**, pour
+  un seuil de 3. Confirmé. Mais la tension redoutée n'existe pas : l'écart entre
+  la rainure et la jauge ambre est de 6,83 et 4,07 — il y a toute la place pour
+  éclaircir la rainure sans la confondre avec ce qu'elle contient.
+- **Les deux étiquettes de format : le relevé du 17 août les surestimait.** Sur
+  quatre situations mesurées par thème, **une seule** passe sous le seuil :
+  « perte ajoutée » sur l'option choisie en thème sombre, à **4,41** pour 4,5.
+  Les sept autres vont de 4,82 à 7,46. L'affirmation « le rouge échoue dans les
+  deux thèmes » est démentie : en clair il donne 4,83 et 5,32.
+- Le texte d'explication sous chaque réglage tient : 5,25 en sombre, 6,43 en
+  clair.
+
+#### Ce que la fenêtre étroite révèle, et ce qu'elle ne révèle pas
+
+À **375 px** : rien à signaler. Aucun débordement, tuiles en 2 × 2, la barre
+latérale devient une rangée d'icônes en haut, tout reste lisible. Le point noté
+« non vérifié » le 17 août est donc bon.
+
+À **356 px** : 5 px de débordement (`nav.rail`, `main.scene`). Le seuil est à
+361 px, sous toute largeur de fenêtre réaliste.
+
+À **976 px** : **trois tuiles plus une**, exactement le « bancal » décrit le
+17 août — confirmé sur le Mac.
+
+Attention à un piège de mesure rencontré ici : un cadre de 375 px de large donne
+une vue utile de 356 px une fois ses bordures et sa barre de défilement
+retirées, et fait donc franchir un seuil qu'une vraie fenêtre de 375 px ne
+franchit pas. Les deux chiffres ci-dessus viennent de deux mesures distinctes,
+pas d'une seule interprétée deux fois.
+
+#### Les six explications vides sont bien six, et on sait pourquoi
+
+Mesuré sur l'app réelle : 6 explications vides sur 32, toutes dans
+Planification, toutes des intervalles — « Toutes les 6 heures », « Deux fois par
+jour », « Une fois par jour », « Tous les deux jours », « Tous les trois
+jours », « Une fois par semaine ».
+
+La cause est à `src/options.js:372` : `INTERVALLES` est la seule liste d'options
+du fichier dont les entrées n'ont pas de champ `explication`.
+
+#### Trois questions tranchées en marge
+
+- **Le bouton « Retour » de la première étape est bien désactivé**
+  (`public/app.js:1603`). Reste à savoir s'il *se lit* comme désactivé, ce qui
+  est le même sujet que le bouton principal ci-dessus.
+- **Les quatre Ogg de « Deep dive » ont été supprimés à la main**, dans le
+  Finder, à 15 h 36. Pas par l'app : le garde-fou a été rejoué en isolation avec
+  la configuration réelle et il conserve bien les sources. Conséquence à
+  connaître quand même — ces quatre titres seront **retéléchargés** à la
+  prochaine synchronisation, puisque zotify se repère sur la présence du fichier
+  qu'il écrirait, c'est-à-dire l'Ogg.
+- **`node --test tests/` échoue aussi sous Node 22.** L'avertissement de
+  `CLAUDE.md` est juste sur le fond, faux sur la version : le projet tourne sur
+  Node 22 partout — 22.14.0 dans le paquet, `22` en intégration continue,
+  `>=20` dans `package.json`. Nulle part Node 24.
+
+#### Ce que ce relevé n'a PAS pu établir
+
+- **Personne n'a encore *regardé* l'app sur cet écran.** La capture d'écran
+  système rend une image noire, faute d'autorisation d'enregistrement. Tout ce
+  qui précède est mesuré par le moteur de rendu, pas vu. L'angle mort
+  « l'harmonie générale des teintes » reste donc entier : un chiffre conforme et
+  un écran laid cohabitent toujours aussi bien.
+- **Le thème clair n'a pas été rendu par le système.** Il a été obtenu en
+  appliquant les variables du bloc `prefers-color-scheme: light` à un sous-arbre.
+  Les couleurs composées sont donc bien calculées par Safari, mais une règle qui
+  ne vivrait QUE dans une requête de média n'aurait pas été exercée.
+- **Aucun test de charge.** La plus longue exécution a duré 20 minutes pour
+  12 titres. Le rattrapage de 17 heures reste théorique.
 
 ### 17 août 2026 — épreuve de la suite de tests
 
@@ -244,17 +431,10 @@ C'est la cause commune du point précédent, et le vrai sujet. `public/app.css`,
   accident, ce sont les mêmes défauts, déjà payés une fois. Elle déclare en outre
   sa palette **trois fois** dans le même fichier.
 
-**Ce que ça coûterait de régler :** un fichier `public/palette.css` d'une
-trentaine de lignes, une cinquantaine de renvois à renommer dans `notice.css`,
-un lien à ajouter dans les deux pages et dans le serveur. Une demi-journée.
-**Attention**, deux endroits de la chaîne de publication vérifient que chaque
-feuille est bien servie : les oublier ferait passer un paquet où la palette
-manque et où les trois pages s'afficheraient dans les couleurs par défaut du
-navigateur.
-
-**Ce que ça ferait gagner :** les huit défauts disparaissent comme effet de bord,
-et `tests/contraste.test.js` — qui ne lit aujourd'hui qu'`app.css` — garderait
-les trois pages au lieu d'une.
+~~**Ce que ça coûterait de régler :** un fichier `public/palette.css`…~~
+**FAIT le 19 août 2026.** Voir le relevé daté en fin de fichier : les huit
+défauts ont bien disparu comme effet de bord, et la mesure le confirme sur la
+page réelle — zéro texte sous son seuil, dans les deux thèmes.
 
 #### Trois défauts de l'app mesurés, confirmés, et laissés en place
 
@@ -429,3 +609,384 @@ Rien n'a été **rendu** par un navigateur. Tout est calculé depuis la source, 
 un poste Windows, pour une application dont la cible est un Mac sous Safari. Les
 valeurs composées — mélanges translucides, opacités — sont des calculs, pas ce
 que Safari peint.
+
+### 19 août 2026 — les étiquettes perdues entre le flux et le conteneur
+
+Deux défauts, une seule cause, trouvés en préparant le rapport des rachats :
+**l'Ogg range ses étiquettes sur le FLUX, pas sur le conteneur**, et deux
+endroits du code ne lisaient que le conteneur. Reproduits sur de vrais fichiers
+avec `ffprobe`, corrigés, revérifiés.
+
+- `src/conversion.js` passait `-map_metadata 0`. Sur une source Ogg il n'y a
+  rien à cet endroit — `[FORMAT]` est vide : **tout fichier converti sortait
+  sans artiste, sans titre, sans album et sans ISRC.** Constaté sur les quatre
+  MP3 de « Deep dive », dont les seules étiquettes étaient `TSSE=Lavf`.
+  Corrigé en `0:s:0` ; le même fichier ressort alors complet, et `ffprobe` relit
+  bien `isrc` sans qu'il faille toucher à la trame ID3.
+- `src/exports-dj.js` ne lisait que `format.tags`. **Les exports Rekordbox et
+  Serato ne voyaient donc AUCUNE étiquette des fichiers Ogg** — le format que
+  l'app produit par défaut : ni album, ni année, ni tonalité, ni label, ni
+  remixeur, ni ISRC. Seuls artiste et titre survivaient, déduits du nom de
+  fichier. C'était précisément ce que l'export XML était censé apporter, et que
+  Rekordbox ne lirait jamais autrement.
+
+**Le test qui gardait la première ligne épinglait `'0'`** : il vérifiait la
+présence du drapeau, jamais son effet. Encore la même forme de trou que le
+17 août — une garde testée sur un cas où elle n'est pas seule à décider.
+
+**Ce qui n'est pas rattrapé :** les fichiers déjà convertis restent sans
+étiquettes. Le correctif ne vaut que pour les conversions à venir, et rien ne
+repasse sur l'existant.
+
+
+### 19 août 2026 — « Racheter en sans-perte », et deux défauts trouvés en chemin
+
+Un sondage devait dire si la fonctionnalité décrite dans
+`docs/specs/liens-flac-par-isrc.md` valait la peine d'être écrite. Réponse
+mesurée : **non, pas telle quelle** — sa clé de recherche rendait zéro lien sur
+treize. La spécification a été refondue et renommée
+`docs/specs/racheter-en-sans-perte.md`, qui porte les chiffres.
+
+Les deux défauts de métadonnées trouvés en chemin ont leur propre relevé
+ci-dessus — ils avaient leur propre cause et leur propre correctif.
+
+**Ce qui reste ouvert sur ce sujet :**
+
+- Le rapport ne couvre que les morceaux **déjà téléchargés**, pas les playlists
+  entières. Il faut pour cela l'API Spotify, aujourd'hui inactive (`spotify.actif`
+  à `false`, aucun identifiant client). Et `inventaireComplet` (`src/analyse.js`)
+  plafonne à 50 manquants par playlist.
+- La couverture est mesurée sur **17 morceaux**. Les intervalles à 95 % sont
+  larges. À rejouer sur la bibliothèque complète.
+- La source Bandcamp passe par un point d'entrée **non documenté**. Elle est
+  débrayable et sa panne est prévue, mais elle peut disparaître sans préavis.
+- Les quatre MP3 déjà convertis restent sans étiquettes : le correctif ne vaut
+  que pour les conversions à venir. Rien ne rattrape les fichiers existants.
+
+### 19 août 2026 — la jauge de progression, mesurée sur le Mac
+
+Le relevé du 17 août demandait de vérifier « en priorité sur le Mac » si la
+politique de sécurité bloque les styles posés sur les barres de progression.
+Mesuré ici, dans un moteur Chromium tournant sur le Mac, avec la vraie politique
+servie par le serveur (`style-src 'self'`, sans `unsafe-inline`) :
+
+- **aucun message dans la console au chargement**, et **aucun événement
+  `securitypolicyviolation`** en écoutant l'événement dédié ;
+- l'écriture en ligne s'applique : `height` posé à 9 px est calculé à 9 px, et
+  une jauge posée à 73 % mesure 237,5 px pour un parent de 325,4 px ;
+- la quatrième jauge de l'app — celle du rapport des rachats — a été regardée
+  pendant une vraie exécution : 33 %, 67 %, 100 %, avec le nom du morceau en
+  cours à côté.
+
+**Deux pièges de mesure, tous deux rencontrés, et qui expliquent probablement les
+observations contradictoires du 17 août :**
+
+- tant que le bloc `#progression` est `hidden`, `getComputedStyle` renvoie
+  fidèlement « 73% » **sans que rien ne soit rendu**. On croit avoir vérifié ;
+- dans un onglet dont `visibilityState` vaut `hidden`, les transitions CSS sont
+  **gelées** : la jauge reste à zéro indéfiniment, `playState` bloqué sur
+  `running`. C'est un artefact de l'outil d'observation, pas un défaut de l'app.
+
+**Recoupé avec la mesure Safari du même jour** (relevé « la jauge n'est pas
+bloquée » plus haut) : les deux passes disent la même chose sur deux moteurs
+différents. `élément.style.width` s'applique et ne déclenche aucune violation ;
+c'est `setAttribute('style', …)` qui est bloqué, et l'app n'écrit jamais ainsi.
+
+**Ce que la même mesure impose au rapport des rachats :** un bloc `<style>`
+SERVI par le moteur, lui, est bien bloqué — violation `style-src-elem`, et
+`feuille.sheet` vaut `null`. Le rapport embarque son style et doit donc rester
+un fichier ouvert par le système, jamais une page servie. C'est écrit dans
+`tests/styles-en-ligne.test.js`, et deux tests d'`achats.test.js` empêchent
+qu'on l'oublie.
+
+### 19 août 2026 — une parole manquante n'est plus une erreur
+
+Le défaut le plus grave de la mise en service, et le plus instructif : **chaque
+maillon faisait son travail, et l'ensemble mentait.**
+
+Une ligne `SKIPPING: LYRICS FOR "…" (FAILED TO FETCH)` contient « failed ». Elle
+devenait une erreur, l'erreur devenait un titre perdu, le titre perdu empêchait
+« allé au bout », et « allé au bout » commandait l'enregistrement de la version
+Spotify. Résultat : la playlist repartait de zéro à chaque exécution et le
+planificateur espaçait la tentative suivante. **Une parole manquante déplaçait un
+horaire de synchronisation.**
+
+Quatre correctifs, indépendants et cumulés :
+
+- `--lyrics-to-metadata false` est passé en plus de `--lyrics-to-file false`.
+  Les lignes ne devraient plus apparaître du tout ; les trois autres correctifs
+  valent quand même, pour un fork qui ignorerait l'option.
+- Le catalogue reconnaît désormais cette ligne, en gravité INFO.
+- **Trois chiffres sont découplés** là où il n'y en avait qu'un :
+  `bilan.nbSignalements` (les lignes que zotify a marquées), `bilan.nbErreurs`
+  (les TITRES réellement perdus) et `alléAuBout` (qui ne regarde plus que le
+  second). Le bandeau d'accueil, l'historique et le rapport de diagnostic ont
+  été relus dans la foulée : tous disaient « erreur » pour une ligne signalée.
+- `bilan.àReprendre` ne mélange plus noms et URL : `nomAffichable()` tranche
+  pour le nom, avec `playlist/<identifiant>` en repli — la même écriture que
+  l'accueil. Le message « n'ont rien donné », écrit pour une règle disparue
+  depuis longtemps, dit maintenant ce qui s'est réellement passé et **nomme**
+  les playlists concernées.
+
+**Ce que ce lot a appris en marge** : `GRAVITÉ.INFO` ne veut pas dire « sans
+importance », il veut dire **« rien à reprendre »**. Un morceau retiré du
+catalogue est INFO pour la raison exactement inverse des paroles — il n'arrivera
+jamais, et le compter comme perdu ferait reprendre la playlist indéfiniment. La
+gravité, et non le nombre de lignes, est donc le bon critère pour `alléAuBout`.
+C'est écrit dans un test, parce que c'est contre-intuitif.
+
+**Le test qui manquait** rejoue la chaîne entière : le faux zotify a gagné un
+scénario `paroles-manquantes` qui écrit la ligne réelle du 19 août pendant que
+les trois titres arrivent entiers. Aucun test unitaire ne pouvait voir ce
+défaut : chaque pièce était juste.
+
+### 19 août 2026 — convertir pendant, plus seulement après
+
+L'ancienne chaîne était : inventaire avant, zotify jusqu'au bout, inventaire
+après, conversion du lot. Deux exécutions arrêtées en cours de route ont donc
+téléchargé sans rien convertir — `convertirLot` sortait à la première boucle
+quand l'arrêt était déjà demandé — et **rien ne rattrapait jamais** ces
+fichiers : la conversion ne regarde que les nouveautés de l'exécution en cours,
+pendant que `--skip-existing` empêche zotify de les reproposer. Treize titres
+sont restés en Ogg, dans des listes `.m3u8` que Rekordbox ne sait pas lire.
+
+Trois changements, et un quatrième trouvé en chemin :
+
+- **La conversion tourne pendant le téléchargement.** zotify écrit en `.tmp`
+  puis renomme : un fichier portant une extension audio est complet, et ses
+  trente secondes d'attente entre deux titres laissent tout le temps à ffmpeg.
+  À l'instant d'un arrêt, tout ce qui est descendu est déjà converti.
+- **Un rattrapage passe sur toute la bibliothèque au démarrage**, après le
+  diagnostic — donc après la vérification de ffmpeg. C'est la même moisson,
+  jouée une fois : une seule mécanique à garder juste.
+- **Un arrêt ne coupe plus la conversion** des fichiers déjà descendus, et le
+  journal explique pourquoi il prend ces quelques secondes. Les laisser
+  inutilisables serait la pire des deux options.
+- **Trouvé en marge, et c'est l'autre moitié du défaut** : quand la cible
+  existe, `convertir` refuse de la réécrire — à raison, un fichier réanalysé par
+  Serato porte des points de repère qui vivent dedans. Mais le lot rangeait
+  alors le fichier dans « ignorés » **sans sa destination**. L'appelant, ne
+  voyant aucune conversion, retombait sur les sources : les listes de lecture
+  pointaient des `.ogg` alors que les `.mp3` étaient là, à côté. Ce cas est
+  devenu le cas normal depuis que la moisson tourne — il fallait le traiter
+  d'abord, sinon le correctif principal produisait le défaut qu'il corrigeait.
+
+**Le leurre ffmpeg des tests produit maintenant un vrai fichier.** Il se
+contentait de répondre à `-version` : suffisant tant que les tests
+d'intégration utilisaient le format « copie », inutilisable pour prouver qu'une
+interruption ne laisse aucun orphelin. Le nouveau leurre ne code rien, il
+recopie et rallonge.
+
+**Épreuve du test, faite** : la moisson désactivée, le test d'interruption tombe ;
+rétablie, il passe. Il garde donc bien ce qu'il prétend garder.
+
+**Conséquence pratique pour la bibliothèque réelle** : les treize Ogg encore sur
+le disque seront convertis au démarrage de la prochaine synchronisation, sans
+rien retélécharger.
+
+### 19 août 2026 — la politique de retrait devient applicable
+
+`saitReprendreSansLeFichier()` renvoyait `false` en dur. Le choix « Corbeille »
+posé le 19 août à 15 h 27 était donc refusé en silence à **chaque**
+synchronisation. Un réglage qu'on peut poser et que l'app reprend sans le dire
+n'est pas un réglage.
+
+**Ce que la source de zotify 0.17.4 a appris**, lue sur la machine plutôt que
+supposée — et elle corrige deux points du plan :
+
+- l'option a trois graphies (`-ip`, `--skip-prev-downloaded`,
+  `--skip-previously-downloaded`) ; les deux longues sont acceptées ;
+- **`--song-archive-location` existe** et prend un DOSSIER, auquel zotify ajoute
+  lui-même `.song_archive` (`config.py:427`). Le journal n'a donc pas à rester
+  dans un coin du système : il vit maintenant avec la configuration et l'état,
+  se sauvegarde avec eux, et suit une installation portable ;
+- `SongArchive.__init__` (`utils.py:320`) pose bien
+  `disabled = not Path(filepath).exists()`, et `add_obj` sort immédiatement
+  quand c'est le cas. Un journal absent ne se remplit donc jamais. Confirmé.
+
+**Quatre garde-fous, et chacun doit pouvoir refuser seul :**
+
+1. zotify déclare l'option ;
+2. l'utilisateur a demandé un retrait — sinon on ne touche à rien. Activer le
+   journal pour tout le monde retirerait « LE DISQUE FAIT FOI » à ceux qui n'ont
+   rien demandé : supprimer un morceau à la main ne le ferait plus revenir ;
+3. le journal existe, sans quoi zotify n'y écrit rien ;
+4. **ce morceau-là y est inscrit.** C'est le garde-fou le plus important et le
+   moins évident : tout peut être en place et zotify n'avoir rien écrit. On ne
+   retire que ce qu'il dit savoir reprendre, et on annonce combien de fichiers
+   ont été conservés faute de trace.
+
+Le journal est copié après chaque synchronisation : il vaut désormais la
+bibliothèque entière.
+
+**Corrigé au passage** : `skip-previously-downloaded` figurait dans les candidats
+de `ignorerExistants`, comme s'il était synonyme de `skip-existing`. Ce sont deux
+portes différentes de `check_skippable`. Sur un fork qui ne déclarerait que la
+seconde, un réglage serait passé pour un autre.
+
+**Épreuve du test, faite** : le filtre du journal retiré, le test « un morceau
+absent du journal garde sa source » tombe ; rétabli, il passe. Le faux zotify
+reproduit fidèlement la règle du fichier absent — une doublure plus complaisante
+que l'original est précisément ce qui a coûté le plus cher à ce projet.
+
+### 19 août 2026 — les six explications manquantes, et où elles manquaient vraiment
+
+Le relevé du matin accusait `src/options.js:372`, seule liste d'options sans
+champ `explication`. C'était **la moitié de l'histoire**, et pas la moitié
+décisive : `public/app.js` écrivait `explication: ''` **en dur** au moment de
+fabriquer ces six options. Le texte aurait pu être parfaitement rédigé dans le
+catalogue, il n'aurait jamais atteint l'écran.
+
+Encore la même forme de défaut que la 1.0.5 et que les paroles : deux pièces
+justes, un assemblage qui ment. Et la leçon pour les tests est la même — un
+garde posé sur le seul catalogue serait resté vert sur une application muette.
+Il y a donc **deux** gardes : l'un exige que chaque option arbitrable porte une
+explication (avec une longueur minimale, pour qu'elle dise aussi l'inconvénient),
+l'autre interdit à l'interface d'en vider une. Les deux ont été éprouvés en
+cassant le code exprès.
+
+**Et la mise en page suit le contenu.** La grille compacte à trois colonnes de
+190 px datait de l'époque où ces choix n'avaient que leur libellé ; elle rendait
+maintenant l'explication sur sept lignes, et « Recommandé » ne tenait pas à côté
+de « Tous les deux jours » (il manquait 40 px, mesurés). Les intervalles passent
+en pleine largeur, comme les rythmes et les formats.
+
+### 19 août 2026 — les contrastes qui restaient
+
+Tous mesurés par le moteur de rendu, avant et après, dans les deux thèmes.
+
+**Le bouton principal désactivé : 1,64 et 1,36 → 5,14 et 5,05.** `opacity: .45`
+éteignait le libellé avec le décor. On repeint plutôt qu'on estompe : surface
+neutre, contour de contrôle, libellé en gris de texte. Un composant désactivé est
+exempté des seuils — mais celui-ci est l'état de l'app au repos sur les sept
+écrans, et il ne se lisait pas « indisponible », il se lisait « défaut
+d'affichage ».
+
+*Deux pièges rencontrés en le corrigeant, tous deux silencieux :*
+
+- `.bouton.primaire` a la même spécificité que `.bouton:disabled` et vient plus
+  bas dans le fichier : le correctif n'atteignait pas le seul bouton visé. Il
+  faut nommer les variantes.
+- `background: var(--…)` en RACCOURCI est « invalide au moment du calcul » au
+  moindre problème, et **tous** ses sous-champs retombent alors à leur valeur
+  initiale — fond transparent compris. Le dégradé disparaissait bien, rien ne le
+  remplaçait. Les longhands séparément.
+
+**La rainure de progression : 1,22 et 1,25 → un contour à 3,70 et 3,66.**
+Et ici **le relevé du matin se trompait** en annonçant qu'il y avait « toute la
+place » pour l'éclaircir. Mesuré : une rainure à 3 pour 1 contre la carte ne
+laisse plus que 2,7 contre la jauge en sombre, et **en clair aucune valeur ne
+satisfait les deux à la fois** — la carte est blanche, l'accent est un brun
+foncé, les deux contraintes tirent en sens opposés. L'optimum arithmétique en
+sombre plafonne à 2,86 des deux côtés.
+
+D'où un autre dessin plutôt qu'un arbitrage : c'est un **contour** qui porte
+désormais la longueur totale, avec la teinte déjà prévue pour ce qui se manipule
+et déjà garantie à 3 pour 1 contre les quatre surfaces. Le fond de la rainure
+peut alors rester discret, donc très contrasté avec la jauge (6,83 en sombre,
+4,07 en clair). Les deux exigences sont satisfaites au lieu d'être arbitrées. La
+barre passe de 4 à 6 px : le contour lui laisse les mêmes 4 px de remplissage.
+
+**Les quatre tuiles ne se rangent plus en trois plus une.** Aucune combinaison de
+`minmax` ne peut sauter le cas à trois colonnes ; il a fallu nommer les paliers —
+quatre de front au-delà de 980 px, sinon deux par deux, jamais de rangée
+orpheline.
+
+**La case « Suivre » du journal n'est plus native.** Elle emprunte la même
+mécanique que toutes les autres cases : 16 px au lieu de 13, et le jour où la
+coche changera de dessin, elle suivra. Trois tests sont tombés au passage en
+annonçant que la règle de la coche avait *disparu* — elle était devenue un
+sélecteur groupé. La lecture de feuille de style le comprend désormais, et le
+message trompeur n'enverra plus chercher au mauvais endroit.
+
+**Plus aucun débordement horizontal, sur les sept onglets, à 356 px.** Deux
+causes, pas une : les enfants de la grille principale réclamaient la largeur de
+leur contenu (`min-width: auto` est la valeur initiale), et la barre d'outils du
+journal refusait de replier ses boutons.
+
+**Ce que je n'ai PAS corrigé, faute de reproduire le défaut.** L'étiquette
+« perte ajoutée » sur l'option choisie en thème sombre était relevée à 4,41 pour
+un seuil de 4,5. Mesurée ici, en composant l'étiquette translucide sur l'option
+puis sur la carte : **4,83**. Les deux méthodes divergent de 0,4 et je ne sais
+pas laquelle a raison. Le relevé du 17 août avait déjà surestimé cette famille —
+et il demandait lui-même de ne pas corriger au-delà. Changer une couleur sur un
+chiffre qu'on n'arrive pas à reproduire ferait le contraire.
+
+### 19 août 2026 — il y a un SECOND zotify sur cette machine
+
+Trouvé par accident, en montant une instance d'essai dans un dossier de données
+jetable : le diagnostic y a résolu `zotify` vers **`~/.local/bin/zotify`,
+version 1.1.2** — pas celui que l'app a installé (`0.17.4`, dans son venv).
+
+Ce n'est pas un défaut aujourd'hui : `chemins.js` place le venv en tête du
+`PATH`, et la configuration réelle dit simplement `zotify`. Mais cette
+installation-là déclare **63 options et PAS `--skip-existing`**. Le jour où le
+venv manquerait ou serait cassé, l'app se rabattrait dessus en silence et
+**chaque synchronisation reprendrait toute la bibliothèque depuis le début**.
+
+Le diagnostic le signalerait — il l'a fait, tout de suite — mais son message ne
+dit pas QUEL zotify il a trouvé. C'est ce qui a fait perdre dix minutes à croire
+à une régression. Faire nommer le chemin par ce contrôle coûterait deux lignes.
+
+### 19 août 2026 — une couleur ne s'écrit plus qu'à un seul endroit
+
+`public/palette.css` existe. Les trois pages la chargent — l'interface, la notice
+et la page de retour Spotify — et **plus aucune valeur de couleur ne vit
+ailleurs** : un test le vérifie fichier par fichier, après avoir prouvé qu'il
+sait attraper une couleur en dur.
+
+Ce qui a été fait, et ce qui a été délibérément laissé :
+
+- `retour.css` redéclarait cinq couleurs sous les mêmes noms et les mêmes
+  valeurs qu'`app.css`. Supprimées.
+- `notice.css` déclarait sa palette **trois fois**, sous des noms d'atelier, avec
+  les valeurs d'avant la 1.0.2. Les **noms restent, en alias** vers la palette :
+  renommer une cinquantaine de renvois aurait mélangé deux sujets dans un même
+  changement, et le vocabulaire de la notice a sa raison d'être.
+- La palette porte **trois états de thème** — système, clair forcé, sombre forcé.
+  Il en faut bien trois : la notice offre une bascule manuelle, et une couleur
+  dont la seule définition vivrait dans une requête de média serait absente pour
+  qui a basculé à la main.
+
+**Vérifié à l'écran, pas déduit** : un balayage de TOUT le texte de la notice,
+dans les deux thèmes, ne trouve plus aucun contraste sous son seuil. Les huit
+défauts du 17 août ont disparu sans être touchés un par un — ils n'étaient que
+le reflet d'une palette recopiée.
+
+**Les deux contrôles de la chaîne de publication ont été étendus**, comme le
+relevé le demandait : le paquet vérifie que `palette.css` est présent, et le
+contrôle des pages vérifie qu'elle est servie, qu'elle déclare bien `--accent`,
+et que les deux pages la chargent. C'est le fichier le plus sensible de la
+chaîne depuis qu'il existe : il ne sert aucune page à lui seul, mais les trois
+autres n'ont plus une seule couleur sans lui.
+
+**Trente et un tests sont tombés d'un coup** au moment de la scission, en
+annonçant des variables introuvables. C'est le bon symptôme : les gardes de
+contraste lisaient `app.css`, où il n'y a plus de couleurs. Ils lisent désormais
+les deux feuilles. Une lecture qui ne trouve plus rien doit échouer, jamais
+passer.
+
+### 19 août 2026 — les erreurs de zotify parlent français
+
+L'utilisateur a lu ceci, tel quel, dans son journal :
+
+```
+zotify : ConnectionResetError: [Errno 54] Connection reset by peer
+zotify : ConnectionRefusedError: [Errno 61] Connection refused
+```
+
+Le catalogue savait pourtant les traduire. C'est le journal qui recopiait la
+ligne d'origine **avant** de passer par lui : toute la taxonomie d'`erreurs.js`
+était contournée à l'endroit précis où elle sert le plus — le seul endroit que
+l'on regarde quand quelque chose ne va pas.
+
+`phraseJournal()` rend désormais « ce qui s'est passé, ce que ça implique, quoi
+faire », et la ligne d'origine part en **détail**, pour qu'un rapport de panne
+reste exploitable. Une ligne que le catalogue ne reconnaît pas est conservée
+telle quelle : la traduire au jugé effacerait la seule information exploitable.
+
+**Deux tests, et le second est le vrai.** L'un éprouve la fonction sur les deux
+lignes réelles du 19 août ; l'autre rejoue une synchronisation entière et exige
+qu'aucun `Errno` n'arrive dans le journal. C'est le maillon qui manquait — la
+pièce était juste, personne ne l'appelait. Épreuve faite : la traduction retirée,
+le second tombe.

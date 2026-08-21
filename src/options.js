@@ -315,21 +315,31 @@ export const SOURCES_APRÈS_CONVERSION = [
     id: 'archiver',
     libellé: 'Les déplacer dans « _Archive »',
     explication:
-      "SANS EFFET pour l'instant, et mieux vaut le dire : le téléchargeur repère les " +
-      "morceaux déjà pris en regardant les fichiers présents. Déplacer l'Ogg d'origine " +
-      "lui ferait tout retélécharger à chaque synchronisation — 17 heures à chaque " +
-      "fois. Tant que ce n'est pas résolu, les fichiers sont conservés quoi qu'il " +
-      "arrive, et l'app vous le rappelle après chaque conversion.",
+      "L'Ogg part dans un sous-dossier daté, à la racine de votre bibliothèque : il ne " +
+      "gêne plus, mais vous pouvez le récupérer. Pour que ce soit sûr, le téléchargeur " +
+      "tient désormais un journal de ce qu'il a pris, à côté de vos réglages — sans " +
+      "lui, retirer un fichier le ferait retélécharger. Ce journal devient donc aussi " +
+      "précieux que votre configuration : l'app en garde une copie de sûreté à chaque " +
+      "synchronisation. Les morceaux descendus AVANT sa mise en service restent en " +
+      "place, faute de garantie sur eux.",
   },
   {
     id: 'corbeille',
     libellé: 'Les mettre à la corbeille',
     explication:
-      "SANS EFFET pour l'instant, pour la même raison que l'archivage : retirer les " +
-      "fichiers d'origine déclencherait leur retéléchargement complet à chaque " +
-      "synchronisation. Les fichiers sont conservés quoi qu'il arrive.",
+      "Même chose, mais dans la corbeille du système : vous la videz quand vous voulez, " +
+      "et macOS sait annuler. Si la corbeille refuse le fichier, il est archivé plutôt " +
+      "que perdu. Le même journal de téléchargement s'applique, avec la même réserve " +
+      "sur les morceaux plus anciens que lui.",
   },
 ];
+
+/** Affiché sous les trois choix. Il doit rester exact. */
+export const NOTE_SOURCES_APRÈS_CONVERSION =
+  "Ce que ces réglages changent vraiment : le téléchargeur cesse de se fier aux fichiers " +
+  "présents pour savoir ce qu'il a déjà pris, et se fie à son journal. Conséquence à " +
+  "connaître — tant qu'un retrait est demandé, supprimer un morceau à la main ne le fera " +
+  "plus revenir tout seul. Repassez sur « Garder » pour retrouver ce comportement.";
 
 // ---------------------------------------------------------------------------
 // Rythme de téléchargement
@@ -369,13 +379,62 @@ export const RYTHMES = [
 // Planification
 // ---------------------------------------------------------------------------
 
+// CHAQUE INTERVALLE PORTE SA LIGNE D'EXPLICATION, comme tous les autres choix
+// de ce fichier. C'était le seul groupe qui n'en avait pas : six libellés nus au
+// milieu de réglages qui disent tous ce qu'on y perd. Mesuré sur l'app réelle le
+// 19 août 2026 — 6 explications vides sur 32, toutes ici.
+//
+// L'arbitrage est toujours le même, et il n'est pas « plus souvent, c'est
+// mieux » : chaque vérification réveille le téléchargeur, qui parcourt vos
+// playlists titre par titre. Vérifier souvent, c'est donc parler souvent à
+// Spotify — le vrai coût, parce que c'est ce qui expose le compte.
 export const INTERVALLES = [
-  { id: 6, libellé: 'Toutes les 6 heures' },
-  { id: 12, libellé: 'Deux fois par jour' },
-  { id: 24, libellé: 'Une fois par jour' },
-  { id: 48, libellé: 'Tous les deux jours', recommandé: true },
-  { id: 72, libellé: 'Tous les trois jours' },
-  { id: 168, libellé: 'Une fois par semaine' },
+  {
+    id: 6,
+    libellé: 'Toutes les 6 heures',
+    explication:
+      "Quatre passages par jour. À réserver à une playlist collaborative qui bouge " +
+      "vraiment dans la journée : le reste du temps, ce sont quatre conversations avec " +
+      "Spotify pour ne rien trouver, et c'est ce qui finit par faire brider un compte.",
+  },
+  {
+    id: 12,
+    libellé: 'Deux fois par jour',
+    explication:
+      "Matin et soir. Un morceau ajouté le midi est chez vous le soir. Reste beaucoup " +
+      "pour une playlist qui ne change qu'une fois par semaine.",
+  },
+  {
+    id: 24,
+    libellé: 'Une fois par jour',
+    explication:
+      "Le bon choix si vous jouez souvent et voulez vos nouveautés le lendemain. " +
+      "Deux fois plus de sollicitations qu'en 48 h, pour une demi-journée gagnée.",
+  },
+  {
+    id: 48,
+    libellé: 'Tous les deux jours',
+    recommandé: true,
+    explication:
+      "L'équilibre retenu : assez fréquent pour ne rien manquer d'une semaine de sorties, " +
+      "assez espacé pour que Spotify ne voie jamais un rythme inhabituel. Vous attendez " +
+      "au pire deux jours un titre ajouté juste après un passage.",
+  },
+  {
+    id: 72,
+    libellé: 'Tous les trois jours',
+    explication:
+      "Deux passages par semaine. Prudent, et suffisant si vos playlists vivent surtout " +
+      "le week-end. Un titre ajouté le lundi peut n'arriver que le jeudi.",
+  },
+  {
+    id: 168,
+    libellé: 'Une fois par semaine',
+    explication:
+      "Le plus discret. Convient à une bibliothèque déjà constituée qu'on complète de " +
+      "temps en temps. En contrepartie, un gros lot s'accumule entre deux passages — et " +
+      "un rattrapage de deux cents titres demande plus d'une heure et demie.",
+  },
 ];
 
 export const NOTE_PLANIFICATION =
@@ -413,6 +472,31 @@ export const NOTE_EXPORTS_DJ =
   "leur bibliothèque, il faut importer une fois. Et sachez que Rekordbox ignore " +
   "totalement le tempo écrit dans les fichiers — il impose toujours sa propre analyse. " +
   "La tonalité, elle, passe bien.";
+
+// ---------------------------------------------------------------------------
+// Racheter en sans-perte
+// ---------------------------------------------------------------------------
+
+export const SOURCES_ACHATS = [
+  {
+    id: 'bandcamp',
+    libellé: 'Chercher aussi sur Bandcamp',
+    explication:
+      "De loin la meilleure source : mesuré sur votre bibliothèque, elle trouve 14 morceaux " +
+      "sur 17 contre 8 pour MusicBrainz seul, et elle donne le lien du morceau plutôt que " +
+      "celui de l'album. L'inconvénient est réel : Bandcamp ne publie aucune interface " +
+      "officielle, Zotijean passe donc par celle de son propre champ de recherche. Elle peut " +
+      "cesser de répondre du jour au lendemain — le rapport continuera alors avec MusicBrainz " +
+      "seul, en le disant. Décochez si vous préférez ne dépendre que de sources documentées.",
+  },
+];
+
+export const NOTE_ACHATS =
+  "Zotijean n'achète rien et ne télécharge rien : il ouvre les portes, vous décidez. Comptez " +
+  "environ trois secondes par morceau — les deux services imposent une requête par seconde, " +
+  "et s'en affranchir ferait bloquer l'application. Un rapport interrompu reprend là où il " +
+  "s'est arrêté. Les liens Bandcamp donnent bien du FLAC ; les autres boutiques ne sont pas " +
+  "toutes sans perte, et le rapport le signale morceau par morceau.";
 
 // ---------------------------------------------------------------------------
 // Valeurs par défaut de la configuration
@@ -481,6 +565,14 @@ export function configParDéfaut() {
       serato: false,
       automatique: false,
     },
+    achats: {
+      // Activée par défaut parce que sans elle le rapport perd la moitié de sa
+      // couverture — mesuré, pas supposé. Débrayable parce qu'elle dépend d'un
+      // point d'entrée non documenté, ce qui est un choix qui appartient à
+      // l'utilisateur, pas au code.
+      bandcamp: true,
+      musicbrainz: true,
+    },
     gardes: {
       espaceMinimumGo: 2,
       margeParTitreMo: 12,
@@ -506,10 +598,13 @@ export function catalogueComplet() {
     noteRetrait: NOTE_RETRAIT,
     noteRetraitPourquoi: NOTE_RETRAIT_POURQUOI,
     sourcesAprèsConversion: SOURCES_APRÈS_CONVERSION,
+    noteSourcesAprèsConversion: NOTE_SOURCES_APRÈS_CONVERSION,
     rythmes: RYTHMES,
     intervalles: INTERVALLES,
     notePlanification: NOTE_PLANIFICATION,
     exportsDJ: EXPORTS_DJ,
     noteExportsDJ: NOTE_EXPORTS_DJ,
+    sourcesAchats: SOURCES_ACHATS,
+    noteAchats: NOTE_ACHATS,
   };
 }

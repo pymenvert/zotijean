@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Zotijean</title>
+<link rel="stylesheet" href="palette.css">
 <link rel="stylesheet" href="app.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🎧</text></svg>">
 </head>
@@ -214,6 +215,33 @@
           </span>
         </label>
       </div>
+
+      <!-- Cette carte est dans « Qualité » et pas ailleurs, parce que c'est ici
+           qu'on apprend que Spotify plafonne à 320 kb/s et que convertir ne
+           récupère rien. La question « et si je le rachetais ? » se pose à cet
+           endroit précis, pas trois onglets plus loin. -->
+      <div class="carte">
+        <h2>Racheter en sans-perte</h2>
+        <p class="aide">
+          Zotijean cherche où chaque morceau de votre bibliothèque est vendu en
+          vraie qualité sans perte, et écrit un rapport de liens cliquables.
+          Il n’achète rien et ne télécharge rien.
+        </p>
+        <div id="choix-sources-achats" class="choix"></div>
+        <div class="ligne-formulaire">
+          <button class="bouton primaire" id="btn-achats">
+            <svg class="ic"><use href="#i-loupe"/></svg><span>Chercher les liens</span>
+          </button>
+          <button class="bouton" id="btn-ouvrir-achats" hidden>Ouvrir le rapport</button>
+        </div>
+        <p class="aide" id="estimation-achats"></p>
+        <div class="progression" id="progression-achats" hidden>
+          <div class="progression-barre"><span id="progression-achats-jauge"></span></div>
+          <p class="progression-ligne" id="progression-achats-ligne"></p>
+        </div>
+        <div class="note" id="note-achats"></div>
+        <div id="resultat-achats"></div>
+      </div>
     </section>
 
     <!-- RANGEMENT -->
@@ -284,7 +312,13 @@
             <em>Désactivé, l’app ne télécharge que lorsque vous cliquez sur Synchroniser.</em>
           </span>
         </label>
-        <div id="choix-intervalle" class="choix compact"></div>
+        <!-- Plus « compact » : cette grille à trois colonnes datait de l'époque
+             où ces six choix n'avaient que leur libellé. Maintenant qu'ils
+             portent leur explication comme tous les autres réglages, une colonne
+             de 190 px la rendait sur sept lignes, et l'étiquette « Recommandé »
+             ne tenait pas à côté de « Tous les deux jours ». Pleine largeur :
+             c'est déjà la mise en page des rythmes et des formats. -->
+        <div id="choix-intervalle" class="choix"></div>
         <div class="note" id="note-planification"></div>
       </div>
 
@@ -333,6 +367,7 @@
         <h2>Après une conversion de format</h2>
         <p class="aide">Ce que Zotijean fait du fichier d’origine une fois la conversion réussie.</p>
         <div id="choix-sources" class="choix"></div>
+        <div class="note" id="note-sources"></div>
       </div>
 
       <div class="carte">
@@ -364,7 +399,7 @@
           <h2>Journal</h2>
           <div class="barre-outils">
             <label class="mini-bascule" title="Suivre automatiquement les nouvelles lignes">
-              <input type="checkbox" id="suivre-journal" checked><span>Suivre</span>
+              <input type="checkbox" id="suivre-journal" checked><span class="puce carree"></span><span>Suivre</span>
             </label>
             <button class="bouton mini" id="btn-rapport" title="Enregistrer un fichier texte contenant tout ce qu’il faut pour comprendre un problème">
               <svg class="ic"><use href="#i-ouvrir"/></svg><span>Exporter le diagnostic</span>
