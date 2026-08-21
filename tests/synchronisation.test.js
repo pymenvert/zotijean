@@ -664,10 +664,20 @@ test('un zotify qui meurt sans rien dire n’avance PAS la date de référence',
       // Ce qui mord vraiment, c'est la liste des playlists à reprendre : c'est
       // elle que `alléAuBout` décide, et donc elle qui garde le terme
       // `!échecLancement` qu'on vient d'y ajouter.
-      assert.deepEqual(
-        résultat.bilan.àReprendre, ['test-1'],
+      //
+      // Cette liste porte le NOM AFFICHABLE, pas l'identifiant interne — le
+      // projet a tranché pour le nom afin qu'une même playlist ne s'écrive pas
+      // tantôt d'une façon tantôt d'une autre. Une première version de ce test
+      // attendait « test-1 » et n'a échoué qu'en intégration continue, faute de
+      // pouvoir tourner sur le PC de développement.
+      assert.equal(
+        résultat.bilan.àReprendre.length, 1,
         'la playlist est marquée terminée alors que zotify n’a rien fait : elle '
         + 'sera sautée aux synchronisations suivantes',
+      );
+      assert.match(
+        résultat.bilan.àReprendre[0], /aaaaaaaaaaaaaaaaaaaaaa/,
+        'la playlist à reprendre n’est pas celle qu’on vient de rater',
       );
     } finally {
       delete process.env.FAUX_ZOTIFY_SCENARIO;
