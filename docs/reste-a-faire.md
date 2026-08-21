@@ -180,6 +180,228 @@ marqués » comme le craignait le relevé du 17 août.
 
 ## Relevés datés
 
+### 21 août 2026 — deuxième épreuve de la suite par mutation
+
+**33 cassages, tous appliqués, 24 attrapés, 9 survivants.** Menée dans une copie
+du dépôt, jamais dans le dossier de travail. Dispositif prouvé avant de conclure :
+`cléComparaison` rendue constante fait tomber 5 tests.
+
+Un résultat qui se lit d'un coup d'œil :
+
+| module | cassages | survivants |
+|---|---|---|
+| `correspondance.js` | 4 | **0** |
+| `organisation.js` | 5 | **0** |
+| `planificateur.js` | 4 | **0** |
+| `conversion.js` | 6 | 1 |
+| `achats.js` | 5 | 1 |
+| `chemins.js` | 4 | 2 |
+| **`spotify.js`** | **5** | **5** |
+
+Les quatre modules éprouvés le 17 août tiennent : aucun cassage n'y survit, sauf
+ceux que ce relevé-là avait déjà nommés. L'épreuve confirme donc sa propre
+prédiction, ce qui est le meilleur signe qu'elle mesure quelque chose.
+
+**Et le correctif phare de la 1.1.0 est gardé** : remettre `-map_metadata 0` à la
+place de `0:s:0` fait tomber un test. Les étiquettes ne se reperdront pas en
+silence.
+
+Les neuf survivants sont **tous** de la même cause — *un test manque*. Aucun code
+mort, aucun cassage équivalent : les neuf fonctions ont des appelants vivants, et
+les neuf cassages changent réellement le comportement. Et **les neuf se bouchent
+par des tests seuls, sans toucher au moteur** : `ZOTIJEAN_DONNEES` redirige déjà
+le fichier de jetons (trois fichiers de test s'en servent), `globalThis.fetch` se
+remplace dans un test, et `tests/diagnostic.test.js:34` porte déjà le helper
+`sur(système, travail)` qui force `process.platform`.
+
+#### `src/spotify.js` — cinq cassages, cinq survivants
+
+Le module de l'authentification Spotify n'est protégé par rien. Ses deux seuls
+tests couvrent des fonctions pures (`normaliserPistes`, `lireRetryAfter`).
+
+- **Un état PKCE qui ne correspond pas est accepté** (`:142`, `if (état !==
+  demandeEnCours.état)` remplacé par `if (false)`). C'est le contrôle qui empêche
+  un tiers de faire aboutir SA connexion dans l'app de l'utilisateur. Le
+  commentaire juste au-dessus le dit — rien ne le vérifie.
+- **Le repli sur l'ancien jeton de rafraîchissement disparaît** (`:278`,
+  `données.refresh_token || jetons.refresh_token` réduit au premier terme).
+  Spotify ne renvoie pas toujours un nouveau jeton : sans ce repli, l'utilisateur
+  est déconnecté au premier rafraîchissement. Le commentaire l'annonce mot pour
+  mot.
+- **Une révocation n'est plus jamais définitive** (`:254`, `définitif` forcé à
+  `false`). L'app afficherait « connecté » pendant que plus rien ne fonctionne —
+  exactement le défaut que ce code a été écrit pour corriger.
+- **`estConnecté` ignore une autorisation révoquée** (`:74`).
+- **La marge d'une minute avant expiration disparaît** (`:212`), donc un jeton qui
+  expire pendant la requête produit une erreur incompréhensible.
+
+Les tests à écrire tiennent dans un fichier, sur ce patron :
+
+```js
+// En tête de fichier, AVANT d'importer src/spotify.js — le module lit le
+// dossier de données à l'import.
+process.env.ZOTIJEAN_DONNEES = fs.mkdtempSync(path.join(os.tmpdir(), 'zotijean-spotify-'));
+
+function avecFetch(réponses, travail) {
+  const vrai = globalThis.fetch;
+  let appel = 0;
+  globalThis.fetch = async () => réponses[appel++];
+  try { return travail(); } finally { globalThis.fetch = vrai; }
+}
+const réponse = (status, corps, entêtes = {}) => ({
+  ok: status < 400, status,
+  json: async () => corps,
+  headers: { get: (n) => entêtes[n.toLowerCase()] ?? null },
+});
+
+test('une réponse dont l’état ne correspond pas à la demande est refusée', async () => {
+  await préparerConnexion({ clientId: 'abc', redirection: 'http://127.0.0.1:8787/retour' });
+  const r = await terminerConnexion('un-code', 'PAS-LE-BON-ETAT');
+  assert.equal(r.réussi, false,
+    'un tiers peut faire aboutir sa propre connexion dans l’app de l’utilisateur');
+});
+
+test('un rafraîchissement sans nouveau jeton garde l’ancien', async () => {
+  écrireJetonsDeTest({ refresh_token: 'ANCIEN', access_token: 'a', expire_le: 0 });
+  await avecFetch([réponse(200, { access_token: 'nouveau', expires_in: 3600 })],
+    () => forcerRafraîchissement());
+  assert.equal(lireJetonsDeTest().refresh_token, 'ANCIEN',
+    'l’utilisateur est déconnecté au premier rafraîchissement');
+});
+
+test('un invalid_grant pose la reconnexion nécessaire, une panne passagère non', async () => {
+  écrireJetonsDeTest({ refresh_token: 'R', access_token: 'a', expire_le: 0 });
+  await avecFetch([réponse(400, { error: 'invalid_grant' })], () => forcerRafraîchissement());
+  assert.equal(reconnexionNécessaire(), true,
+    'l’app affichera « connecté » pendant que plus rien ne fonctionne');
+  assert.equal(estConnecté(), false, 'estConnecté doit refuser une autorisation révoquée');
+
+  écrireJetonsDeTest({ refresh_token: 'R', access_token: 'a', expire_le: 0 });
+  await avecFetch([réponse(503, {})], () => forcerRafraîchissement());
+  assert.equal(reconnexionNécessaire(), false,
+    'une panne passagère ne doit pas exiger une reconnexion');
+});
+
+test('un jeton qui expire dans trente secondes est rafraîchi, pas réutilisé', async () => {
+  écrireJetonsDeTest({ refresh_token: 'R', access_token: 'presque-mort',
+    expire_le: Date.now() + 30_000 });
+  let rafraîchi = false;
+  await avecFetch([réponse(200, { access_token: 'frais', expires_in: 3600 })],
+    async () => { rafraîchi = true; await profil(); });
+  assert.ok(rafraîchi, 'le jeton expire pendant la requête, l’erreur sera incompréhensible');
+});
+```
+
+*(`écrireJetonsDeTest` / `lireJetonsDeTest` écrivent et relisent
+`spotify.json` dans `ZOTIJEAN_DONNEES` — `écrireJetons` n'est pas exportée.
+`forcerRafraîchissement` passe par une fonction publique qui appelle
+`jetonValable`, par exemple `profil()`.)*
+
+#### `src/chemins.js` — les deux garde-fous du disque, jamais testés
+
+- **`volumeMonté` rend toujours « oui »** (`:242`) : aucun test ne tombe. C'est le
+  garde-fou que `CLAUDE.md` déclare non négociable, celui du disque externe
+  débranché que macOS remplace par un dossier fantôme sous `/Volumes/`.
+- **`espaceLibre` rend toujours une valeur énorme** (`:274`) : aucun test ne
+  tombe non plus.
+
+Le dégât de `volumeMonté` est le plus lourd du projet : faux positif, et deux
+mille titres partent sur le disque de démarrage ; faux négatif, et plus aucune
+synchronisation ne démarre. Le test doit forcer la plateforme, parce qu'un test
+qui hérite de `process.platform` passe ici et échoue sur le Mac.
+
+```js
+// Le helper existe déjà : tests/diagnostic.test.js:34.
+test('un dossier fantôme sous /Volumes n’est PAS pris pour un disque monté', (t) => {
+  sur('darwin', () => {
+    // Débranché : macOS a recréé un dossier vide, qui partage donc le
+    // périphérique de la racine. C'est le SEUL signe.
+    t.mock.method(fs, 'statSync', () => ({ dev: 16777220 }));
+    assert.equal(volumeMonté('/Volumes/DJ-SSD/Musique/Été 2026'), false,
+      'toute la bibliothèque se serait retéléchargée sur le disque de démarrage');
+  });
+});
+
+test('un volume réellement monté est reconnu', (t) => {
+  sur('darwin', () => {
+    t.mock.method(fs, 'statSync', (c) => ({ dev: c === '/' ? 16777220 : 16777235 }));
+    assert.equal(volumeMonté('/Volumes/DJ-SSD/Musique'), true,
+      'un disque bien branché est refusé : plus aucune synchronisation ne part');
+  });
+});
+
+test('le disque de démarrage n’est jamais refusé', () => {
+  sur('darwin', () => assert.equal(volumeMonté('/Users/pym/Music'), true));
+});
+
+test('un /Volumes sans nom de volume est refusé', () => {
+  sur('darwin', () => assert.equal(volumeMonté('/Volumes'), false));
+});
+
+test('espaceLibre rend des octets réels, pas une promesse', () => {
+  assert.ok(espaceLibre(os.tmpdir()) > 0,
+    'si statfsSync change de nom, les deux garde-fous « disque plein » '
+    + 's’éteignent sans qu’un seul test rougisse');
+});
+```
+
+#### `src/conversion.js` — le rapport d'un quart, déjà signalé le 17 août
+
+Porter `octetsCible > octetsSource * 0.25` à `* 0.9` (`:182`) survit encore.
+Ce n'est pas une régression : le relevé du 17 août 2026 nommait déjà cette borne
+parmi les trois non épinglées. Elle le reste.
+
+Les deux autres bornes de cette fonction sont en revanche mieux tenues qu'alors :
+supprimer le plancher de 16 Ko et passer le sans-perte de `>` à `>=` font tomber
+un test chacun.
+
+```js
+test('le rapport minimal d’un converti avec perte est épinglé, pas approximatif', () => {
+  // Un MP3 320 tiré d'un Ogg 320 pèse environ autant : la garde doit accepter
+  // le cas normal ET refuser un fichier coupé.
+  assert.equal(tailleplausible(5_000_000, 4_000_000, 'mp3_320'), true);
+  assert.equal(tailleplausible(5_000_000, 1_000_000, 'mp3_320'), false,
+    'un fichier au cinquième de sa source passe pour plausible');
+});
+```
+
+#### `src/achats.js` — un seul enregistrement MusicBrainz examiné au lieu de deux
+
+`enregistrements.slice(0, 2)` réduit à `slice(0, 1)` (`:533`) ne fait tomber
+aucun test : aucune doublure ne renvoie deux enregistrements pour un même ISRC.
+
+C'est **exactement le cas limite** que la spécification d'origine exigeait — « le
+rapport doit dire lequel il a retenu plutôt que d'en choisir un en silence » — et
+que le successeur `docs/specs/racheter-en-sans-perte.md` ne reprend pas. Le
+rapport nomme bien la sortie retenue et liste jusqu'à trois alternatives, donc il
+ne choisit pas tout à fait en silence ; mais il écarte silencieusement tout
+enregistrement au-delà du deuxième, et rien ne le dit.
+
+```js
+test('deux enregistrements pour un même ISRC sont tous deux examinés', async () => {
+  const http = doublure({
+    // Deux enregistrements : le premier sans lien d'achat, le second avec.
+    'recording?query=isrc': { recordings: [ENREG_SANS_LIEN, ENREG_AVEC_BANDCAMP] },
+  });
+  const r = await résoudreSurMusicBrainz(PISTE, { transport: créerTransport({ http }) });
+  assert.equal(r?.boutique, 'Bandcamp',
+    'le second enregistrement est écarté en silence : le morceau est annoncé '
+    + 'sans lien alors qu’il en a un');
+});
+```
+
+#### Ce que cette campagne n'a pas éprouvé
+
+- **`src/synchronisation.js`**, où vivent les deux pires bloquants de l'audit du
+  même jour, n'était pas dans la liste. Sa couverture locale est de 21 % et ses
+  18 tests d'intégration sont éteints sur le PC Windows : une campagne y demande
+  un runner macOS.
+- **`src/zotify.js`**, `src/diagnostic.js`, `src/api.js`, `src/analyse.js`,
+  `src/exports-dj.js`, `src/securite.js` : jamais éprouvés, ni le 17 août ni ici.
+- **Les points d'USAGE**, encore une fois. Cette campagne a muté des fonctions.
+  L'angle mort déclaré du 17 août reste entier : un appelant qui oublierait
+  d'appeler la garde ne serait attrapé par aucun de ces 33 cassages.
+
 ### 21 août 2026 — audit de fond du programme entier, après la fusion de la 1.1.0
 
 Premier audit depuis la 1.0.7, sur les 22 600 lignes du projet et non sur un
