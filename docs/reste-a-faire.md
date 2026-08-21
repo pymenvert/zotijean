@@ -32,7 +32,46 @@ des relevés datés ci-dessous ; il porte sept bloquants et huit points de dette
 
 ## Défauts constatés
 
-### Les actions de la chaîne d'intégration ciblent Node 20, qui est déprécié
+*Cette section est **vide** depuis le 21 août 2026. Le seul défaut qu'elle
+portait — les actions de la chaîne d'intégration sur Node 20 — est corrigé.
+L'entrée est conservée ci-dessous, barrée, parce que son conseil s'est révélé
+faux et que c'est ce qui mérite d'être gardé.*
+
+### ~~Les actions de la chaîne d'intégration ciblent Node 20, qui est déprécié~~ — corrigé le 21 août 2026
+
+**Corrigé.** Les sept références sont passées en `@v7` : `actions/checkout`,
+`actions/setup-node` et `actions/upload-artifact`. Vérifié après coup — plus
+aucune action en `@v4` dans `.github/workflows/`.
+
+**Mais le correctif que cette entrée conseillait était FAUX**, et c'est la seule
+chose qui vaut d'être retenue ici. Elle disait « passer les trois actions en
+`@v5` ». Or, interrogé le 21 août :
+
+| action | `v4` | `v5` | `v6` | `v7` |
+|---|---|---|---|---|
+| `checkout` | node20 | node24 | node24 | node24 |
+| `setup-node` | node20 | node24 | node24 | node24 |
+| **`upload-artifact`** | node20 | **node20** | node24 | node24 |
+
+`upload-artifact@v5` tourne **encore sur Node 20**. Le conseil aurait donc réparé
+deux actions sur trois et laissé la troisième exactement dans l'état qu'on
+croyait avoir corrigé — le pire résultat possible, parce qu'on aurait rayé
+l'entrée.
+
+Le saut jusqu'à `@v7` n'est pas une coquetterie de version : c'est le seul choix
+qui laisse les trois actions sur le même runtime. Il est sûr ici parce que
+l'usage est minimal — `checkout` est appelé **sans aucun paramètre**,
+`setup-node` avec le seul `node-version`, et `upload-artifact` avec `name`,
+`path` et `if-no-files-found`. Les trois paramètres existent toujours en `v7`,
+vérifié dans les `action.yml` de chaque version avant de toucher aux fichiers.
+
+**La leçon, elle, ne se raye pas : un correctif écrit à l'avance vieillit comme
+une explication.** Celui-ci a été écrit deux jours avant d'être appliqué, et il
+était déjà faux. Revérifier au moment de corriger, jamais faire confiance à la
+recette notée en passant.
+
+<details>
+<summary>Le constat d'origine, tel qu'il était écrit le 19 août 2026</summary>
 
 Vu le 19 août 2026 sur l'exécution `32280533751` : **les cinq tâches** annoncent
 la même chose, sur les trois systèmes.
@@ -65,6 +104,8 @@ Deux autres constats de ce jour-là appellent une décision plutôt qu'un correc
 et sont écrits comme relevés plus bas : il existe un **second zotify** sur la
 machine de Pym, plus récent en numéro et dépourvu de `--skip-existing`, et
 **personne n'a encore regardé l'app à l'œil** sur cet écran.
+
+</details>
 
 ## Chantiers en pause
 
