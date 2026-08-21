@@ -279,6 +279,12 @@ indispensable.
 - **L'assistant de premier lancement défile.** À 356 pixels de large, son dernier
   paragraphe passait sous le pied de la fenêtre, inatteignable même au clavier.
 - **La liste des rachats ne compte plus les fichiers cachés de macOS.**
+- **L'application annonce enfin son vrai numéro de version** au service qui lui
+  fournit les liens d'achat. Il était écrit en dur à un troisième endroit, oublié
+  des deux autres, et disait encore « 1.0.7 » : le service en question exige
+  précisément cet identifiant, et bloque les clients qui le renseignent mal. La
+  version est désormais *lue*, plus recopiée — et un contrôle automatique refuse
+  qu'on la réécrive à la main.
 
 ### Ce que la suite de tests garde vraiment
 
