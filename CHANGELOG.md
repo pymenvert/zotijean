@@ -1,6 +1,6 @@
 # Journal des versions
 
-## 1.1.0 — 19 août 2026
+## 1.1.0 — 21 août 2026
 
 **La première version écrite APRÈS avoir vu l'application tourner sur son Mac.**
 Toutes les 1.0.x ont été mises au point sur un PC Windows, contre une doublure du
@@ -170,6 +170,141 @@ Même cause, deuxième endroit, et il touchait le format que l'app produit par
 défaut. Album, année, tonalité, label, remixeur, identifiant : rien n'arrivait
 jusqu'à Rekordbox, qui ne recevait qu'un artiste et un titre déduits du nom de
 fichier. C'était précisément ce que l'export XML était censé apporter.
+
+---
+
+*Ce qui suit vient d'un audit de fond mené le 21 août sur le programme entier,
+et d'une campagne qui a cassé le code exprès pour vérifier que les tests le
+remarquent. Ces défauts-là n'ont pas été trouvés en regardant l'application
+tourner : ils étaient invisibles, et c'est ce qui les rendait chers.*
+
+### Une synchronisation ratée ne se raconte plus comme un succès
+
+**Le défaut le plus coûteux de cette version, et le seul dont la conséquence
+n'avait pas de fin.**
+
+Quand le téléchargeur démarrait puis mourait sans un mot — un environnement
+Python abîmé, une bibliothèque manquante, l'application déplacée —, Zotijean n'y
+voyait rien : aucune erreur, aucun titre perdu, aucune interruption. Il concluait
+donc que tout allait bien. Il affichait « Aucune nouveauté » avec une pastille
+verte, envoyait une notification rassurante, avançait sa date de référence et
+remettait son compteur d'échecs à zéro. Puis il attendait 48 heures et
+recommençait, à l'identique. **Indéfiniment, sans un seul signal.**
+
+Rien n'était perdu. Rien n'était jamais téléchargé non plus — exactement le prix
+payé de la 1.0 à la 1.0.4.
+
+Deux autres pannes tombaient dans le même trou : une coupure réseau qui fige le
+téléchargeur jusqu'à ce qu'un chien de garde le tue, et un ffmpeg présent mais
+cassé — mauvaise architecture, bibliothèque manquante — que le diagnostic
+déclarait bon parce qu'il ne regardait que son nom, jamais sa réponse. Ce
+dernier point comptait double : sans un ffmpeg qui *fonctionne*, le téléchargeur
+détruit des morceaux sans message.
+
+La règle est désormais écrite dans le code, à trois endroits : **un succès ne se
+déduit pas d'une absence d'erreur connue.** Il faut une preuve positive — un
+fichier sur le disque, un code de sortie nul, une version lue.
+
+### Le disque est surveillé PENDANT le téléchargement, plus seulement avant
+
+Les trois garde-fous du disque — volume monté, place restante, conditions que
+vous avez fixées — étaient bien vérifiés à chaque playlist, mais **avant** de
+lancer le téléchargeur, jamais ensuite. Or deux mille titres à trente secondes
+tiennent dans une seule playlist : le contrôle était donc fait une fois, à
+l'instant zéro, pour seize heures et quarante minutes de travail.
+
+Débrancher le disque externe à la troisième heure ne se voyait pas. macOS recrée
+alors un dossier vide au même endroit, et treize heures de musique partaient sur
+le disque de démarrage sans un mot — la panne que ce projet considère comme la
+plus grave de toutes.
+
+Le disque est maintenant relu toutes les cinq minutes pendant le téléchargement.
+C'est un **report**, pas un échec : la date de référence n'avance pas, et la
+synchronisation reprend d'elle-même dès que le disque revient.
+
+### Un fichier de travail ne passe plus pour un morceau
+
+Fermer l'application pendant une conversion laissait derrière elle un fichier
+inachevé, invisible dans le Finder mais portant une extension audio. Il était
+compté comme un morceau : il entrait dans la liste de lecture, dans l'export
+Rekordbox, dans l'export Serato et dans le rapport des rachats — en double, sous
+un nom que rien ne montrait, donc introuvable pour qui cherchait d'où venait le
+doublon.
+
+Ces restes sont désormais ramassés au début de chaque synchronisation, quand
+rien ne convertit — et jamais pendant, ce qui reviendrait à retirer son fichier
+au convertisseur en plein travail.
+
+### La politique de retrait s'applique enfin aux morceaux accentués
+
+« Archiver » et « Corbeille » ont été rendus fonctionnels plus haut dans cette
+version. Ils ne s'appliquaient pourtant à **aucun morceau dont le titre porte un
+accent** — c'est-à-dire à presque rien, dans une bibliothèque francophone.
+
+La cause est un piège que ce projet connaît bien : le téléchargeur écrit son
+journal depuis Python, Zotijean le relit depuis Node, et un « é » peut s'écrire
+de deux façons différentes qui s'affichent à l'identique. C'était le seul endroit
+du programme où ces deux mondes se comparaient directement, et le seul qui ne
+passait pas par la protection prévue pour ça. L'application annonçait alors, à
+tort, que ces morceaux dataient d'avant la mise en service du journal.
+
+### L'application disait le contraire de la vérité sur Spotify Premium
+
+**Un abonnement Premium est nécessaire pour télécharger. Toujours, sans
+exception.** Ce n'est pas la condition de la meilleure qualité, c'est la
+condition d'existence du logiciel.
+
+Or cinq textes affirmaient le contraire, et de façon cohérente entre eux : une
+qualité était présentée comme « celle d'un compte gratuit », les prérequis
+disaient « Premium pour la meilleure qualité », et le message d'erreur — le seul
+qui intercepte cet échec — conseillait de **baisser la qualité et de relancer**,
+ce qui ne peut pas marcher et coûtait une seconde exécution de plusieurs heures.
+
+Les cinq sont corrigés ensemble, et un contrôle automatique empêche désormais
+l'une ou l'autre de ces formulations de revenir.
+
+Au passage, une confusion voisine est levée. Il existe **deux connexions Spotify
+distinctes** dans ce logiciel : celle du téléchargeur, obligatoire, et un accès
+en lecture à vos playlists, facultatif, qui sert seulement à savoir ce qui
+manque. Le mot « Facultatif » était posé sous un titre « Compte Spotify », ce qui
+laissait conclure qu'aucun compte n'était nécessaire. Le titre nomme maintenant
+ce que cet accès fait, et la première phrase dit lequel des deux reste
+indispensable.
+
+### Ce qui se voit moins, et qui compte quand même
+
+- **La chaîne d'intégration sort de Node 20**, déprécié. Elle n'échouait pas
+  encore — les serveurs compensaient — mais elle aurait cassé le jour où ce
+  rattrapage disparaît, c'est-à-dire au moment de publier.
+- **L'assistant de premier lancement défile.** À 356 pixels de large, son dernier
+  paragraphe passait sous le pied de la fenêtre, inatteignable même au clavier.
+- **La liste des rachats ne compte plus les fichiers cachés de macOS.**
+
+### Ce que la suite de tests garde vraiment
+
+553 tests au lieu de 500, mais surtout : la suite a été **éprouvée en cassant le
+code exprès**, 33 fois. Neuf de ces cassages ne faisaient tomber aucun test —
+dont **les cinq du module d'authentification Spotify, qui n'était protégé par
+rien**. On pouvait y accepter une réponse d'autorisation qui ne correspond pas à
+la demande, déconnecter l'utilisateur à chaque renouvellement de jeton, ou
+déclarer qu'un accès révoqué n'est jamais définitif.
+
+Les neuf trous sont bouchés, et l'épreuve a été rejouée : **33 cassages, 33
+détectés.**
+
+### Ce que cette version ne prouve pas
+
+Par honnêteté, parce que la liste compte autant que le reste :
+
+- **Les deux connexions Spotify n'ont jamais été jouées en vrai.** Le flux
+  d'autorisation, un accès révoqué, un jeton expiré : tout cela est du code
+  vérifié par des doublures, jamais par Spotify.
+- **Le message d'erreur Premium n'a jamais été affiché à l'écran.** Il est le
+  seul à intercepter cet échec, et c'est celui que cette version réécrit.
+- **Rien de cette version n'a été regardé à l'œil sur un Mac.** Les mesures
+  d'affichage ont été calculées, pas vues.
+
+Le détail de ce qui reste ouvert est dans `docs/reste-a-faire.md`.
 
 ## 1.0.7 — 17 août 2026
 
