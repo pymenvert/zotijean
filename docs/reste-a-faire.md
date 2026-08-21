@@ -24,8 +24,9 @@ Quatre sections, et les distinctions comptent :
   gravité.
 - **Relevés datés** — ce qu'une vérification a trouvé, et qu'elle n'a pas corrigé.
 
-Dernière mise à jour : 19 août 2026, après la préparation de la 1.1.0 — sept lots
-issus de la première mise en service réelle sur le Mac.
+Dernière mise à jour : 21 août 2026, après l'audit de fond du programme entier
+mené sur la 1.1.0 fusionnée dans `main`. Le relevé de cet audit est le premier
+des relevés datés ci-dessous ; il porte sept bloquants et huit points de dette.
 
 ---
 
@@ -39,7 +40,10 @@ la même chose, sur les trois systèmes.
 > Node.js 20 is deprecated. The following actions target Node.js 20 but are
 > being forced to run on Node.js 24.
 
-Trois actions, à cinq endroits :
+Trois actions, à sept endroits. *(Ce décompte disait « cinq » et en listait sept ;
+corrigé le 21 août 2026 — les sept références ci-dessous ont été revérifiées une
+par une et sont toutes exactes. Les « cinq » sont les cinq TÂCHES de la chaîne
+d'intégration qui affichent l'avertissement, pas les endroits à corriger.)*
 
 - `actions/checkout@v4` — `publication.yml:38`, `tests.yml:38`, `tests.yml:193`
 - `actions/setup-node@v4` — `publication.yml:40`, `tests.yml:40`, `tests.yml:194`
@@ -84,8 +88,10 @@ grâce à son préfixe `-webkit-` déjà présent. Ce qui reste de cet angle mor
 tient en deux lignes, et il est descendu d'un cran :
 
 - **`text-wrap: balance` est ignoré par Safari 16.3** (`public/notice.css`,
-  lignes 91 et 106). Sans conséquence : le texte s'affiche, il n'est simplement
-  pas équilibré.
+  lignes **80 et 95**). Sans conséquence : le texte s'affiche, il n'est
+  simplement pas équilibré. *(Ces lignes étaient données comme 91 et 106 ; le
+  fichier a été décalé par l'extraction de la palette en 1.1.0. Revérifié le
+  21 août 2026.)*
 - **Le navigateur par défaut de ce Mac est Firefox, pas Safari.** L'app s'y
   ouvrira donc par `open`. Gecko n'a été mesuré ni ici ni ailleurs. L'angle mort
   n'a pas disparu, il a changé de moteur.
@@ -173,6 +179,490 @@ marqués » comme le craignait le relevé du 17 août.
 ---
 
 ## Relevés datés
+
+### 21 août 2026 — audit de fond du programme entier, après la fusion de la 1.1.0
+
+Premier audit depuis la 1.0.7, sur les 22 600 lignes du projet et non sur un
+diff. Trois agents — architecture, couverture de tests, interface — plus une
+confrontation de ce fichier-ci au code réel. **Chaque constat ci-dessous a été
+revérifié à la main avant d'être écrit** ; deux affirmations d'agent ont été
+écartées pour cette raison (voir la fin de ce relevé).
+
+Le fil commun de ce qui suit est le même qu'en 1.1.0, et c'est ce qui rend ces
+défauts difficiles à voir : **chaque pièce fonctionne.** Ce qui casse, c'est ce
+qu'une pièce croit de sa voisine.
+
+---
+
+#### BLOQUANT — Une synchronisation totalement ratée compte comme un succès
+
+Le plus grave de tout l'audit, et le seul dont la conséquence est *indéfinie*.
+
+Quand zotify se lance et meurt sans écrire une ligne — environnement Python
+abîmé, bibliothèque manquante, `.app` déplacé, quarantaine Gatekeeper — la
+chaîne se déroule ainsi :
+
+- `télécharger` (`src/zotify.js:1012`) résout `{ lancé: true, erreurs: [], nouveaux: [] }`.
+- `src/synchronisation.js:528` → `lignesSignalées = []` → `titresPerdus = 0`.
+- `interrompu` est faux, `expiré` est faux.
+- **`bilan.échec` n'est renseigné nulle part pour ce cas.** Ses cinq points
+  d'affectation sont `:250` (diagnostic bloquant), `:358` (disque débranché),
+  `:448` (réglage bloquant), `:540` (connexion requise) et `:746` (exception).
+  Aucun ne couvre « zotify s'est lancé et a échoué ».
+- Donc `:700` `if (!bilan.interrompu && !bilan.échec)` → `marquerSuccès()`, qui
+  avance `dernierSuccès` **et remet `échecsConsécutifs` à zéro**
+  (`src/etat.js:118`).
+
+Pire encore : `:585` enregistre bien `échec: résultat.lancé ? null : ...`, mais
+dans la fiche de la playlist, pas dans `bilan.échec`. **Même un lanceur
+introuvable passe donc pour un succès.**
+
+Ce que l'utilisateur voit : « Aucune nouveauté », pastille verte, notification
+rassurante. L'app attend 48 h, recommence, réaffiche « Aucune nouveauté ».
+Indéfiniment, sans un seul signal. Le recul après échecs — écrit précisément
+pour ce cas — ne s'enclenche jamais.
+
+C'est le défaut de la 1.0.5 remonté d'un étage : rien n'est perdu, rien n'est
+jamais téléchargé. Aucun test ne couvre `lancé === false` ni « sortie non nulle
+et muette ».
+
+#### BLOQUANT — Une expiration du chien de garde compte aussi comme un succès
+
+Même mécanique, chemin plus fréquent. `expiré` n'apparaît que deux fois dans
+`src/synchronisation.js` : `:610` pour calculer `alléAuBout`, et `:617` pour une
+note de playlist. **Il n'atteint jamais `bilan.interrompu`.** Donc `:700`
+marque un succès.
+
+Wi-Fi coupé à 3 h du matin, zotify figé sur une socket morte, le chien de garde
+le tue au bout de quinze minutes : zéro fichier, « Aucune nouveauté », date de
+référence avancée de 48 h. Le cas `connexionRequise` est traité (`:540`) ; le
+cas « réseau mort » ne l'est pas.
+
+Correctif : une ligne à `:532`, `if (résultat.interrompu || résultat.expiré)`.
+
+#### BLOQUANT — Un ffmpeg cassé passe le diagnostic au vert
+
+`src/diagnostic.js:165` lance `ffmpeg -version` puis rend `GRAVITÉ.OK` sans
+jamais examiner `résultat.code`, `résultat.erreur` ni `résultat.expiré`. Tout
+fichier exécutable nommé `ffmpeg` dans le PATH enrichi passe le contrôle — y
+compris un binaire de la mauvaise architecture, ou dont une bibliothèque
+dynamique manque.
+
+Conséquence : c'est le garde-fou que `CLAUDE.md` déclare non négociable, parce
+que sans ffmpeg **zotify renomme le fichier avant de découvrir son absence et ne
+le restaure jamais** — des morceaux détruits sans message. Le contrôle laisse
+donc passer exactement le cas qu'il existe pour attraper.
+
+Correctif : trois lignes. `contrôlerZotify`, `contrôlerFfmpeg`,
+`contrôlerDestination`, `contrôlerIncomplets` et `contrôlerReprise` n'ont aucun
+test direct — 28,6 % de couverture de fonctions sur le module qui décide si l'on
+a le droit de télécharger.
+
+#### BLOQUANT — Le garde-fou « disque débranché » ne se relit qu'une fois par playlist
+
+La boucle des playlists est en `src/synchronisation.js:337`. Les trois contrôles
+— `volumeMonté` (`:357`), `espaceLibre` (`:368`), `conditionToujoursRemplie`
+(`:384`) — sont dedans, **avant** `télécharger` (`:496`). Rien ne les relit
+ensuite.
+
+Le commentaire de `:364` promet pourtant : « Le disque se remplit AU FIL de
+l'exécution […] Sans cette relecture, zotify continuerait d'écrire sur un disque
+plein ». La relecture existe — à la granularité de la playlist. Avec les chiffres
+du projet (2 000 titres à 30 s), **une playlist unique dure 16,7 h et le contrôle
+est fait une seule fois, à H+0**.
+
+Conséquence, celle que `CLAUDE.md` nomme comme cause n° 1 : disque externe
+débranché à H+3, macOS recrée un dossier vide sous `/Volumes/`, et treize heures
+de musique partent sur le disque de démarrage sans un mot.
+
+Le point d'accroche existe déjà : le rappel `surÉvénement` (`:501`) est appelé à
+chaque ligne de zotify. Un contrôle limité à une fois toutes les cinq minutes y
+coûte un `statfs`.
+
+#### BLOQUANT — Fermer l'app pendant une conversion laisse un fichier fantôme, compté comme un morceau
+
+Cinq faits, chacun correct, dont la rencontre casse :
+
+1. La conversion continue **délibérément** après un arrêt
+   (`src/conversion.js:440`) — c'est le correctif des treize fichiers coincés
+   en Ogg.
+2. Mais toute fermeture finit par `process.exit(0)` à cinq secondes
+   (`server.js:533`), parce que le flux d'événements en `keep-alive`
+   (`server.js:111`) empêche `serveur.close()` de rendre la main tant qu'un
+   onglet est ouvert. Ce n'est donc pas un cas de coin : **c'est le chemin de
+   fermeture normal.**
+3. Le fichier en cours s'appelle `.Titre.1234.tmp.flac` (`conversion.js:227`) et
+   n'est renommé qu'à `:279`, ce qui n'arrive jamais.
+4. Aucun des deux balayages ne le ramasse : `nettoyerRestesTemporaires` ne prend
+   que ce qui **finit** par `.tmp` (`zotify.js:676`), et le rattrapage de
+   conversion ne regarde que les `.ogg` (`conversion.js:423`).
+5. `listerAudio` (`bibliotheque.js:64`) le **compte**, parce qu'il filtre sur
+   l'extension seule sans écarter les noms commençant par un point.
+
+Conséquence : un fichier invisible dans le Finder qui entre dans la liste de
+lecture, l'export Rekordbox, l'export Serato et le rapport des rachats. C'est mot
+pour mot le scénario que `zotify.js:692` décrit et prévient — pour les
+téléchargements, jamais pour les conversions.
+
+*Établi par lecture des cinq chemins, pas par observation : ffmpeg n'est pas sur
+le poste de développement.*
+
+#### BLOQUANT — Le retrait des sources contourne la seule protection NFC du projet
+
+`src/organisation.js:186` promet, en toutes lettres : « Toute comparaison de
+chemins dans le projet passe par ici — c'est la seule protection contre le piège
+NFC/NFD. »
+
+`src/synchronisation.js:848` ne passe pas par là :
+
+```js
+const retirables = réussis.filter(({ source }) => inscrits.has(path.resolve(source)));
+```
+
+`inscrits` sort de `cheminsDéjàTéléchargés` (`zotify.js:587`), qui lit le journal
+`.song_archive` **écrit par Python** et rend ses chaînes brutes. C'est le seul
+endroit de tout le projet où une chaîne produite par un autre runtime est
+comparée à une chaîne produite par `readdirSync` — la définition exacte du piège
+que `CLAUDE.md` désigne comme « la cause numéro un de retéléchargements infinis
+dans une bibliothèque francophone ».
+
+Le sens du dégât est heureusement le sens sûr : si la comparaison échoue, aucune
+source n'est retirée. Mais alors **la politique de retrait ne s'applique jamais**,
+et `:852` affiche un message devenu faux (« ils ont été téléchargés avant la mise
+en service du journal »). L'utilisateur a posé « Corbeille » et l'app le lui
+reprend en silence : c'est le défaut du 19 août que la 1.1.0 était censée fermer.
+
+**Et la doublure ne peut structurellement pas le montrer** : `aide-faux-zotify.js`
+inscrit au journal la même chaîne JavaScript qu'il vient de passer à
+`writeFileSync`. Les deux côtés sont identiques par construction. Les deux tests
+qui gardent cette mécanique emploient pourtant des titres accentués — « Été
+2026 », « Étienne de Crécy » —, ce qui donne l'illusion que le cas est couvert.
+
+#### BLOQUANT — L'interface enseigne activement qu'un compte gratuit suffit
+
+Voir la question ouverte plus bas : **ce point attend un arbitrage factuel de
+Pym** avant d'être corrigé, parce que la correction dépend de la réponse.
+
+Cinq textes, cohérents entre eux, construisent le modèle mental
+*Premium = meilleure qualité, gratuit = qualité moindre mais ça marche* :
+
+- `src/options.js:33` — « Exige un abonnement Premium : sans lui, Spotify
+  redescend silencieusement à 160 kb/s. »
+- `src/options.js:41` — « **La qualité d'un compte gratuit.** »
+- `public/notice.html:37` — « Premium pour la meilleure qualité. Sans Premium,
+  Spotify plafonne à 160 kb/s sans le dire. »
+- `README.md:82` — même formulation.
+- `CLAUDE.md:88` — « Le plafond est l'Ogg Vorbis 320 kb/s, et il exige Spotify
+  Premium. »
+
+Le pire endroit est le message d'erreur `src/erreurs.js:65`, motif
+`/premium|subscription required/i`, dont le geste conseillé est : « **Passez la
+qualité sur « Élevée » dans Qualité** ». Si Premium est requis toujours, c'est le
+seul message qui interceptera l'échec de l'utilisateur, et il l'envoie dans le
+mur : il baisse la qualité, relance, et perd une seconde exécution.
+
+Réciproque vérifiée : les **cinq écrans de l'assistant de premier lancement** ne
+mentionnent Premium qu'une fois (`public/app.js:1663`), et pour parler de ce que
+l'utilisateur ne peut **pas** avoir (le sans-perte Spotify). La seule mention
+avant le premier téléchargement présuppose qu'il est déjà abonné.
+
+Deux libellés quasi identiques désignent par ailleurs deux choses opposées : la
+ligne « Connexion Spotify » du Diagnostic parle des identifiants **zotify**,
+pendant que la carte « Compte Spotify » de Playlists parle de l'**API Web**.
+
+À la décharge de l'interface : la carte de `app.js:1151` dit bien « Cela expose
+un second compte en plus de votre compte d'écoute ». La distinction existe — elle
+arrive au deuxième paragraphe, après le mot « Facultatif ».
+
+---
+
+#### Le rapport des rachats ne peut pas être arrêté, et l'interface promet une issue qui n'existe pas
+
+`src/api.js:565` appelle `produireRapport(config(), { surProgrès })` —
+**`arrêtDemandé` n'est jamais passé**. Il garde son défaut `() => false`
+(`achats.js:1001`), donc le `break` de `achats.js:675` ne peut jamais s'exécuter,
+donc `interrompu` vaut structurellement `false`.
+
+Cette phrase de `public/app.js:1561` est donc inatteignable :
+
+> « Recherche interrompue — ce qui est trouvé est conservé, relancer reprendra la suite. »
+
+Toute la mécanique de reprise existe et est testée. Elle n'est pas branchée.
+`index.html:238` ne contient qu'une barre et une ligne — aucun bouton Arrêter —
+et `src/api.js` n'expose aucun point d'entrée d'annulation. Sur 2 000 titres,
+c'est une heure quarante sans porte de sortie, et la seule issue est de quitter
+l'app, ce qui déclenche le fichier fantôme ci-dessus.
+
+Deux points de la même famille, établis par lecture : `#progression-achats`
+démarre `hidden` et rien ne le rouvre au chargement, contrairement à la
+synchronisation (`app.js:144`) ; et aucun verrou ne protège le rapport, alors que
+la règle du projet est « une seule exécution à la fois ».
+
+#### Ouvrir la page lance un `ffprobe` par fichier de la bibliothèque
+
+`src/achats.js:956` appelle `lireMétadonnées(fichier)` dans une boucle
+séquentielle, à chaque `GET /api/achats/estimation`. Or cette fonction
+(`exports-dj.js:39`) **accepte déjà un binaire ffprobe en second argument** — et
+aucun de ses deux appelants ne s'en sert. Pire, `trouverExécutable`
+(`processus.js:106`) **ne met rien en cache** : il reparcourt tout le PATH à
+chaque fichier.
+
+Mesuré : 62 ms par aller-retour de spawn. À 2 000 titres, deux minutes de
+processus à chaque chargement de page — y compris pendant les 17 h de
+synchronisation, où la page reste précisément ouverte pour regarder la
+progression, en concurrence avec les conversions que `conversion.js:296`
+sérialise justement « pour ne pas disputer le disque au pire moment ».
+
+Invisible aujourd'hui : la bibliothèque réelle fait 17 morceaux. `estimerRapport`
+n'a besoin que d'un compte de fichiers ; seul `nbAvecISRC` exige ffprobe, et il
+peut s'annoncer inconnu.
+
+#### Une erreur de syntaxe dans la palette mange une couleur du thème clair
+
+`public/palette.css:163`, dans `:root[data-theme="light"]` :
+
+```css
+  --bord-vif:      #d0d5dc;
+  --fond, la plus foncée. Une teinte déduite par symétrie tomberait sous le
+  --bord-controle: #81868f;
+```
+
+Un fragment du commentaire de la ligne 109, recopié sans son `/*`. Le parseur
+avale la déclaration malformée **et celle qui suit** : `--bord-controle` est
+absent du bloc, vérifié dans le navigateur (18 déclarations au lieu de 19).
+
+**Sans conséquence aujourd'hui, pour une raison qui est elle-même un défaut :
+la bascule manuelle de thème n'existe pas.** Aucun code du dépôt ne pose
+`data-theme` — vérifié sur `public/` entier. Or `palette.css:23` et
+`tests/contraste.test.js:421` affirment tous deux que « la notice offre une
+bascule manuelle qui pose data-theme ». Soit une quarantaine de lignes de CSS
+qui ne s'appliquent jamais, un commentaire qui décrit une fonctionnalité absente,
+et un test qui garde le tout.
+
+Et le test ne pouvait pas l'attraper : il extrait les noms de variables par une
+expression régulière sur le texte source, qui trouve `--bord-controle` dans la
+ligne cassée. Il ne peut structurellement pas voir qu'un navigateur l'a jetée.
+C'est la leçon du projet — « un détecteur qui ne trouve rien doit d'abord prouver
+qu'il trouve » — appliquée au détecteur lui-même.
+
+#### Trois récits contradictoires sur la provenance de zotify
+
+Trois textes, tous affichés, tous incompatibles :
+
+| Où | Ce qui est écrit |
+|---|---|
+| `public/notice.html:26` | « le moteur, Python, ffmpeg et zotify **voyagent dans l'application**. Vous n'installez rien, vous ne tapez aucune commande. » |
+| `public/app.js:1588` (assistant, écran 1) | « il pilote **votre installation de zotify, celle que vous utilisez déjà**. » |
+| Diagnostic, vu à l'écran | « zotify est introuvable. Vérifiez qu'il répond en tapant **« zotify --version » dans le Terminal**. » |
+
+Pour le paquet macOS livré, seul le premier est vrai. L'écran 1 de l'assistant
+date d'avant l'empaquetage. Le `README.md` porte la même contradiction : « il
+pilote votre installation de zotify, qui doit déjà être installée » vingt lignes
+avant « l'application embarque Node.js, Python, ffmpeg et zotify ».
+
+Conséquence : le premier message d'erreur qu'un non-développeur rencontrera lui
+demande d'ouvrir un Terminal, dans une application qui vient de lui promettre le
+contraire.
+
+#### Un lien de playlist manifestement faux est accepté sans broncher
+
+Testé à l'écran : `https://open.spotify.com/playlist/ZZZZ` → notification verte
+« Playlist ajoutée. », et la ligne apparaît sous SURVEILLÉES.
+
+Cause : `src/api.js:63`, `([A-Za-z0-9]+)` accepte un identifiant d'**un seul
+caractère**, quand un identifiant Spotify en fait exactement 22.
+
+Conséquence : un lien tronqué par un copier-coller raté est confirmé comme
+valide, donc l'utilisateur n'y revient pas, et découvre au bout de 48 h — ou
+jamais — que rien n'en est descendu. Le cas franchement invalide, lui, est très
+bien traité, avec un message rattaché au bon champ.
+
+#### `volumeMonté` et `espaceLibre` n'ont aucun test, dans aucune branche
+
+`grep -rn "volumeMonté\|espaceLibre" tests/` ne rend **rien**. Couverture :
+`src/chemins.js:243-282` jamais exécuté.
+
+Et même sur le Mac de la chaîne d'intégration, la branche dangereuse n'est jamais
+atteinte : les tests d'intégration travaillent dans `os.tmpdir()`, soit
+`/var/folders/…`, qui sort au `return true` de la ligne 255. **La comparaison de
+`dev` qui distingue un vrai volume d'un dossier fantôme n'a jamais tourné nulle
+part.**
+
+`espaceLibre` rend `null` sur toute exception, et ses deux appelants écrivent
+`if (libre !== null && …)`. Si `fs.statfsSync` change de nom, les deux garde-fous
+« disque plein » s'éteignent **sans qu'un seul test rougisse**.
+
+#### L'assistant de premier lancement est inatteignable au clavier
+
+Mesuré sur une page fraîchement chargée, modale ouverte : `document.activeElement`
+vaut `<body>` — le focus n'entre jamais dans la boîte de dialogue. L'arrière-plan
+n'est ni `inert` ni `aria-hidden`. L'ordre de tabulation compte **huit arrêts sur
+des commandes invisibles** avant d'atteindre « Passer la configuration ».
+
+`aria-modal="true"` est bien posé (`index.html:418`) mais ne parle qu'aux
+lecteurs d'écran.
+
+---
+
+#### Dette assumable — relevée, pas corrigée
+
+- **`appliquerPolitiqueRetrait` (`bibliotheque.js:204`) : 62 lignes, 6 tests,
+  zéro appelant.** Le vrai chemin de retrait est le bloc en ligne de
+  `synchronisation.js:845`, dont le garde-fou a une structure *différente*
+  (appartenance au journal, pas de ratio à 50 %). Deux implémentations
+  divergentes attendent le jour où l'on branchera la politique. Six tests verts
+  qui ne protègent aucun octet.
+- **`src/api.js` n'a aucun fichier de test** — 600 lignes, 37 % de couverture de
+  fonctions. `PUT /api/config` (`:215`) porte un commentaire décrivant un défaut
+  qui a déjà effacé la liste des playlists d'un utilisateur ; sa correction tient
+  en deux lignes (`:247`) et **rien ne l'épingle**. Idem pour
+  `POST /api/spotify/suivre` (`:372`).
+- **`tests/energie.test.js:60` ne peut pas échouer** : son corps est enveloppé
+  dans `if (résultat !== null)`, et `conditionToujoursRemplie` rend `null` sous
+  Windows comme sur un runner macOS branché. Ce test n'a jamais exécuté une seule
+  assertion, sur aucune machine — et les deux branches qu'il prétend garder,
+  celles qui *arrêtent* une synchronisation en itinérance, ne sont pas couvertes.
+- **`tests/exports-dj.test.js:313` hérite de `process.platform`**, alors que le
+  dépôt a déjà l'outil pour l'éviter (`tests/diagnostic.test.js:34`, `sur()`).
+  Même famille : `tests/organisation.test.js` assertions sur `path.sep`.
+- **Six clés de `bilan` calculées, persistées, envoyées au navigateur et lues par
+  personne** : `nbConvertis`, `rattrapés`, `àReprendre`, `déjàPrêts`,
+  `sourcesTraitées`, `diagnostics` — zéro occurrence dans `public/app.js`.
+- **Le verrou écrit `date` (`synchronisation.js:87`) et ne la relit jamais.** La
+  seule péremption est `processusVivant(pid)`. Sur réutilisation de PID après un
+  `kill -9`, l'app reste bloquée sur « Une autre instance semble déjà en train de
+  synchroniser », et il faut supprimer un fichier à la main — hors de portée de
+  l'utilisateur cible.
+- **`écrireAtomique` (`chemins.js:165`) ne fait aucun `fsync`**, ni du fichier ni
+  du répertoire, alors que son commentaire promet « soit l'ancien contenu, soit
+  le nouveau ». Vrai en pratique sur APFS ; la garantie écrite reste plus forte
+  que le code.
+- **Le schéma des URL MusicBrainz n'est pas validé** : `achats.js:539` prend
+  `relation.url.resource` tel quel et `:869` l'injecte dans un `href`.
+  `échapperHTML` neutralise les guillemets, pas `javascript:`. Donnée éditable
+  par la communauté MusicBrainz, rapport ouvert en `file://`.
+- **`src/achats.js:78` annonce `Zotijean/1.0.7`** à MusicBrainz, dont la politique
+  porte précisément sur cet en-tête. Aucun test ne le relie à `package.json`.
+- **`estimerDurée` (`achats.js:737`) code en dur 1,05 s par requête** pendant que
+  `RYTHME_MS` (`:81`) vaut 1100 et 1000. Deux nombres découplés, dont l'un est
+  une promesse affichée avant une opération d'une heure.
+- **Deux options de retrait sans effet restent cochables** (Planification, « quand
+  un titre est retiré d'une playlist »). Le texte le dit franchement, mais l'app
+  enregistre un choix qui ne fera rien. Et la notice dit du même point « même en
+  choisissant d'archiver ou de mettre à la corbeille, rien n'est détruit », ce
+  qui laisse croire que ces choix fonctionnent.
+- **« Mesuré sur votre bibliothèque » s'affiche sur une bibliothèque vide**
+  (`options.js:485`), à trente centimètres de « Aucun morceau dans la
+  bibliothèque ». Sur le fond l'interface fait bien : le dénominateur est affiché
+  (« 14 sur 17 »), donc rien n'est présenté comme une garantie. Ce qui manque est
+  le mot que `docs/specs/racheter-en-sans-perte.md:121` dit et que l'interface
+  tait : « les intervalles de confiance à 95 % sont larges ».
+- **Un contraste à 4,36 pour 1** sur `.apercu-etiquette` en thème sombre, ligne
+  mise en avant de l'aperçu de rangement — un seul mot, 3 % sous le seuil. Le
+  test de contraste vérifie `--texte-3` contre les quatre surfaces de la palette,
+  pas contre les surfaces teintées.
+- **Les sept onglets n'ont aucun état programmatique** : ni `role="tab"`, ni
+  `aria-selected`, ni `aria-current`. L'onglet actif se signale par la couleur,
+  un fond teinté et une graisse — donc pas par la couleur seule, ce qui sauve
+  l'essentiel, mais rien n'est annoncé à un lecteur d'écran.
+- **`CHAMPS_SURCHARGEABLES` (`config.js:231`) est du code mort** : zéro référence
+  dans `src/`, `server.js`, `public/` et `tests/`.
+- **Le seuil « 2 Go » est écrit cinq fois** (`config.js:83`, `diagnostic.js:375`,
+  `options.js:577`, `simulation.js:117`, `synchronisation.js:369`) et il existe
+  quatre échappeurs HTML/XML distincts dans le dépôt.
+
+#### Ce que ce fichier disait et qui était devenu faux
+
+La confrontation de ce document au code a trouvé trois écarts. Ils sont corrigés
+dans les sections concernées ; ils sont écrits ici parce que **c'est le fait
+qu'ils existent qui compte**, pas leur contenu.
+
+- **La rainure de la barre de progression** était encore classée « Non corrigé,
+  et pour une raison précise » alors que la 1.1.0 l'a corrigée, raisonnement
+  écrit dans `public/app.css:220`.
+- **`text-wrap: balance`** était situé aux lignes 91 et 106 de `notice.css`. Il
+  est aux lignes **80 et 95** : l'extraction de la palette a décalé le fichier.
+  Le constat était vrai, ses coordonnées non.
+- **Le défaut Node 20** annonce « trois actions, à cinq endroits », puis en liste
+  **sept**. Les sept références sont exactes ; c'est le décompte qui est faux.
+
+Et un écart dans `CLAUDE.md` : son bloc « Profil projet » annonce que « le PC
+Windows en ignore 13 ». Mesuré le 21 août : **20 ignorés** sur 500 tests. Le
+fichier qui interdit de répéter un chiffre en porte un qui a re-vieilli.
+
+Enfin, `CLAUDE.md:51` renvoie au module **`doctor.js`**, qui n'a **jamais existé**
+dans l'historique du dépôt — le module s'appelle `src/diagnostic.js`. Mauvais
+pointeur dans le seul fichier chargé automatiquement à chaque conversation.
+
+#### Le décompte de la suite, mesuré
+
+`node --test` depuis la racine, sur le PC Windows : **500 tests · 480 verts ·
+0 échec · 20 ignorés**. Couverture native : 67,7 % des lignes, 82,8 % des
+branches, 69,5 % des fonctions.
+
+Les trous ne sont pas répartis au hasard :
+
+| module | lignes couvertes | remarque |
+|---|---|---|
+| `src/synchronisation.js` | **21,2 %** | `synchroniser()` ne s'exécute jamais ici |
+| `src/analyse.js` | 29,5 % | **0 % de fonctions**, aucun fichier de test |
+| `src/diagnostic.js` | 35,9 % | la porte devant tout le reste |
+| `src/spotify.js` | 39,4 % | **20 % de fonctions** |
+| `src/api.js` | 51,3 % | aucun fichier de test |
+| `src/correspondance.js` | 100 % | — |
+
+Les 20 ignorés : 18 dans `tests/synchronisation.test.js` (garde `SAUTER`,
+ligne 45), 1 dans `tests/conversion.test.js:306`, 1 dans `tests/chemins.test.js:213`.
+
+**Phrase à retenir, et qui manque au profil du projet : un `node --test` vert sur
+le PC Windows ne dit rien du téléchargement, du verrou, de la politique de
+retrait, de la liste de lecture, de la conversion au fil de l'eau ni du bouton
+Arrêter.** Seules les branches macOS et Linux de la chaîne d'intégration les
+exercent.
+
+#### Ce que cet audit n'a PAS pu voir
+
+Obligatoire, et à lire avant d'affirmer que quoi que ce soit « marche ».
+
+- **Aucune image de l'interface.** Le panneau navigateur n'a jamais composé de
+  frame : zéro capture d'écran sur toute la revue. Tout jugement visuel de ce
+  relevé est une mesure du DOM (`getComputedStyle`, `getBoundingClientRect`), pas
+  un regard. Un défaut purement optique — un alignement de travers, une icône
+  coupée, un rythme d'espacement irrégulier — est passé sous le nez par
+  construction.
+- **Safari, et un vrai Mac.** Chromium sous Windows uniquement. Les dégradés,
+  `:focus-visible`, `color-mix()` et `:has()` peuvent différer.
+- **Le vrai zotify.** Absent du poste : 18 tests d'intégration éteints, aucune
+  synchronisation, et **aucun message de `src/erreurs.js` jamais vu à l'écran**.
+- **La vraie API Web de Spotify.** Jamais contactée, et **sans couture pour poser
+  une doublure** : `src/spotify.js` appelle le `fetch` global à `:152`, `:231` et
+  `:342`. Quinze fonctions ne sont exercées par rien, dont `terminerConnexion`,
+  `rafraîchir` et la vérification de l'état PKCE.
+- **Une vraie bibliothèque.** Zéro fichier, zéro playlist : conversion, politique
+  de retrait, exports et rapport de rachat n'ont jamais tourné.
+- **Un vrai disque externe débranché en cours de route.** La seule chose qui
+  exercerait `chemins.js:242-282`. C'est aussi le scénario dont le dégât est le
+  plus lourd de tout le projet.
+- **MusicBrainz et Bandcamp en vrai.** `requêteHTTPS` (`achats.js:219`) et le
+  limiteur de débit (`:204`) sont du code qui n'existe qu'en production : tous
+  les tests injectent un transport.
+- **Serato et Rekordbox.** Aucune crate produite par ce dépôt n'a jamais été
+  ouverte par le logiciel auquel elle est destinée.
+
+#### Deux affirmations d'agent écartées après vérification
+
+Écrites ici parce qu'elles disent quelque chose sur la méthode, pas sur le code.
+
+Les agents d'architecture **et** de couverture ont tous deux affirmé que le bloc
+« Profil projet » de `CLAUDE.md` annonce « 432 tests, 419 verts, 13 ignorés » et
+« Node.js 24 ». **C'est faux** : le fichier dit `500 tests` (`:148`) et
+`Node.js 22` (`:143`). Les deux travaillaient sur la version d'avant la fusion de
+la 1.1.0.
+
+La leçon n'est pas qu'ils se sont trompés — c'est qu'ils se sont trompés **de la
+même façon**, et que deux rapports concordants ne valent pas une vérification.
+C'est en allant contrôler cette fausse affirmation que le vrai chiffre périmé
+(« 13 ignorés » contre 20 mesurés) a été trouvé.
 
 ### 19 août 2026 — première mise en service sur le Mac
 
@@ -450,10 +940,16 @@ sombre, 1,15:1 en clair, pour un seuil de 3:1. C'est elle qui dessine la
 longueur totale du trajet ; la jauge ambre n'en occupe qu'une part. On voit donc
 où on en est, mais pas par rapport à quoi.
 
-Non corrigé, et pour une raison précise : l'éclaircir la rapprocherait de la
+~~Non corrigé, et pour une raison précise : l'éclaircir la rapprocherait de la
 jauge ambre qu'elle contient, exactement la tension déjà rencontrée sur la
 bascule — deux exigences qui tirent en sens inverse. Se règle en regardant
-l'écran, pas au jugé.
+l'écran, pas au jugé.~~
+
+**Corrigé dans la 1.1.0**, et pas de la façon envisagée ici : plutôt que
+d'éclaircir la rainure, on lui a donné un contour. Les deux exigences sont alors
+satisfaites au lieu d'être arbitrées. Le raisonnement mesuré est écrit dans
+`public/app.css:220`. *(Ce paragraphe est resté « Non corrigé » deux jours après
+l'être ; repéré le 21 août 2026 en confrontant ce fichier au code.)*
 
 **Les deux étiquettes de format sont sous le seuil du texte** — « perte
 ajoutée » en rouge et « sans perte ajoutée » en vert, dans l'onglet Qualité.
