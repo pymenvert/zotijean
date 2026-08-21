@@ -386,3 +386,55 @@ test('les téléchargements mis de côté restent invisibles pour la bibliothèq
     fs.rmSync(racine, { recursive: true, force: true });
   }
 });
+
+// ---------------------------------------------------------------------------
+// Le fichier fantôme de la conversion
+//
+// AUDIT DU 21 AOÛT 2026. La conversion écrit son travail en cours dans
+// « .Titre.1234.tmp.flac » : un point devant, et l'extension de la CIBLE
+// derrière. Si l'application est fermée pendant une conversion — ce qui est le
+// chemin de fermeture NORMAL, puisqu'un onglet ouvert force la sortie à cinq
+// secondes —, ce fichier n'est jamais renommé.
+//
+// Un filtre sur la seule extension le comptait alors pour un morceau : il
+// entrait dans la liste de lecture, dans l'export Rekordbox, dans l'export
+// Serato et dans le rapport des rachats. Invisible dans le Finder, donc
+// introuvable pour qui cherchait d'où venait le doublon.
+// ---------------------------------------------------------------------------
+
+test('un reste de conversion caché n’est PAS compté comme un morceau', () => {
+  const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'zotijean-fantome-'));
+  try {
+    fs.writeFileSync(path.join(dossier, 'Prix Choc.flac'), 'vrai morceau');
+    // Le fantôme : point devant, extension audio derrière.
+    fs.writeFileSync(path.join(dossier, '.Prix Choc.1234.tmp.flac'), 'moitie de morceau');
+    // Et les compagnons habituels de macOS, tant qu'on y est.
+    fs.writeFileSync(path.join(dossier, '._Prix Choc.flac'), 'AppleDouble');
+
+    const trouvés = listerAudio(dossier).map((f) => path.basename(f));
+
+    assert.deepEqual(
+      trouvés, ['Prix Choc.flac'],
+      'un fichier de travail caché est compté comme un morceau : il entrera dans '
+      + 'la liste de lecture et dans les exports DJ, en double, sous un nom que '
+      + 'le Finder ne montre pas',
+    );
+  } finally {
+    fs.rmSync(dossier, { recursive: true, force: true });
+  }
+});
+
+test('un morceau normal n’est jamais écarté par cette garde', () => {
+  // Le sens inverse : la garde ne doit pas manger des fichiers légitimes, y
+  // compris ceux dont le nom contient des points.
+  const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'zotijean-points-'));
+  try {
+    for (const nom of ['Étienne de Crécy - Prix Choc.ogg', 'A.C.A.B. (Mix).mp3', 'x.tmp.flac']) {
+      fs.writeFileSync(path.join(dossier, nom), 'x');
+    }
+    const trouvés = listerAudio(dossier).map((f) => path.basename(f));
+    assert.equal(trouvés.length, 3, `un morceau légitime a été écarté : ${trouvés.join(', ')}`);
+  } finally {
+    fs.rmSync(dossier, { recursive: true, force: true });
+  }
+});

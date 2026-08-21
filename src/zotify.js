@@ -590,7 +590,22 @@ export function cheminsDéjàTéléchargés(dossier) {
     return new Set(
       texte.split('\n')
         .map((ligne) => ligne.split('\t').at(-1)?.trim())
-        .filter(Boolean),
+        .filter(Boolean)
+        // LE SEUL ENDROIT DU PROJET OÙ UNE CHAÎNE ÉCRITE PAR PYTHON RENCONTRE
+        // UNE CHAÎNE LUE PAR NODE, et il passait à côté de la normalisation.
+        //
+        // Ce journal est écrit par zotify ; les chemins auxquels on le compare
+        // sortent de `readdirSync`. Un « é » en NFD d'un côté et en NFC de
+        // l'autre désignent le MÊME fichier et deux chaînes différentes — ce
+        // que CLAUDE.md appelle la cause numéro un de retéléchargements infinis
+        // dans une bibliothèque francophone.
+        //
+        // Sans cette ligne, la politique de retrait ne s'appliquait à AUCUN
+        // morceau dont le titre porte un accent, et l'app annonçait à tort
+        // qu'ils dataient d'avant la mise en service du journal. L'utilisateur
+        // avait choisi « Corbeille », et l'app le lui reprenait en silence.
+        // Trouvé par l'audit du 21 août 2026.
+        .map((chemin) => cléComparaison(chemin)),
     );
   } catch {
     return new Set();
@@ -654,10 +669,31 @@ export function saitReprendreSansLeFichier({ config = {}, capacités = {}, dossi
  * la bibliothèque, à raison de plusieurs mégaoctets chacun, sans que rien ne les
  * signale ni ne les efface.
  *
+ * DEUX FORMES, PAS UNE — et la seconde manquait. La CONVERSION, elle, nomme son
+ * travail en cours `.Titre.1234.tmp.flac` : un point devant, et l'extension de
+ * la cible DERRIÈRE le « .tmp ». Ce reste-là ne finit donc pas par « .tmp », il
+ * échappait à ce balayage comme à celui de la conversion (qui ne regarde que les
+ * .ogg) — et, portant une extension audio, il était compté pour un morceau.
+ * Trouvé par l'audit du 21 août 2026.
+ *
  * On les supprime plutôt que de les mettre à l'abri : ce ne sont pas des
  * morceaux, seulement des fragments de téléchargement inachevés, et ils portent
  * un nom qui ne désigne rien pour l'utilisateur.
  */
+/**
+ * Ce nom désigne-t-il un fichier de travail abandonné ?
+ *
+ * Deux formes seulement, et volontairement étroites : ce qui FINIT par « .tmp »
+ * (zotify), et ce qui commence par un point ET porte « .tmp. » juste avant son
+ * extension (la conversion). Élargir la règle risquerait d'emporter un fichier
+ * que l'utilisateur a déposé lui-même — on ne supprime jamais par défaut.
+ */
+export function estUnResteDeTravail(nom) {
+  const bas = String(nom).toLowerCase();
+  if (bas.endsWith('.tmp')) return true;
+  return bas.startsWith('.') && /\.tmp\.[a-z0-9]+$/.test(bas);
+}
+
 export function nettoyerRestesTemporaires(dossierRacine) {
   const supprimés = [];
 
@@ -673,7 +709,7 @@ export function nettoyerRestesTemporaires(dossierRacine) {
       if (entrée.isDirectory()) {
         if (entrée.name.startsWith('.') || entrée.name.startsWith('_')) continue;
         parcourir(complet);
-      } else if (entrée.name.toLowerCase().endsWith('.tmp')) {
+      } else if (estUnResteDeTravail(entrée.name)) {
         try {
           const taille = fs.statSync(complet).size;
           fs.unlinkSync(complet);
@@ -1026,4 +1062,64 @@ export function télécharger({
       });
     });
   });
+}
+
+/**
+ * Ce lancement a-t-il ÉCHOUÉ, au sens où rien ne prouve que zotify ait travaillé ?
+ *
+ * UN SUCCÈS NE SE DÉDUIT PAS D'UNE ABSENCE D'ERREUR CONNUE. C'est le défaut le
+ * plus coûteux trouvé par l'audit du 21 août 2026, et il vit ici plutôt que dans
+ * la synchronisation pour que personne ne modifie le résultat de `télécharger`
+ * sans voir ce qui le lit.
+ *
+ * Quand zotify se lançait et mourait sans écrire une ligne — environnement
+ * Python abîmé, bibliothèque manquante, paquet mis en quarantaine —, `erreurs`
+ * valait `[]`, donc les titres perdus valaient zéro, donc `bilan.échec` restait
+ * vide, donc l'app marquait un SUCCÈS : elle avançait sa date de référence,
+ * remettait le compteur d'échecs à zéro, affichait « Aucune nouveauté » et
+ * attendait 48 h. Puis recommençait. Indéfiniment, sans un seul signal.
+ *
+ * Rien n'était perdu, mais rien n'était jamais téléchargé — exactement le prix
+ * payé de la 1.0 à la 1.0.4.
+ *
+ * Rend `null` quand tout va bien, sinon une phrase à montrer.
+ */
+export function échecDeLancement(résultat) {
+  if (!résultat) return 'zotify n’a rien rendu du tout.';
+
+  if (résultat.lancé === false) {
+    return résultat.erreur?.message
+      ? `zotify n’a pas pu être lancé : ${résultat.erreur.message}`
+      : 'zotify n’a pas pu être lancé.';
+  }
+
+  // Un arrêt demandé n'est PAS un échec : l'utilisateur a cliqué sur Arrêter, et
+  // ce qui est descendu est bien descendu. C'est la seule sortie anormale qui
+  // doit laisser la date de référence avancer.
+  if (résultat.interrompu) return null;
+
+  // Le chien de garde, lui, en est un. Il mord quand zotify se fige sur une
+  // socket morte : zéro fichier, et la cause ne se répare pas toute seule.
+  if (résultat.expiré) {
+    return 'zotify est resté muet trop longtemps et a été arrêté. '
+      + 'Vérifiez votre connexion, puis relancez.';
+  }
+
+  // LE CAS SILENCIEUX. Le code de sortie de zotify vaut 0 même quand des pistes
+  // échouent — c'est écrit dans CLAUDE.md et c'est pour ça qu'on ne s'y fie
+  // jamais seul. Mais l'inverse tient : un code NON NUL accompagné d'aucune
+  // ligne et d'aucun fichier ne peut rien vouloir dire d'autre qu'un échec.
+  //
+  // Les trois conditions sont exigées ensemble, et il le faut : une playlist
+  // déjà à jour rend elle aussi zéro fichier, et c'est un vrai succès.
+  const n_aRienDit = (résultat.lignes?.length ?? 0) === 0;
+  const n_aRienFait = (résultat.nouveaux?.length ?? 0) === 0;
+
+  if (résultat.codeSortie !== 0 && n_aRienDit && n_aRienFait) {
+    return `zotify s’est arrêté (code ${résultat.codeSortie}) sans rien écrire `
+      + 'ni rien télécharger. Son installation est probablement abîmée : '
+      + 'l’onglet Diagnostic vous dira ce qui manque.';
+  }
+
+  return null;
 }

@@ -51,7 +51,21 @@ export function écrireListeLecture({ destination, fichiers, titre }) {
   return { destination, nbEntrées: fichiers.length };
 }
 
-/** Liste les fichiers audio d'un dossier, triés comme le ferait le Finder. */
+/**
+ * Liste les fichiers audio d'un dossier, triés comme le ferait le Finder.
+ *
+ * LES FICHIERS CACHÉS SONT ÉCARTÉS, et ce n'est pas de la coquetterie. La
+ * conversion écrit son travail en cours dans un fichier nommé
+ * `.Titre.1234.tmp.flac` — un point devant, et l'extension de la CIBLE derrière.
+ * Si l'application est fermée pendant une conversion, ce fichier n'est jamais
+ * renommé (audit du 21 août 2026), et un filtre sur la seule extension le
+ * comptait pour un morceau : il entrait dans la liste de lecture, dans l'export
+ * Rekordbox, dans l'export Serato et dans le rapport des rachats — invisible
+ * dans le Finder, donc introuvable pour qui cherchait d'où venait le doublon.
+ *
+ * Aucun morceau légitime ne commence par un point : macOS le masquerait, et
+ * l'utilisateur ne le verrait jamais dans sa bibliothèque.
+ */
 export function listerAudio(dossier) {
   let entrées;
   try {
@@ -61,7 +75,9 @@ export function listerAudio(dossier) {
   }
 
   return entrées
-    .filter((e) => e.isFile() && EXTENSIONS_AUDIO.has(path.extname(e.name).toLowerCase()))
+    .filter((e) => e.isFile()
+      && !e.name.startsWith('.')
+      && EXTENSIONS_AUDIO.has(path.extname(e.name).toLowerCase()))
     .map((e) => path.join(dossier, e.name))
     .sort((a, b) =>
       path.basename(a).localeCompare(path.basename(b), 'fr', { numeric: true }),

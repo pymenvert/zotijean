@@ -64,12 +64,20 @@ export const CATALOGUE = [
   {
     code: 'premium_requis',
     motif: /premium|subscription required|not.*premium/i,
-    titre: 'Cette qualité demande un abonnement Premium',
+    titre: 'Le téléchargement demande un compte Spotify Premium',
     gravité: GRAVITÉ.SÉRIEUX,
+    // LE GESTE CONSEILLÉ ENVOYAIT DANS LE MUR. Il disait « passez la qualité sur
+    // Élevée » — ce qui n'y change rien, puisque Premium est requis pour
+    // télécharger, pas seulement pour le 320 kb/s. C'est le seul message qui
+    // intercepte l'échec d'un utilisateur sans abonnement : lui faire baisser la
+    // qualité et relancer lui coûtait une seconde exécution pour rien.
     explication:
-      'Sans Premium, Spotify plafonne à 160 kb/s. Il ne renvoie pas d’erreur : il ' +
-      'livre simplement une qualité inférieure à celle demandée.',
-    geste: 'Passez la qualité sur « Élevée » dans Qualité, ou vérifiez votre abonnement.',
+      'Spotify réserve le téléchargement aux comptes Premium. Baisser la qualité ' +
+      'ne change rien : c’est l’accès lui-même qui est refusé, pas le débit.',
+    geste:
+      'Vérifiez que le compte connecté à zotify est bien un compte Premium et que ' +
+      'l’abonnement est actif. Si vous venez de vous abonner, relancez zotify une ' +
+      'fois dans le Terminal pour qu’il rafraîchisse vos identifiants.',
   },
   {
     code: 'identifiants',

@@ -1148,10 +1148,13 @@ async function rendreSpotify() {
   // Non connecté : on explique ce que ça apporte ET ce que ça coûte, comme
   // pour toute autre option de l'app.
   zone.innerHTML = avertissementRévocation + `
-    <p class="aide">Facultatif. Sans connexion, Zotijean fonctionne : il passe vos
-    liens à zotify et regarde ce qui apparaît sur le disque. Avec, il sait en plus
-    quelles playlists n’ont pas bougé — et les saute, ce qui fait gagner des
-    heures — quels morceaux manquent exactement, et lesquels ont été retirés.</p>
+    <p class="aide"><strong>Facultatif, et sans rapport avec le compte Spotify Premium
+    qui sert à télécharger.</strong> Celui-là reste indispensable dans tous les cas.
+    Cette connexion-ci sert seulement à <em>lire</em> vos playlists.</p>
+    <p class="aide">Sans elle, Zotijean fonctionne : il passe vos liens à zotify et
+    regarde ce qui apparaît sur le disque. Avec, il sait en plus quelles playlists
+    n’ont pas bougé — et les saute, ce qui fait gagner des heures — quels morceaux
+    manquent exactement, et lesquels ont été retirés.</p>
     <p class="aide">En contrepartie, il faut créer une application dans le tableau
     de bord développeur de Spotify, dont les conditions interdisent d’alimenter un
     téléchargeur. Cela expose un second compte en plus de votre compte d’écoute.</p>
@@ -1658,6 +1661,12 @@ const ÉTAPES_ONBOARDING = [
   {
     titre: 'Ce qu’il faut savoir',
     rendre: () => `
+      <div class="onb-avertissement">
+        <p><strong>Il faut un compte Spotify Premium.</strong> Pas pour avoir une
+        meilleure qualité : pour télécharger tout court. Spotify réserve cet accès à
+        ses abonnés, et aucun réglage de Zotijean ne contourne ça. C’est le compte que
+        vous donnez à zotify, celui avec lequel vous écoutez.</p>
+      </div>
       <div class="onb-avertissement">
         <p><strong>La qualité plafonne à 320 kb/s.</strong> Spotify a lancé son offre
         sans perte en septembre 2025, incluse dans votre abonnement Premium — mais ce

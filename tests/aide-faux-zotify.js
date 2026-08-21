@@ -125,6 +125,20 @@ if (scénario === 'echec-total') {
   process.exit(0);
 }
 
+// LA MORT SILENCIEUSE, et c'est le scénario qui manquait le plus.
+//
+// Le contraire exact de « echec-total » : celui-ci PARLE puis rend 0, celui-là
+// se TAIT puis rend 1. C'est ce que fait un environnement Python abîmé — une
+// bibliothèque manquante, un paquet mis en quarantaine par macOS, l'app
+// déplacée. Le lanceur répond encore à `--version` et `--help`, donc le
+// diagnostic passe au vert, puis il meurt au moment du vrai appel.
+//
+// Sans ce scénario, aucun test ne pouvait montrer que l'app comptait ce cas
+// comme un succès : elle avançait sa date de référence et attendait 48 h.
+if (scénario === 'mort-silencieuse') {
+  process.exit(1);
+}
+
 // Les paroles manquantes : le scénario qui a coûté le plus cher.
 //
 // Le vrai zotify, le 19 août 2026, a écrit exactement ces lignes pendant que

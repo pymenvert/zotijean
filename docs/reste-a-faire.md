@@ -455,6 +455,26 @@ Le fil commun de ce qui suit est le même qu'en 1.1.0, et c'est ce qui rend ces
 défauts difficiles à voir : **chaque pièce fonctionne.** Ce qui casse, c'est ce
 qu'une pièce croit de sa voisine.
 
+> **Les sept bloquants ont été corrigés le jour même**, branche
+> `fix/bloquants-de-l-audit`. Ils restent écrits ici en entier — le constat, la
+> chaîne exacte et la conséquence — parce que c'est le RAISONNEMENT qui vaut
+> d'être gardé, pas la ligne de code. Chaque correctif porte sa reproduction :
+> les huit points de dette qui suivent, eux, restent ouverts.
+>
+> Trois des sept bloquants avaient exactement la même forme, et c'est la leçon
+> générale de cet audit : **un succès ne se déduit pas d'une absence d'erreur
+> connue.** zotify meurt muet, le chien de garde mord, ffmpeg répond n'importe
+> quoi — dans les trois cas le code concluait « tout va bien » parce qu'aucun
+> signal qu'il *sait lire* n'était arrivé. Le correctif n'est jamais d'ajouter un
+> motif d'erreur de plus : c'est d'exiger une preuve positive.
+>
+> **Un seul test ne peut pas être vérifié depuis le PC Windows** : celui qui
+> garde le CHAÎNAGE du premier bloquant (`tests/synchronisation.test.js`, « un
+> zotify qui meurt sans rien dire n'avance PAS la date de référence »). Il porte
+> la garde `SAUTER` comme les dix-huit autres tests d'intégration, et ne s'exécute
+> que sur les serveurs macOS et Linux. Sa pièce, elle, est éprouvée partout
+> (`tests/zotify.test.js`).
+
 ---
 
 #### BLOQUANT — Une synchronisation totalement ratée compte comme un succès
@@ -766,6 +786,19 @@ des commandes invisibles** avant d'atteindre « Passer la configuration ».
 lecteurs d'écran.
 
 ---
+
+#### Trouvé en corrigeant, et laissé en place
+
+**Une garde inatteignable dans `volumeMonté`** (`src/chemins.js:258`). Découvert
+en écrivant son test : `if (segments.length < 2) return false;` ne peut jamais
+s'exécuter. Pour arriver là, il faut avoir passé `résolu.startsWith('/Volumes/')`
+— donc avoir au moins deux segments. Et `/Volumes` tout seul ne passe pas ce
+test de préfixe : il est traité comme le disque de démarrage, et rend `true`.
+
+Sans conséquence : personne ne range sa bibliothèque dans `/Volumes` lui-même.
+Laissée en place parce que la retirer ne changerait aucun comportement, et que le
+test qui l'entoure documente désormais la vraie frontière. À savoir si l'on
+touche un jour à cette fonction.
 
 #### Dette assumable — relevée, pas corrigée
 

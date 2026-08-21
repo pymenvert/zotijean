@@ -25,20 +25,31 @@ export const TYPE = {
 // Qualité et format
 // ---------------------------------------------------------------------------
 
+// UN COMPTE PREMIUM EST REQUIS POUR TÉLÉCHARGER, QUELLE QUE SOIT LA QUALITÉ.
+//
+// Ces trois explications disaient le contraire, et de façon cohérente : la
+// première présentait Premium comme la condition du 320 kb/s seulement, et la
+// deuxième appelait le 160 kb/s « la qualité d'un compte gratuit ». Ensemble,
+// elles enseignaient un modèle mental complet et faux — Premium = mieux,
+// gratuit = moins bien mais ça marche.
+//
+// Ce n'était pas une coquille : la même formulation vivait à cinq endroits
+// (ici, la notice, le README, le message d'erreur et CLAUDE.md). Corrigées
+// ensemble le 21 août 2026, sans quoi elles seraient revenues.
 export const QUALITÉS = [
   {
     id: 'tres_elevee',
     libellé: 'Maximale — 320 kb/s',
     explication:
-      "Le meilleur que Spotify livre à un outil tiers. Exige un abonnement Premium : " +
-      "sans lui, Spotify redescend silencieusement à 160 kb/s sans afficher d'erreur.",
+      "Le meilleur que Spotify livre à un outil tiers. C'est le réglage à garder : " +
+      "les qualités inférieures ne servent qu'à économiser de la place.",
     recommandé: true,
   },
   {
     id: 'elevee',
     libellé: 'Élevée — 160 kb/s',
     explication:
-      "La qualité d'un compte gratuit. Audible sur un bon casque, franchement limite " +
+      "Fichiers deux fois plus petits. Audible sur un bon casque, franchement limite " +
       "sur une sono de club.",
   },
   {

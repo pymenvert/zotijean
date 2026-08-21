@@ -16,7 +16,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { messageÉcritureRefusée } from '../src/diagnostic.js';
+import { messageÉcritureRefusée, contrôlerFfmpeg, GRAVITÉ } from '../src/diagnostic.js';
 
 const REFUS = { code: 'EACCES', message: 'EACCES: permission denied' };
 const DISQUE_PLEIN = { code: 'ENOSPC', message: 'ENOSPC: no space left on device' };
@@ -97,4 +97,76 @@ test('une panne qui n’est pas une permission garde son message d’origine', (
     assert.ok(message.includes('no space left'), `cause perdue sur ${système}`);
     assert.ok(/Choisissez un autre dossier/.test(message), `conseil manquant sur ${système}`);
   }
+});
+
+// ---------------------------------------------------------------------------
+// ffmpeg : présent ne veut pas dire fonctionnel
+//
+// Jusqu'au 21 août 2026, ce contrôle lançait « ffmpeg -version » puis rendait OK
+// sans jamais regarder le code de sortie. N'importe quel fichier exécutable du
+// bon nom passait — mauvaise architecture, bibliothèque dynamique manquante,
+// homonyme. Or c'est le seul garde-fou entre l'utilisateur et des morceaux
+// détruits en silence : sans ffmpeg qui FONCTIONNE, zotify renomme le fichier
+// téléchargé avant de constater le problème et ne le restaure jamais.
+// ---------------------------------------------------------------------------
+
+const CHEMIN_FACTICE = '/usr/local/bin/ffmpeg';
+const localiser = () => CHEMIN_FACTICE;
+
+test('un ffmpeg qui répond correctement passe le contrôle', async () => {
+  const c = await contrôlerFfmpeg({
+    localiser,
+    lancer: async () => ({ code: 0, stdout: 'ffmpeg version 8.1.2 Copyright (c)', stderr: '' }),
+  });
+
+  assert.equal(c.gravité, GRAVITÉ.OK);
+  assert.equal(c.version, '8.1.2');
+  assert.equal(c.chemin, CHEMIN_FACTICE);
+});
+
+test('un ffmpeg qui s’arrête sur une erreur est BLOQUANT, pas « trouvé »', async () => {
+  // Le cas réel : un binaire de la mauvaise architecture, ou dont une
+  // bibliothèque dynamique manque. Il existe, il est exécutable, il échoue.
+  const c = await contrôlerFfmpeg({
+    localiser,
+    lancer: async () => ({
+      code: 1, stdout: '',
+      stderr: 'dyld: Library not loaded: /opt/homebrew/lib/libavcodec.62.dylib',
+    }),
+  });
+
+  assert.equal(
+    c.gravité, GRAVITÉ.BLOQUANT,
+    'un ffmpeg cassé passe le diagnostic au vert : la synchronisation démarre, '
+    + 'et zotify détruit des morceaux sans message',
+  );
+  assert.match(c.message, /libavcodec/, 'le message doit rapporter ce que ffmpeg a dit');
+  assert.match(c.message, /brew install ffmpeg/, 'le conseil doit rester exécutable');
+});
+
+test('un ffmpeg qui ne répond pas est BLOQUANT', async () => {
+  const c = await contrôlerFfmpeg({
+    localiser,
+    lancer: async () => ({ expiré: true, code: null, stdout: '', stderr: '' }),
+  });
+
+  assert.equal(c.gravité, GRAVITÉ.BLOQUANT);
+  assert.match(c.message, /ne répond pas/);
+});
+
+test('un ffmpeg impossible à lancer est BLOQUANT', async () => {
+  const c = await contrôlerFfmpeg({
+    localiser,
+    lancer: async () => ({ erreur: new Error('EACCES: permission denied'), code: null, stdout: '', stderr: '' }),
+  });
+
+  assert.equal(c.gravité, GRAVITÉ.BLOQUANT);
+  assert.match(c.message, /permission denied/);
+});
+
+test('un ffmpeg absent reste bloquant, et le dit autrement', async () => {
+  const c = await contrôlerFfmpeg({ localiser: () => null, lancer: async () => ({ code: 0 }) });
+
+  assert.equal(c.gravité, GRAVITÉ.BLOQUANT);
+  assert.match(c.message, /introuvable/, 'absent et cassé ne se disent pas pareil');
 });
