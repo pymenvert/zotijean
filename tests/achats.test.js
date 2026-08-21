@@ -522,3 +522,46 @@ test('le rapport n’est jamais servi par le serveur, où la politique s’appli
     );
   }
 });
+
+// ÉPROUVÉ EN CASSANT LE CODE EXPRÈS, 21 août 2026. Réduire « slice(0, 2) » à
+// « slice(0, 1) » dans résoudreSurMusicBrainz laissait toute la suite au vert :
+// aucune doublure ne renvoyait deux enregistrements pour un même ISRC.
+//
+// Le cas n'est pas théorique : un même ISRC peut désigner plusieurs entrées de
+// MusicBrainz — un mix radio et la version d'album, par exemple —, et rien ne
+// garantit que celle qui porte le lien d'achat arrive en premier.
+test('deux enregistrements pour un même ISRC sont tous deux examinés', async () => {
+  const { transport, appels } = transportFactice([
+    ['/isrc/', {
+      recordings: [
+        { id: 'premier', title: 'To (mix radio)', relations: [] },
+        { id: 'second', title: 'To', relations: [] },
+      ],
+    }],
+    ['/release?recording=premier', { releases: [] }],
+    ['/release?recording=second', {
+      releases: [{
+        title: 'Mantis 11',
+        relations: [{
+          type: 'purchase for download',
+          url: { resource: 'https://katatonicsilentio.bandcamp.com/album/mantis-11' },
+        }],
+      }],
+    }],
+  ]);
+
+  const fiche = await résoudrePiste(
+    { artiste: 'Katatonic Silentio', titre: 'To', isrc: 'NLM792300114' },
+    { transport, sources: { bandcamp: false, musicbrainz: true } },
+  );
+
+  assert.equal(
+    fiche.étage, ÉTAGES.RÉFÉRENCÉ,
+    'le second enregistrement a été écarté en silence : le morceau est annoncé '
+    + 'sans lien d’achat alors qu’il en a un',
+  );
+  assert.ok(
+    appels.some((a) => a.url.includes('/release?recording=second')),
+    'les sorties du second enregistrement n’ont jamais été demandées',
+  );
+});

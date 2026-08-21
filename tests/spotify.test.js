@@ -20,7 +20,60 @@ import path from 'node:path';
 // sur disque à l'initialisation.
 process.env.ZOTIJEAN_DONNEES = fs.mkdtempSync(path.join(os.tmpdir(), 'zotijean-spotify-'));
 
-const { normaliserPistes, lireRetryAfter } = await import('../src/spotify.js');
+const {
+  normaliserPistes, lireRetryAfter,
+  préparerConnexion, terminerConnexion, estConnecté, reconnexionNécessaire, profil,
+} = await import('../src/spotify.js');
+
+// ---------------------------------------------------------------------------
+// Outillage des tests d'authentification
+//
+// POURQUOI IL EXISTE. L'épreuve de mutation du 21 août 2026 a cassé cinq fois
+// ce module — état d'autorisation non vérifié, jeton de rafraîchissement
+// écrasé, révocation rendue non définitive, drapeau de reconnexion ignoré,
+// marge d'expiration supprimée — et la suite est restée verte les cinq fois.
+// Ces deux fonctions sont les coutures qui manquaient : le module n'en avait
+// pas besoin, les tests si.
+//
+// `fetch` est le fetch global de Node : on le remplace le temps d'un test, et
+// on le rend TOUJOURS, même si le test échoue — sans quoi un test suivant
+// partirait sur le réseau réel.
+// ---------------------------------------------------------------------------
+
+const cheminJetons = () => path.join(process.env.ZOTIJEAN_DONNEES, 'spotify.json');
+const poserJetons = (j) => fs.writeFileSync(cheminJetons(), JSON.stringify(j), 'utf8');
+const relireJetons = () => JSON.parse(fs.readFileSync(cheminJetons(), 'utf8'));
+
+/** Une réponse HTTP crédible : les trois choses que le module lit vraiment. */
+function réponseFausse(statut, corps, entêtes = {}) {
+  return {
+    ok: statut >= 200 && statut < 300,
+    status: statut,
+    json: async () => corps,
+    headers: { get: (n) => entêtes[String(n).toLowerCase()] ?? null },
+  };
+}
+
+/** Joue `travail` avec un `fetch` scénarisé, et rend la liste des appels reçus. */
+async function avecFetch(réponses, travail) {
+  const vrai = globalThis.fetch;
+  const appels = [];
+  let index = 0;
+  globalThis.fetch = async (url, options) => {
+    appels.push({ url: String(url), options });
+    const r = réponses[Math.min(index, réponses.length - 1)];
+    index += 1;
+    return r;
+  };
+  try {
+    // Les fonctions publiques lèvent quand la connexion est morte : c'est
+    // justement le cas qu'on teste, l'erreur ne doit pas faire tomber le test.
+    const valeur = await travail().then((v) => v, (e) => e);
+    return { valeur, appels };
+  } finally {
+    globalThis.fetch = vrai;
+  }
+}
 
 const PISTE = (id, nom, extras = {}) => ({
   added_at: '2026-08-01T10:00:00Z',
@@ -117,6 +170,94 @@ test('lireRetryAfter refuse de rendre zéro pour un en-tête vide', () => {
   assert.equal(lireRetryAfter(''), 2);
   assert.equal(lireRetryAfter(null), 2);
   assert.equal(lireRetryAfter('7'), 7);
+});
+
+// ---------------------------------------------------------------------------
+// Authentification — les cinq trous prouvés par la mutation du 21 août 2026
+// ---------------------------------------------------------------------------
+
+test('une réponse dont l’état ne correspond pas à la demande est refusée', async () => {
+  // LE SEUL CONTRÔLE DE SÉCURITÉ DE CE FLUX. Sans lui, un tiers qui a lui-même
+  // lancé une connexion Spotify peut faire aboutir SA session dans l'app de
+  // quelqu'un d'autre : il lui suffit de le faire cliquer sur l'adresse de
+  // retour portant son propre code. L'app se retrouve connectée à un compte
+  // qui n'est pas le sien, sans que rien ne le signale.
+  poserJetons({});
+  const url = préparerConnexion('client-abc', 'http://127.0.0.1:8787/api/spotify/retour');
+  const étatDeLaDemande = new URL(url).searchParams.get('state');
+  assert.ok(étatDeLaDemande, 'la demande doit porter un état, sinon il n’y a rien à vérifier');
+
+  const { valeur } = await avecFetch(
+    [réponseFausse(200, { access_token: 'volé', refresh_token: 'volé', expires_in: 3600 })],
+    () => terminerConnexion('code-d-un-tiers', `${étatDeLaDemande}xxx`),
+  );
+
+  assert.equal(valeur.réussi, false,
+    'un état qui ne correspond pas a été accepté : l’app peut être connectée '
+    + 'à un compte Spotify qui n’est pas celui de l’utilisateur');
+  assert.equal(estConnecté(), false, 'des jetons ont été écrits malgré le refus');
+});
+
+test('un rafraîchissement qui ne renvoie pas de nouveau jeton garde l’ancien', async () => {
+  // Spotify ne renvoie PAS toujours un refresh_token. Écraser l'ancien par
+  // « undefined » déconnecte l'utilisateur au premier rafraîchissement — donc
+  // au bout d'une heure, pour quelqu'un qui n'a rien fait de mal.
+  poserJetons({ refresh_token: 'ANCIEN', client_id: 'c', access_token: 'périmé', expire_le: 0 });
+
+  await avecFetch([
+    réponseFausse(200, { access_token: 'frais', expires_in: 3600 }),
+    réponseFausse(200, { display_name: 'Pym', id: 'pym', product: 'premium' }),
+  ], () => profil());
+
+  assert.equal(relireJetons().refresh_token, 'ANCIEN',
+    'le jeton de rafraîchissement a été perdu : l’utilisateur est déconnecté '
+    + 'à la première heure écoulée');
+});
+
+test('une autorisation révoquée exige une reconnexion, une panne passagère non', async () => {
+  // DEUX ÉCHECS QU'IL NE FAUT PAS CONFONDRE, et c'est tout l'objet de ce test.
+  // Une révocation ne se répare jamais toute seule : sans le drapeau, le jeton
+  // de rafraîchissement reste dans le fichier et l'app continue d'afficher
+  // « connecté » pendant que plus rien ne fonctionne.
+  poserJetons({ refresh_token: 'R', client_id: 'c', access_token: 'périmé', expire_le: 0 });
+  await avecFetch([réponseFausse(400, { error: 'invalid_grant' })], () => profil());
+
+  assert.equal(reconnexionNécessaire(), true,
+    'une autorisation révoquée est passée pour une panne passagère : l’app '
+    + 'dira « non connecté » au lieu de « autorisation révoquée », et ne '
+    + 'demandera jamais de se reconnecter');
+  assert.equal(estConnecté(), false,
+    'estConnecté ignore le drapeau de reconnexion : l’app affiche « connecté » '
+    + 'pendant que toutes les requêtes échouent');
+
+  // Le pendant : une panne côté Spotify ne doit RIEN exiger de l'utilisateur.
+  poserJetons({ refresh_token: 'R', client_id: 'c', access_token: 'périmé', expire_le: 0 });
+  await avecFetch([réponseFausse(503, {})], () => profil());
+
+  assert.equal(reconnexionNécessaire(), false,
+    'une panne passagère a été traitée comme une révocation : on inquiète '
+    + 'l’utilisateur et on lui fait refaire une connexion pour rien');
+});
+
+test('un jeton qui expire dans trente secondes est rafraîchi, pas réutilisé', async () => {
+  // La marge d'une minute existe parce qu'un jeton valable à l'instant du
+  // contrôle peut être périmé à l'instant de la requête. Sans elle, l'échec ne
+  // ressemble pas à « il faut rafraîchir » mais à une erreur incompréhensible.
+  poserJetons({
+    refresh_token: 'R', client_id: 'c',
+    access_token: 'presque-mort', expire_le: Date.now() + 30_000,
+  });
+
+  const { appels } = await avecFetch([
+    réponseFausse(200, { access_token: 'frais', expires_in: 3600 }),
+    réponseFausse(200, { display_name: 'Pym', id: 'pym', product: 'premium' }),
+  ], () => profil());
+
+  assert.equal(appels.length, 2,
+    'le jeton presque expiré a été réutilisé tel quel : la requête partira '
+    + 'avec un jeton mort et rendra une erreur que personne ne saura lire');
+  assert.ok(appels[0].url.includes('accounts.spotify.com/api/token'),
+    'le premier appel aurait dû être le rafraîchissement');
 });
 
 test.after(() => {

@@ -512,3 +512,22 @@ test('un fichier déjà accompagné de son converti est laissé tranquille', asy
     fs.rmSync(dossier, { recursive: true, force: true });
   }
 });
+
+// ÉPROUVÉ EN CASSANT LE CODE EXPRÈS, 21 août 2026. Porter le rapport minimal de
+// 0,25 à 0,9 laissait toute la suite au vert : les cas déjà testés (un converti
+// de même taille, un converti au dixième) tombent des deux côtés de la nouvelle
+// borne comme de l'ancienne. Le relevé du 17 août avait déjà nommé cette borne ;
+// elle est désormais tenue.
+test('un converti légitimement plus léger que sa source reste plausible', () => {
+  // L'AAC 256 tiré d'un Ogg 320 pèse environ 80 % de sa source. C'est le cas
+  // NORMAL de ce format, pas un cas de coin — et c'est lui qui distingue une
+  // borne réglée pour attraper une troncature d'une borne réglée au jugé.
+  assert.equal(
+    tailleplausible(5_000_000, 4_000_000, 'aac_256'), true,
+    'un AAC 256 parfaitement valide est déclaré suspect : le fichier serait '
+    + 'écarté et le morceau compté comme perdu',
+  );
+
+  // Et le sens inverse : un fichier coupé en cours de route reste refusé.
+  assert.equal(tailleplausible(5_000_000, 1_000_000, 'aac_256'), false);
+});
