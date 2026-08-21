@@ -270,13 +270,24 @@ export function compterTitresPerdus(lignes) {
 }
 
 /** Une phrase résumant l'état d'une exécution, pour la notification et le bandeau. */
-export function phraseBilan({ nbFichiers = 0, erreurs = [], interrompu = false }) {
+export function phraseBilan({
+  nbFichiers = 0, erreurs = [], interrompu = false, échec = null,
+}) {
   const synthèse = synthétiser(erreurs);
   const sérieux = synthèse.filter((s) => s.gravité === GRAVITÉ.SÉRIEUX);
 
   const titres = nbFichiers === 0
     ? 'Aucune nouveauté'
     : `${nbFichiers} nouveau${nbFichiers > 1 ? 'x' : ''} titre${nbFichiers > 1 ? 's' : ''}`;
+
+  // UN ÉCHEC PASSE AVANT TOUT LE RESTE, et c'est le dernier tiers d'un correctif
+  // qui n'en avait que deux. Un zotify qui meurt sans rien dire ne produit ni
+  // fichier ni ligne d'erreur, et n'est pas « interrompu » : cette fonction
+  // rendait donc « Aucune nouveauté », que l'interface affichait EN VERT et
+  // envoyait en notification système, pendant que le bandeau, lui, disait bien
+  // l'échec. La date de référence et le compteur d'échecs étaient corrigés ;
+  // la phrase que l'utilisateur lit, non. Trouvé en revue le 21 août 2026.
+  if (échec) return 'La synchronisation a échoué';
 
   if (interrompu) return `${titres} — synchronisation interrompue`;
   if (sérieux.length) return `${titres} — ${sérieux[0].titre.toLowerCase()}`;

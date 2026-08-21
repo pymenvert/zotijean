@@ -221,6 +221,85 @@ marqués » comme le craignait le relevé du 17 août.
 
 ## Relevés datés
 
+### 21 août 2026 — la porte de vérification, et trois régressions rattrapées
+
+Quatre agents sur le diff des correctifs de l'audit. **Sept bloquants, dont trois
+que la correction de l'audit avait elle-même introduits.** Tous corrigés ; ce qui
+suit est ce qui ne l'a pas été.
+
+Le fait à retenir de cette revue tient en une phrase : **la moitié des bloquants
+trouvés ne venaient pas du code d'origine, mais de ce qui avait été écrit pour le
+réparer.** Deux agents indépendants ont trouvé le même défaut principal, avec la
+même reproduction — et ni l'un ni l'autre n'était de trop.
+
+#### Ce qui reste ouvert après cette revue
+
+- **Deux verdicts pour la même panne.** « Le disque a été débranché » vu ENTRE
+  deux playlists (`src/synchronisation.js:361`) pose `bilan.échec` et peint un
+  bandeau rouge ; vu PENDANT (la veille) pose `bilan.interrompu` et affiche
+  « en pause ». Même cause, deux histoires, selon la seconde où elle est vue. Le
+  correctif utile serait de faire appeler la veille par les gardes d'avant la
+  boucle, au lieu de les laisser côte à côte.
+- **`bilan.lancementsRatés` n'est lu par personne.** Ni l'interface, ni l'état,
+  ni l'historique. C'est `bilan.échec` qui fait tout le travail visible. Septième
+  clé calculée et jamais lue de cet objet — à remonter ou à retirer.
+- **Un terme devenu redondant.** `alléAuBout` teste `!résultat.expiré && !échecLancement`,
+  or `échecDeLancement` rend déjà une phrase quand `expiré` est vrai. Un terme
+  ajouté, aucun retiré : c'est ainsi qu'un booléen à quatre facteurs devient
+  illisible.
+- **Le sixième `?? 2`.** Le seuil de 2 Go d'espace libre est maintenant écrit à
+  six endroits (`config.js:83`, `options.js:588`, `diagnostic.js:417`,
+  `simulation.js:117`, `synchronisation.js:373` et `:503`). L'audit du matin
+  avait nommé ce défaut ; l'après-midi en a ajouté un.
+- **Ce fichier fait maintenant plus de 1 900 lignes dans un dépôt PUBLIC**, dont
+  l'essentiel détaille des failles corrigées. Le `CLAUDE.md` global demande de
+  garder ces rapports hors du dépôt. La pratique est antérieure à ce lot, mais ce
+  lot l'aggrave nettement.
+
+#### Ce que les tests ne prouvent toujours pas
+
+- **Le motif `premium_requis` n'a jamais rencontré la réalité.** Le test fabrique
+  la ligne qu'il fait ensuite reconnaître. Un compte sans Premium fait partie de
+  ce qui n'a jamais été vu avec le vrai zotify — et c'est le seul message qui
+  intercepterait cet échec. À ne pas « corriger » par un motif de plus : à
+  vérifier sur pièce, le jour où c'est possible.
+- **Les gardes de formulation lisent le CODE SOURCE, pas l'écran.** Déplacer un
+  bloc de l'assistant dans une fonction jamais appelée les laisserait vertes. Ce
+  sont des gardes anti-retour de phrase, pas des preuves d'affichage.
+- **`contrôlerFfmpeg` ne couvre pas le cas du processus tué par un signal**
+  (`code: null`, sans `erreur` ni `expiré`) — précisément « binaire de la
+  mauvaise architecture ». Le code le traite bien en bloquant, mais le message
+  affiche alors « code ? ».
+- **`espaceLibre(os.tmpdir()) > 0` dépend de l'état du disque de la machine.**
+  Rouge sur un serveur saturé, pour une raison qui n'a rien à voir avec le code.
+- **La doublure de `fetch` ignore la plupart des corps de requête.** Un seul test
+  vérifie ce que la requête de rafraîchissement contient ; le flux PKCE complet,
+  lui, n'est vérifié nulle part — et n'a jamais été joué en vrai.
+
+#### Ce que l'interface n'a toujours pas
+
+- **L'avertissement Premium arrive à l'écran 4 sur 5** de l'assistant, après le
+  diagnostic et le choix du rangement. Or l'écran 2 dit « Aucun fichier
+  d'identifiants zotify n'a été trouvé… Ce n'est pas forcément un problème » :
+  c'est là qu'un utilisateur sans abonnement s'interrogerait, et rien n'y parle
+  de Premium.
+- **Le tableau des pannes de la notice n'a aucune ligne sur l'échec
+  d'abonnement**, et une ligne qui oriente à côté : « Rien ne se télécharge,
+  aucune erreur → Normal si tout est déjà là. »
+- **`notice.html` n'a pas de balise `viewport`.** Rendue à 980 px puis réduite
+  d'un facteur 2,75 sur un téléphone — or c'est justement la page qu'on y ouvre.
+- **Un chemin d'exemple mélange les séparateurs** à l'écran 3 de l'assistant
+  (`…\Zotijean/Été 2026\007 - …`). Invisible sur un Mac, mais ça signale une
+  concaténation en dur plutôt qu'un `path.join`.
+
+#### Et ce que cette revue n'a pas pu voir
+
+**Aucun pixel.** Le volet navigateur n'a composé aucune image, pour la deuxième
+fois consécutive : tout jugement visuel de ce relevé vient de mesures du DOM.
+Rien n'a été vu sur Safari ni sur un Mac, aucun zotify réel n'a tourné, et le
+message d'erreur Premium — celui que ce lot modifie et que son propre commentaire
+désigne comme le plus important — **n'a jamais été affiché à l'écran**.
+
 ### 21 août 2026 — deuxième épreuve de la suite par mutation
 
 **33 cassages, tous appliqués, 24 attrapés, 9 survivants.** Menée dans une copie

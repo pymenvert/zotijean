@@ -779,6 +779,7 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
       nbFichiers: bilan.nbFichiers,
       erreurs: bilan.lignesErreur,
       interrompu: bilan.interrompu,
+      échec: bilan.échec,
     });
 
     étatModule.enregistrerExécution(bilan);

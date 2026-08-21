@@ -47,12 +47,40 @@ function surUnMacPosix(travail) {
   path.join = path.posix.join;
 
   try {
-    return travail();
+    const résultat = travail();
+    // UN `travail` ASYNCHRONE RENDRAIT CE HELPER MENTEUR. La restauration a lieu
+    // dans le `finally`, donc AVANT qu'une promesse n'ait commencé à s'exécuter :
+    // le test vérifierait Windows en croyant vérifier macOS, et resterait vert.
+    // On refuse bruyamment plutôt que de laisser ce piège ouvert.
+    if (résultat && typeof résultat.then === 'function') {
+      throw new Error('surUnMacPosix attend un travail SYNCHRONE : une promesse '
+        + 's’exécuterait après la restauration de la plateforme.');
+    }
+    return résultat;
   } finally {
     Object.defineProperty(process, 'platform', plateforme);
     Object.defineProperty(path, 'sep', séparateur);
     path.resolve = résoudre;
     path.join = joindre;
+  }
+}
+
+/** Le pendant Windows, pour que ce test-là non plus n'hérite pas de sa machine. */
+function surWindows(travail) {
+  const plateforme = Object.getOwnPropertyDescriptor(process, 'platform');
+  const séparateur = Object.getOwnPropertyDescriptor(path, 'sep');
+  const analyser = path.parse;
+
+  Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+  Object.defineProperty(path, 'sep', { value: '\\', configurable: true });
+  path.parse = path.win32.parse;
+
+  try {
+    return travail();
+  } finally {
+    Object.defineProperty(process, 'platform', plateforme);
+    Object.defineProperty(path, 'sep', séparateur);
+    path.parse = analyser;
   }
 }
 
@@ -413,17 +441,24 @@ test('une erreur de lecture du volume est traitée comme un disque absent', (t) 
 });
 
 test('hors macOS, un lecteur qui ne répond pas est refusé', (t) => {
-  const plateforme = Object.getOwnPropertyDescriptor(process, 'platform');
-  Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
-  try {
+  // Ce test examinait « X:\ » sur Windows et « / » sur le serveur Linux : il
+  // passait partout, mais pas sur la même chose. C'est la règle que le projet
+  // interdit. Il force donc maintenant `path.parse` sur sa variante Windows,
+  // comme `surUnMacPosix` le fait pour POSIX.
+  surWindows(() => {
     t.mock.method(fs, 'accessSync', () => { throw new Error('ENOENT'); });
     assert.equal(
-      volumeMonté(path.resolve('X:/Musique')), false,
+      volumeMonté('X:\\Musique\\Été 2026'), false,
       'une lettre de lecteur absente a été acceptée',
     );
-  } finally {
-    Object.defineProperty(process, 'platform', plateforme);
-  }
+  });
+});
+
+test('hors macOS, un lecteur qui répond est accepté', (t) => {
+  surWindows(() => {
+    t.mock.method(fs, 'accessSync', () => undefined);
+    assert.equal(volumeMonté('X:\\Musique'), true, 'un lecteur monté a été refusé');
+  });
 });
 
 test('espaceLibre rend des octets réels, pas une promesse', () => {
