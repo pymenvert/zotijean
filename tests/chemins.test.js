@@ -13,10 +13,75 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { assurerDossier, écrireAtomique, lireJSON, mettreÀLAbri } from '../src/chemins.js';
+import {
+  assurerDossier, écrireAtomique, lireJSON, mettreÀLAbri, volumeMonté, espaceLibre,
+} from '../src/chemins.js';
 
 function bacÀSable() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'zotijean-chemins-'));
+}
+
+/**
+ * Joue `travail` comme si la machine était un Mac — y compris pour les chemins.
+ *
+ * FORCER `process.platform` NE SUFFIT PAS, et c'est le piège de ce fichier.
+ * `volumeMonté` compare son argument à « /Volumes/ » et le découpe sur
+ * `path.sep`. Sur le poste Windows, `path.resolve('/Volumes/DJ-SSD')` rend
+ * `C:\Volumes\DJ-SSD` et `path.sep` vaut l'antislash : la branche macOS ne
+ * serait jamais atteinte, et le test passerait pour une raison qui n'a rien à
+ * voir avec ce qu'il prétend vérifier.
+ *
+ * On bascule donc aussi `path` sur sa variante POSIX. Les deux plateformes
+ * exécutent alors EXACTEMENT le même code, ce qui est la règle du projet : un
+ * test qui hérite de sa machine ne teste rien.
+ */
+function surUnMacPosix(travail) {
+  const plateforme = Object.getOwnPropertyDescriptor(process, 'platform');
+  const séparateur = Object.getOwnPropertyDescriptor(path, 'sep');
+  const résoudre = path.resolve;
+  const joindre = path.join;
+
+  Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true });
+  Object.defineProperty(path, 'sep', { value: '/', configurable: true });
+  path.resolve = path.posix.resolve;
+  path.join = path.posix.join;
+
+  try {
+    const résultat = travail();
+    // UN `travail` ASYNCHRONE RENDRAIT CE HELPER MENTEUR. La restauration a lieu
+    // dans le `finally`, donc AVANT qu'une promesse n'ait commencé à s'exécuter :
+    // le test vérifierait Windows en croyant vérifier macOS, et resterait vert.
+    // On refuse bruyamment plutôt que de laisser ce piège ouvert.
+    if (résultat && typeof résultat.then === 'function') {
+      throw new Error('surUnMacPosix attend un travail SYNCHRONE : une promesse '
+        + 's’exécuterait après la restauration de la plateforme.');
+    }
+    return résultat;
+  } finally {
+    Object.defineProperty(process, 'platform', plateforme);
+    Object.defineProperty(path, 'sep', séparateur);
+    path.resolve = résoudre;
+    path.join = joindre;
+  }
+}
+
+/** Le pendant Windows, pour que ce test-là non plus n'hérite pas de sa machine. */
+function surWindows(travail) {
+  const plateforme = Object.getOwnPropertyDescriptor(process, 'platform');
+  const séparateur = Object.getOwnPropertyDescriptor(path, 'sep');
+  const analyser = path.parse;
+
+  Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+  Object.defineProperty(path, 'sep', { value: '\\', configurable: true });
+  path.parse = path.win32.parse;
+
+  try {
+    return travail();
+  } finally {
+    Object.defineProperty(process, 'platform', plateforme);
+    Object.defineProperty(path, 'sep', séparateur);
+    path.parse = analyser;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -297,4 +362,131 @@ test('écrireAtomique conserve le binaire intact, octet pour octet', () => {
   } finally {
     fs.rmSync(racine, { recursive: true, force: true });
   }
+});
+
+// ---------------------------------------------------------------------------
+// Les deux garde-fous du disque
+//
+// POURQUOI CE BLOC EXISTE. L'épreuve de mutation du 21 août 2026 a fait rendre
+// « oui » à `volumeMonté` quoi qu'il arrive, puis une valeur énorme à
+// `espaceLibre` : la suite est restée verte dans les deux cas. Ces deux
+// fonctions n'avaient AUCUN test, dans aucune branche.
+//
+// C'est le garde-fou que CLAUDE.md déclare non négociable : quand un disque
+// externe est débranché, macOS recrée un dossier VIDE au même endroit sous
+// /Volumes/. Le chemin existe donc toujours — et c'est précisément ce qui rend
+// « le dossier est là » inutilisable comme critère. Le seul signe fiable est
+// que ce dossier fantôme partage l'identifiant de périphérique de la racine.
+// ---------------------------------------------------------------------------
+
+test('un dossier fantôme sous /Volumes n’est PAS pris pour un disque monté', (t) => {
+  surUnMacPosix(() => {
+    // Débranché : le dossier recréé par macOS partage le périphérique de « / ».
+    t.mock.method(fs, 'statSync', () => ({ dev: 16777220 }));
+
+    assert.equal(
+      volumeMonté('/Volumes/DJ-SSD/Musique/Été 2026'), false,
+      'un disque débranché a été pris pour un disque monté : la bibliothèque '
+      + 'entière se retéléchargerait sur le disque de démarrage, et au '
+      + 'rebranchement l’inventaire ne verrait plus rien',
+    );
+  });
+});
+
+test('un volume réellement monté est reconnu', (t) => {
+  surUnMacPosix(() => {
+    // Branché : le point de montage a son propre périphérique.
+    t.mock.method(fs, 'statSync', (cible) => ({ dev: cible === '/' ? 16777220 : 16777235 }));
+
+    assert.equal(
+      volumeMonté('/Volumes/DJ-SSD/Musique'), true,
+      'un disque bien branché a été refusé : plus aucune synchronisation ne part, '
+      + 'et le message n’explique rien',
+    );
+  });
+});
+
+test('le disque de démarrage n’est jamais soumis à ce contrôle', () => {
+  surUnMacPosix(() => {
+    assert.equal(volumeMonté('/Users/pym/Music'), true);
+  });
+});
+
+test('la frontière du contrôle est « /Volumes/ », pas « /Volumes »', () => {
+  surUnMacPosix(() => {
+    // Mesuré en écrivant ce test, et contraire à ce qu'on attendait : le
+    // dossier « /Volumes » lui-même n'est PAS soumis au contrôle, parce qu'il
+    // ne commence pas par « /Volumes/ ». Il est traité comme le disque de
+    // démarrage. C'est sans conséquence — personne ne range sa bibliothèque
+    // là —, mais ça rend la garde « moins de deux segments » de la ligne
+    // suivante inatteignable : pour passer le test de préfixe il faut déjà
+    // deux segments. C'est consigné dans docs/reste-a-faire.md.
+    assert.equal(volumeMonté('/Volumes'), true);
+
+    // Le premier chemin réellement contrôlé est celui d'un volume nommé.
+    assert.equal(volumeMonté('/Volumes/DJ-SSD'), false,
+      'sans jumeau monté, un chemin de volume doit être refusé');
+  });
+});
+
+test('une erreur de lecture du volume est traitée comme un disque absent', (t) => {
+  surUnMacPosix(() => {
+    t.mock.method(fs, 'statSync', () => { throw new Error('EIO'); });
+    assert.equal(
+      volumeMonté('/Volumes/DJ-SSD/Musique'), false,
+      'le doute doit profiter au refus : écrire dans le vide coûte plus cher '
+      + 'qu’une synchronisation reportée',
+    );
+  });
+});
+
+test('hors macOS, un lecteur qui ne répond pas est refusé', (t) => {
+  // Ce test examinait « X:\ » sur Windows et « / » sur le serveur Linux : il
+  // passait partout, mais pas sur la même chose. C'est la règle que le projet
+  // interdit. Il force donc maintenant `path.parse` sur sa variante Windows,
+  // comme `surUnMacPosix` le fait pour POSIX.
+  surWindows(() => {
+    t.mock.method(fs, 'accessSync', () => { throw new Error('ENOENT'); });
+    assert.equal(
+      volumeMonté('X:\\Musique\\Été 2026'), false,
+      'une lettre de lecteur absente a été acceptée',
+    );
+  });
+});
+
+test('hors macOS, un lecteur qui répond est accepté', (t) => {
+  surWindows(() => {
+    t.mock.method(fs, 'accessSync', () => undefined);
+    assert.equal(volumeMonté('X:\\Musique'), true, 'un lecteur monté a été refusé');
+  });
+});
+
+test('espaceLibre rend des octets réels, pas une promesse', () => {
+  // Cette fonction rend `null` sur TOUTE exception, et ses deux appelants
+  // écrivent « if (libre !== null && …) ». Si `fs.statfsSync` disparaissait ou
+  // changeait de nom, les deux garde-fous « disque plein » s'éteindraient en
+  // silence, sans qu'un seul test rougisse — pendant qu'écrire sur un disque
+  // plein produit des fichiers tronqués à la chaîne.
+  const libre = espaceLibre(os.tmpdir());
+  assert.equal(typeof libre, 'number', 'espaceLibre ne sait plus lire le disque');
+  assert.ok(libre > 0, 'espaceLibre rend zéro ou négatif sur un disque qui fonctionne');
+});
+
+test('espaceLibre rend null quand le système refuse de répondre, jamais zéro', (t) => {
+  // Zéro et « inconnu » ne veulent pas dire la même chose : zéro bloquerait la
+  // synchronisation, inconnu la laisse passer. Les deux appelants écrivent
+  // « if (libre !== null && …) », donc la distinction doit exister ici.
+  //
+  // Un chemin bizarre ne suffit PAS à provoquer ce cas — mesuré en écrivant ce
+  // test : la fonction se rabat sur le dossier parent, qui répond, et rend une
+  // vraie taille. Il faut faire échouer l'appel système lui-même, ce qui est
+  // d'ailleurs le seul scénario qui compte : le jour où « statfsSync » change
+  // de nom ou disparaît, les deux garde-fous « disque plein » doivent
+  // s'éteindre BRUYAMMENT, pas prendre une panne pour de la place libre.
+  t.mock.method(fs, 'statfsSync', () => { throw new Error('ENOSYS'); });
+
+  assert.equal(
+    espaceLibre(os.tmpdir()), null,
+    'un espace disque illisible est rendu comme une valeur chiffrée',
+  );
 });

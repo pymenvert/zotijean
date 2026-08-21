@@ -25,6 +25,7 @@ const { enregistrer, recharger, config } = await import('../src/config.js');
 const { synchroniser, prendreVerrou, rendreVerrou, exécutionEnCours, demanderArrêt } =
   await import('../src/synchronisation.js');
 const { listerAudio } = await import('../src/bibliotheque.js');
+const { créerVeilleDuDisque } = await import('../src/synchronisation.js');
 const { nomAffichable } = await import('../src/synchronisation.js');
 const étatModule = await import('../src/etat.js');
 const { journal } = await import('../src/journal.js');
@@ -611,3 +612,269 @@ test.after(() => {
   delete process.env.FAUX_ZOTIFY_PLAYLIST;
   fs.rmSync(DONNÉES, { recursive: true, force: true });
 });
+
+// ---------------------------------------------------------------------------
+// LE CHAÎNAGE, pas seulement la pièce
+//
+// `échecDeLancement` est éprouvée dans tests/zotify.test.js. Ce test-ci vérifie
+// qu'elle est BRANCHÉE — et c'est la leçon la plus chère du projet : l'avancement
+// n'atteignait jamais l'écran alors que chaque pièce était juste, et 264 tests
+// verts ne l'ont pas vu. Une garde correcte que personne n'appelle ne protège
+// rien.
+// ---------------------------------------------------------------------------
+
+test('un zotify qui meurt sans rien dire n’avance PAS la date de référence',
+  { skip: SAUTER, timeout: 90_000 }, async () => {
+    const { musique, nettoyer } = préparer();
+    process.env.FAUX_ZOTIFY_SCENARIO = 'mort-silencieuse';
+
+    try {
+      // Une date de référence connue, pour voir si elle bouge.
+      étatModule.marquerSuccès(new Date('2026-01-01T00:00:00Z'));
+      const référenceAvant = étatModule.état().dernierSuccès;
+
+      const résultat = await synchroniser('manuelle');
+
+      assert.equal(listerAudio(musique).length, 0, 'le scénario devait ne rien produire');
+
+      assert.ok(
+        résultat.bilan.échec,
+        'un lancement totalement raté n’apparaît nulle part dans le bilan : '
+        + 'l’app affichera « Aucune nouveauté », pastille verte',
+      );
+      assert.ok(
+        résultat.bilan.lancementsRatés > 0,
+        'le lancement raté n’a pas été compté',
+      );
+      assert.equal(
+        étatModule.état().dernierSuccès, référenceAvant,
+        'la date de référence a avancé alors que RIEN n’a été téléchargé : '
+        + 'l’app attendra 48 h avant de réessayer, et recommencera à l’identique, '
+        + 'indéfiniment',
+      );
+      assert.ok(
+        (étatModule.état().échecsConsécutifs || 0) > 0,
+        'le compteur d’échecs est resté à zéro : l’espacement progressif des '
+        + 'tentatives ne s’enclenchera jamais',
+      );
+      // `versionSpotify` ne prouverait RIEN ici : elle n'est écrite que si
+      // `analyse.version` est vraie, ce qui exige l'API Web de Spotify que les
+      // tests n'activent pas. L'assertion serait vraie quoi qu'il arrive.
+      //
+      // Ce qui mord vraiment, c'est la liste des playlists à reprendre : c'est
+      // elle que `alléAuBout` décide, et donc elle qui garde le terme
+      // `!échecLancement` qu'on vient d'y ajouter.
+      //
+      // Cette liste porte le NOM AFFICHABLE, pas l'identifiant interne — le
+      // projet a tranché pour le nom afin qu'une même playlist ne s'écrive pas
+      // tantôt d'une façon tantôt d'une autre. Une première version de ce test
+      // attendait « test-1 » et n'a échoué qu'en intégration continue, faute de
+      // pouvoir tourner sur le PC de développement.
+      assert.equal(
+        résultat.bilan.àReprendre.length, 1,
+        'la playlist est marquée terminée alors que zotify n’a rien fait : elle '
+        + 'sera sautée aux synchronisations suivantes',
+      );
+      assert.match(
+        résultat.bilan.àReprendre[0], /aaaaaaaaaaaaaaaaaaaaaa/,
+        'la playlist à reprendre n’est pas celle qu’on vient de rater',
+      );
+    } finally {
+      delete process.env.FAUX_ZOTIFY_SCENARIO;
+      nettoyer();
+    }
+  });
+
+// ---------------------------------------------------------------------------
+// La veille du disque, relue PENDANT le téléchargement
+//
+// AUDIT DU 21 AOÛT 2026. Les trois garde-fous du disque étaient bien dans la
+// boucle des playlists — mais avant l'appel à zotify, et jamais ensuite. Or
+// deux mille titres à trente secondes tiennent dans une SEULE playlist : le
+// contrôle était donc fait une fois, à H+0, pour seize heures de travail.
+//
+// La veille est une fonction pure, à qui l'on donne son horloge et ses deux
+// sondes. Ces tests tournent donc partout, y compris là où les tests
+// d'intégration sont éteints. Le BRANCHEMENT, lui, a son propre test plus bas —
+// une garde correcte que personne n'appelle ne protège rien.
+// ---------------------------------------------------------------------------
+
+const GO = 1024 ** 3;
+const CIBLE = { racine: '/Volumes/DJ-SSD', minimumOctets: 2 * GO };
+
+test('la veille du disque ne coûte rien tant que l’intervalle n’est pas écoulé', () => {
+  let sondes = 0;
+  let horloge = 1_000_000;
+  const veiller = créerVeilleDuDisque({
+    intervalleMs: 300_000,
+    maintenant: () => horloge,
+    monté: () => { sondes += 1; return true; },
+    libre: () => 50 * GO,
+  });
+
+  // Appelée à chaque ligne de zotify, soit plusieurs fois par seconde.
+  for (let i = 0; i < 500; i += 1) { horloge += 100; veiller(CIBLE); }
+
+  assert.ok(sondes <= 1, `le disque a été sondé ${sondes} fois en cinquante secondes`);
+});
+
+test('un disque débranché pendant le téléchargement est vu', () => {
+  let horloge = 1_000_000;
+  let branché = true;
+  const veiller = créerVeilleDuDisque({
+    intervalleMs: 300_000,
+    maintenant: () => horloge,
+    monté: () => branché,
+    libre: () => 50 * GO,
+  });
+
+  horloge += 3 * 3600_000; // H+3, en pleine playlist
+  assert.equal(veiller(CIBLE), null, 'rien ne devait être signalé tant que tout va bien');
+
+  branché = false;
+  horloge += 300_000;
+  const alerte = veiller(CIBLE);
+
+  assert.ok(
+    alerte,
+    'le disque débranché n’est pas vu : macOS recrée un dossier vide au même '
+    + 'endroit, et treize heures de musique partent sur le disque de démarrage',
+  );
+  assert.match(alerte, /débranché/);
+  assert.match(alerte, /reprendra/, 'le message doit dire que rien n’est perdu');
+});
+
+test('un disque qui se remplit en cours de route est vu', () => {
+  let horloge = 1_000_000;
+  let place = 50 * GO;
+  const veiller = créerVeilleDuDisque({
+    intervalleMs: 300_000,
+    maintenant: () => horloge,
+    monté: () => true,
+    libre: () => place,
+  });
+
+  horloge += 300_000;
+  assert.equal(veiller(CIBLE), null);
+
+  place = 0.5 * GO; // deux mille titres plus tard
+  horloge += 300_000;
+  const alerte = veiller(CIBLE);
+
+  assert.ok(alerte, 'zotify continuerait d’écrire sur un disque plein, donc de '
+    + 'produire des fichiers tronqués à la chaîne');
+  assert.match(alerte, /0\.5 Go/, 'le message doit chiffrer ce qui reste');
+});
+
+test('un espace disque INCONNU ne bloque pas la synchronisation', () => {
+  // `null` veut dire « on n'a pas pu mesurer », pas « zéro ». Confondre les
+  // deux arrêterait une synchronisation parfaitement saine.
+  let horloge = 1_000_000;
+  const veiller = créerVeilleDuDisque({
+    intervalleMs: 300_000,
+    maintenant: () => horloge,
+    monté: () => true,
+    libre: () => null,
+  });
+
+  horloge += 300_000;
+  assert.equal(veiller(CIBLE), null);
+});
+
+test('la veille survit à un recul de l’horloge', () => {
+  // Le Mac se réveille, l'heure est corrigée par le réseau et RECULE de dix
+  // minutes. Sans garde, la veille resterait muette pendant tout ce temps —
+  // dans une fenêtre de seize heures où elle est le seul filet. C'est la règle
+  // que le projet applique déjà au planificateur.
+  let horloge = 1_000_000;
+  let branché = true;
+  const veiller = créerVeilleDuDisque({
+    intervalleMs: 300_000,
+    maintenant: () => horloge,
+    monté: () => branché,
+    libre: () => 50 * GO,
+  });
+
+  horloge += 300_000;
+  assert.equal(veiller(CIBLE), null);
+
+  branché = false;
+  horloge -= 60 * 60_000;   // l'horloge recule d'une heure
+  veiller(CIBLE);           // la veille rebase sa référence sur l'heure reçue
+
+  // Puis cinq vraies minutes passent. La garde borne l'aveuglement à UN
+  // intervalle ; sans elle, il aurait duré aussi longtemps que le recul —
+  // une heure entière pendant laquelle le disque peut disparaître.
+  horloge += 300_000;
+
+  assert.ok(
+    veiller(CIBLE),
+    'un recul d’horloge rend la veille muette pour toute la durée du recul : '
+    + 'le disque peut être débranché sans que rien ne le voie',
+  );
+});
+
+test('la veille ne se réarme PAS à chaque playlist', () => {
+  // Une première version se construisait DANS la boucle des playlists. Pour
+  // vingt playlists de trois minutes, elle ne se serait jamais déclenchée : le
+  // trou était refermé pour « une grosse playlist » et rouvert pour « beaucoup
+  // de petites ». C'est `synchroniser` qui construit l'instance, une seule fois.
+  let horloge = 1_000_000;
+  const veiller = créerVeilleDuDisque({
+    intervalleMs: 300_000,
+    maintenant: () => horloge,
+    monté: () => false,          // débranché depuis le début
+    libre: () => 50 * GO,
+  });
+
+  // Vingt playlists de trois minutes : aucune ne dépasse l'intervalle seule.
+  let alerte = null;
+  for (let playlist = 0; playlist < 20 && !alerte; playlist += 1) {
+    for (let ligne = 0; ligne < 30 && !alerte; ligne += 1) {
+      horloge += 6000;
+      alerte = veiller(CIBLE);
+    }
+  }
+
+  assert.ok(
+    alerte,
+    'la veille s’est réarmée à chaque playlist : sur une bibliothèque rangée en '
+    + 'plusieurs listes courtes, elle ne se déclenche jamais',
+  );
+});
+
+test('le disque débranché en pleine playlist interrompt, sans avancer la date',
+  { skip: SAUTER, timeout: 90_000 }, async () => {
+    // LE BRANCHEMENT, pas la pièce. Les six tests ci-dessus prouvent que la
+    // veille MORD ; celui-ci prouve que quelqu'un l'APPELLE. Sans lui, on
+    // pouvait supprimer les deux blocs de `synchroniser` et garder 541 tests
+    // verts — c'est la leçon la plus chère de ce projet.
+    const { nettoyer } = préparer();
+    process.env.FAUX_ZOTIFY_SCENARIO = 'normal';
+
+    try {
+      étatModule.marquerSuccès(new Date('2026-01-01T00:00:00Z'));
+      const référenceAvant = étatModule.état().dernierSuccès;
+
+      let appels = 0;
+      const résultat = await synchroniser('manuelle', {
+        // À la deuxième ligne de zotify, le disque disparaît.
+        créerVeille: () => () => (appels += 1) >= 2
+          ? 'le disque de destination a été débranché pendant le téléchargement.'
+          : null,
+      });
+
+      assert.ok(appels >= 2, 'la veille n’est jamais appelée pendant le téléchargement');
+      assert.equal(résultat.bilan.interrompu, true,
+        'l’alerte de la veille n’interrompt pas la synchronisation');
+      assert.match(résultat.bilan.raisonInterruption, /débranché/);
+      assert.equal(
+        étatModule.état().dernierSuccès, référenceAvant,
+        'la date de référence a avancé alors que le disque avait disparu : '
+        + '48 h d’attente avant de découvrir que rien n’est arrivé',
+      );
+    } finally {
+      delete process.env.FAUX_ZOTIFY_SCENARIO;
+      nettoyer();
+    }
+  });

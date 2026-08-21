@@ -51,6 +51,43 @@ export function écrireListeLecture({ destination, fichiers, titre }) {
   return { destination, nbEntrées: fichiers.length };
 }
 
+/**
+ * Deux formes de fichiers cachés à ne jamais compter pour des morceaux.
+ *
+ * ÉTROIT PAR CONSTRUCTION, et une première version ne l'était pas assez : elle
+ * écartait TOUT nom commençant par un point, au motif qu'« aucun morceau
+ * légitime ne commence par un point ». C'est faux — avec un schéma de rangement
+ * où le nom du fichier est le titre, « ...Baby One More Time » ou l'artiste
+ * « .38 Special » disparaîtraient de la liste de lecture et des exports DJ.
+ * Rattrapé en revue le 21 août 2026.
+ *
+ * 1. `.Titre.1234.tmp.flac` — une conversion inachevée. La conversion écrit là
+ *    et ne renomme qu'à la fin ; fermer l'application pendant un transcodage
+ *    laisse ce fichier, qui porte pourtant une extension audio. Compté, il
+ *    entrait en double dans la liste de lecture, l'export Rekordbox, l'export
+ *    Serato et le rapport des rachats — invisible dans le Finder, donc
+ *    introuvable pour qui cherchait d'où venait le doublon.
+ * 2. `._Titre.flac` — le compagnon qu'écrit macOS sur les disques exFAT, qui ne
+ *    contient aucun son.
+ */
+const CACHÉS_À_ÉCARTER = /^\.(?:_|.+\.\d+\.tmp\.[a-z0-9]+$)/i;
+
+/**
+ * Ce fichier est-il un morceau de la bibliothèque ?
+ *
+ * UNE SEULE ÉCRITURE DE CETTE RÈGLE, et c'est le point. Elle vivait en deux
+ * exemplaires — ici et dans `inventorier` de `src/zotify.js` — qui ont divergé :
+ * le premier a été durci le 21 août 2026 pour écarter les conversions
+ * inachevées, le second non. Résultat : un fichier écarté de la liste de lecture
+ * était quand même compté comme un morceau téléchargé.
+ *
+ * Toute décision « est-ce un morceau ? » passe désormais par ici.
+ */
+export function estUnFichierDeMorceau(nom) {
+  if (CACHÉS_À_ÉCARTER.test(nom)) return false;
+  return EXTENSIONS_AUDIO.has(path.extname(nom).toLowerCase());
+}
+
 /** Liste les fichiers audio d'un dossier, triés comme le ferait le Finder. */
 export function listerAudio(dossier) {
   let entrées;
@@ -61,7 +98,7 @@ export function listerAudio(dossier) {
   }
 
   return entrées
-    .filter((e) => e.isFile() && EXTENSIONS_AUDIO.has(path.extname(e.name).toLowerCase()))
+    .filter((e) => e.isFile() && estUnFichierDeMorceau(e.name))
     .map((e) => path.join(dossier, e.name))
     .sort((a, b) =>
       path.basename(a).localeCompare(path.basename(b), 'fr', { numeric: true }),

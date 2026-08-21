@@ -22,6 +22,7 @@ import path from 'node:path';
 import { environnement } from './processus.js';
 import { journal } from './journal.js';
 import { cléComparaison } from './organisation.js';
+import { estUnFichierDeMorceau } from './bibliotheque.js';
 import { phraseJournal } from './erreurs.js';
 
 /**
@@ -454,7 +455,9 @@ export function événementDeLigne(classée) {
 // Inventaire du disque — la seule source de vérité
 // ---------------------------------------------------------------------------
 
-const EXTENSIONS_AUDIO = new Set(['.ogg', '.mp3', '.flac', '.aiff', '.aif', '.m4a', '.wav', '.opus']);
+// La règle « est-ce un morceau ? » vit dans bibliotheque.js, en un seul
+// exemplaire. Elle était recopiée ici, et les deux copies ont divergé : celle-là
+// comptait encore les conversions inachevées que l'autre avait appris à écarter.
 
 /** Inventorie récursivement les fichiers audio d'un dossier. */
 export function inventorier(dossier) {
@@ -473,7 +476,7 @@ export function inventorier(dossier) {
       if (entrée.isDirectory()) {
         if (entrée.name.startsWith('.') || entrée.name.startsWith('_')) continue;
         parcourir(complet);
-      } else if (EXTENSIONS_AUDIO.has(path.extname(entrée.name).toLowerCase())) {
+      } else if (estUnFichierDeMorceau(entrée.name)) {
         try {
           const stat = fs.statSync(complet);
           // La date d'écriture sert à reconnaître le fichier que zotify était en
@@ -590,7 +593,22 @@ export function cheminsDéjàTéléchargés(dossier) {
     return new Set(
       texte.split('\n')
         .map((ligne) => ligne.split('\t').at(-1)?.trim())
-        .filter(Boolean),
+        .filter(Boolean)
+        // LE SEUL ENDROIT DU PROJET OÙ UNE CHAÎNE ÉCRITE PAR PYTHON RENCONTRE
+        // UNE CHAÎNE LUE PAR NODE, et il passait à côté de la normalisation.
+        //
+        // Ce journal est écrit par zotify ; les chemins auxquels on le compare
+        // sortent de `readdirSync`. Un « é » en NFD d'un côté et en NFC de
+        // l'autre désignent le MÊME fichier et deux chaînes différentes — ce
+        // que CLAUDE.md appelle la cause numéro un de retéléchargements infinis
+        // dans une bibliothèque francophone.
+        //
+        // Sans cette ligne, la politique de retrait ne s'appliquait à AUCUN
+        // morceau dont le titre porte un accent, et l'app annonçait à tort
+        // qu'ils dataient d'avant la mise en service du journal. L'utilisateur
+        // avait choisi « Corbeille », et l'app le lui reprenait en silence.
+        // Trouvé par l'audit du 21 août 2026.
+        .map((chemin) => cléComparaison(chemin)),
     );
   } catch {
     return new Set();
@@ -654,10 +672,39 @@ export function saitReprendreSansLeFichier({ config = {}, capacités = {}, dossi
  * la bibliothèque, à raison de plusieurs mégaoctets chacun, sans que rien ne les
  * signale ni ne les efface.
  *
+ * CE BALAYAGE NE RAMASSE QUE LES RESTES DE ZOTIFY. Ceux de la conversion —
+ * `.Titre.1234.tmp.flac` — lui ressemblent, mais il ne doit surtout pas y
+ * toucher : il s'exécute pendant que la moisson de conversion travaille encore.
+ * `src/conversion.js` les ramasse lui-même, au bon moment. Voir le commentaire
+ * de `estUnResteDeTravail` juste au-dessus.
+ *
  * On les supprime plutôt que de les mettre à l'abri : ce ne sont pas des
  * morceaux, seulement des fragments de téléchargement inachevés, et ils portent
  * un nom qui ne désigne rien pour l'utilisateur.
  */
+/**
+ * Ce nom désigne-t-il un fichier de travail abandonné PAR ZOTIFY ?
+ *
+ * Une seule forme : ce qui FINIT par « .tmp ». Et c'est délibérément étroit.
+ *
+ * CE BALAYAGE NE DOIT JAMAIS TOUCHER AUX FICHIERS DE LA CONVERSION, et la
+ * raison est une question de calendrier, pas de goût. Il s'exécute dans le
+ * gestionnaire de fermeture de `télécharger` (voir plus bas), c'est-à-dire
+ * AVANT que la synchronisation n'arrête la moisson de conversion — laquelle
+ * continue volontairement à travailler après un arrêt. Une règle assez large
+ * pour reconnaître `.Titre.1234.tmp.flac` supprimerait donc le fichier que
+ * ffmpeg est en train d'écrire, à chaque fin de playlist et à chaque clic sur
+ * « Arrêter ».
+ *
+ * C'est exactement ce qui a été tenté le 21 août 2026, et rattrapé en revue par
+ * deux agents avec la même reproduction. La conversion nettoie ses propres
+ * restes, dans `src/conversion.js`, à un moment où elle sait que rien ne tourne.
+ * Chaque module ramasse derrière lui, jamais derrière son voisin.
+ */
+export function estUnResteDeTravail(nom) {
+  return String(nom).toLowerCase().endsWith('.tmp');
+}
+
 export function nettoyerRestesTemporaires(dossierRacine) {
   const supprimés = [];
 
@@ -673,7 +720,7 @@ export function nettoyerRestesTemporaires(dossierRacine) {
       if (entrée.isDirectory()) {
         if (entrée.name.startsWith('.') || entrée.name.startsWith('_')) continue;
         parcourir(complet);
-      } else if (entrée.name.toLowerCase().endsWith('.tmp')) {
+      } else if (estUnResteDeTravail(entrée.name)) {
         try {
           const taille = fs.statSync(complet).size;
           fs.unlinkSync(complet);
@@ -1026,4 +1073,79 @@ export function télécharger({
       });
     });
   });
+}
+
+/**
+ * Ce lancement a-t-il ÉCHOUÉ, au sens où rien ne prouve que zotify ait travaillé ?
+ *
+ * UN SUCCÈS NE SE DÉDUIT PAS D'UNE ABSENCE D'ERREUR CONNUE. C'est le défaut le
+ * plus coûteux trouvé par l'audit du 21 août 2026, et il vit ici plutôt que dans
+ * la synchronisation pour que personne ne modifie le résultat de `télécharger`
+ * sans voir ce qui le lit.
+ *
+ * Quand zotify se lançait et mourait sans écrire une ligne — environnement
+ * Python abîmé, bibliothèque manquante, paquet mis en quarantaine —, `erreurs`
+ * valait `[]`, donc les titres perdus valaient zéro, donc `bilan.échec` restait
+ * vide, donc l'app marquait un SUCCÈS : elle avançait sa date de référence,
+ * remettait le compteur d'échecs à zéro, affichait « Aucune nouveauté » et
+ * attendait 48 h. Puis recommençait. Indéfiniment, sans un seul signal.
+ *
+ * Rien n'était perdu, mais rien n'était jamais téléchargé — exactement le prix
+ * payé de la 1.0 à la 1.0.4.
+ *
+ * Rend `null` quand tout va bien, sinon une phrase à montrer.
+ */
+export function échecDeLancement(résultat) {
+  if (!résultat) return 'zotify n’a rien rendu du tout.';
+
+  if (résultat.lancé === false) {
+    // `erreur` EST UNE CHAÎNE, PAS UN OBJET. Les deux seules sorties
+    // « lancé: false » de `télécharger` posent `erreur: erreur.message`. Une
+    // première version lisait `résultat.erreur?.message` — recopié depuis
+    // `contrôlerFfmpeg`, où `exécuter` rend bien un vrai `Error` — et la
+    // branche utile était donc morte : l'utilisateur recevait toujours la
+    // phrase générique, sans le ENOENT ni le EACCES qui lui aurait dit quoi
+    // faire. C'est exactement le cas pour lequel cette fonction existe.
+    //
+    // Le test l'avait manqué parce qu'il passait un `Error`, une forme que
+    // `télécharger` ne produit jamais : la doublure acceptait ce que le vrai
+    // code n'envoie pas. Rattrapé en revue le 21 août 2026.
+    const cause = typeof résultat.erreur === 'string'
+      ? résultat.erreur.trim()
+      : String(résultat.erreur?.message ?? '').trim();
+
+    return cause
+      ? `zotify n’a pas pu être lancé : ${cause}`
+      : 'zotify n’a pas pu être lancé.';
+  }
+
+  // Un arrêt demandé n'est PAS un échec : l'utilisateur a cliqué sur Arrêter, et
+  // ce qui est descendu est bien descendu. C'est la seule sortie anormale qui
+  // doit laisser la date de référence avancer.
+  if (résultat.interrompu) return null;
+
+  // Le chien de garde, lui, en est un. Il mord quand zotify se fige sur une
+  // socket morte : zéro fichier, et la cause ne se répare pas toute seule.
+  if (résultat.expiré) {
+    return 'zotify est resté muet trop longtemps et a été arrêté. '
+      + 'Vérifiez votre connexion, puis relancez.';
+  }
+
+  // LE CAS SILENCIEUX. Le code de sortie de zotify vaut 0 même quand des pistes
+  // échouent — c'est écrit dans CLAUDE.md et c'est pour ça qu'on ne s'y fie
+  // jamais seul. Mais l'inverse tient : un code NON NUL accompagné d'aucune
+  // ligne et d'aucun fichier ne peut rien vouloir dire d'autre qu'un échec.
+  //
+  // Les trois conditions sont exigées ensemble, et il le faut : une playlist
+  // déjà à jour rend elle aussi zéro fichier, et c'est un vrai succès.
+  const n_aRienDit = (résultat.lignes?.length ?? 0) === 0;
+  const n_aRienFait = (résultat.nouveaux?.length ?? 0) === 0;
+
+  if (résultat.codeSortie !== 0 && n_aRienDit && n_aRienFait) {
+    return `zotify s’est arrêté (code ${résultat.codeSortie}) sans rien écrire `
+      + 'ni rien télécharger. Son installation est probablement abîmée : '
+      + 'l’onglet Diagnostic vous dira ce qui manque.';
+  }
+
+  return null;
 }

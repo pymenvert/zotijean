@@ -271,3 +271,33 @@ test('une ligne non reconnue est conservée intacte', () => {
   assert.ok(texte.includes(brute), 'une ligne inconnue ne doit pas être escamotée');
   assert.equal(détail, undefined, 'inutile de répéter la ligne en détail si elle est déjà dans le texte');
 });
+
+test('un échec ne se raconte jamais « Aucune nouveauté »', () => {
+  // LE DERNIER TIERS D'UN CORRECTIF QUI N'EN AVAIT QUE DEUX. Un zotify qui meurt
+  // sans rien dire ne produit ni fichier ni ligne d'erreur, et n'est pas
+  // « interrompu ». La phrase de bilan rendait donc « Aucune nouveauté » — que
+  // l'interface affiche EN VERT et envoie en notification système — pendant que
+  // le bandeau, lui, disait bien l'échec. La date de référence et le compteur
+  // d'échecs étaient corrigés ; ce que l'utilisateur LIT, non.
+  const phrase = phraseBilan({
+    nbFichiers: 0,
+    erreurs: [],
+    interrompu: false,
+    échec: 'zotify s’est arrêté (code 1) sans rien écrire ni rien télécharger.',
+  });
+
+  assert.doesNotMatch(
+    phrase, /Aucune nouveauté/,
+    'une synchronisation totalement ratée s’annonce comme une bibliothèque à '
+    + 'jour, en vert, et par une notification rassurante',
+  );
+  assert.match(phrase, /échou/i);
+});
+
+test('une bibliothèque réellement à jour dit toujours « Aucune nouveauté »', () => {
+  // Le piège symétrique : sans lui, on remplacerait un mensonge par un autre.
+  assert.equal(
+    phraseBilan({ nbFichiers: 0, erreurs: [], interrompu: false, échec: null }),
+    'Aucune nouveauté',
+  );
+});

@@ -509,7 +509,81 @@ export function démarrerConversionContinue({
  * C'est la même moisson que pendant le téléchargement, jouée une fois : une
  * seule mécanique, donc une seule à comprendre et à garder juste.
  */
+/**
+ * Le nom d'un fichier de conversion abandonné — et RIEN d'autre.
+ *
+ * La forme est exactement celle que `convertir` écrit : un point, le nom du
+ * morceau, le numéro du processus, « .tmp », puis l'extension de la cible. On
+ * exige la forme ENTIÈRE, pas un fragment : un morceau que l'utilisateur aurait
+ * déposé lui-même ne doit jamais y correspondre.
+ *
+ * Et on écarte ce qui porte le numéro du processus COURANT : ce fichier-là
+ * pourrait être en train d'être écrit à l'instant même. On ne supprime jamais
+ * par défaut, et surtout pas ce qu'on est en train de fabriquer.
+ */
+export function estUnTemporaireDeConversion(nom, pidÀÉpargner = process.pid) {
+  const trouvé = /^\.(.+)\.(\d+)\.tmp\.[a-z0-9]+$/i.exec(String(nom));
+  if (!trouvé) return false;
+  return Number(trouvé[2]) !== Number(pidÀÉpargner);
+}
+
+/**
+ * Supprime les conversions abandonnées par une exécution précédente.
+ *
+ * POURQUOI ICI, ET PAS DANS LE BALAYAGE DE ZOTIFY. Celui de zotify tourne à la
+ * fermeture de chaque processus zotify, c'est-à-dire PENDANT que la moisson de
+ * conversion travaille encore — elle continue volontairement après un arrêt.
+ * Un balayage à ce moment-là détruirait le fichier que ffmpeg écrit.
+ *
+ * Ici, au contraire, on est au tout début d'une synchronisation : aucune
+ * conversion n'a démarré. Tout ce qui traîne vient forcément d'avant.
+ *
+ * Ce reste existe parce que fermer l'application pendant une conversion la tue
+ * sans que le renommage final ait lieu — et c'est le chemin de fermeture normal,
+ * puisqu'un onglet ouvert force la sortie au bout de cinq secondes.
+ */
+export function nettoyerTemporairesDeConversion(racine) {
+  const supprimés = [];
+
+  const parcourir = (dossier) => {
+    let entrées;
+    try {
+      entrées = fs.readdirSync(dossier, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entrée of entrées) {
+      const complet = path.join(dossier, entrée.name);
+      if (entrée.isDirectory()) {
+        if (entrée.name.startsWith('.')) continue;
+        parcourir(complet);
+      } else if (estUnTemporaireDeConversion(entrée.name)) {
+        try {
+          const taille = fs.statSync(complet).size;
+          fs.unlinkSync(complet);
+          supprimés.push({ chemin: complet, taille });
+        } catch {
+          // Occupé ou déjà disparu : sans importance.
+        }
+      }
+    }
+  };
+
+  parcourir(racine);
+
+  if (supprimés.length) {
+    journal.info(
+      `${supprimés.length} conversion(s) inachevée(s) nettoyée(s) — restes d’une `
+      + 'fermeture pendant un transcodage. Les fichiers d’origine, eux, sont intacts.',
+    );
+  }
+  return supprimés;
+}
+
 export async function rattraperConversions(options) {
+  // D'abord le ménage : rien ne convertit encore, c'est le seul moment sûr.
+  if (options?.dossier) nettoyerTemporairesDeConversion(options.dossier);
+
   const moisson = démarrerConversionContinue({ ...options, intervalleMs: 3_600_000 });
   return moisson.arrêter();
 }

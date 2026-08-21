@@ -25,9 +25,12 @@ import {
   saitReprendreSansLeFichier,
   assurerJournalTéléchargements,
   cheminsDéjàTéléchargés,
+  estUnResteDeTravail,
+  échecDeLancement,
 } from '../src/zotify.js';
 
 import { optionsDéclarées, extraireVersion } from '../src/diagnostic.js';
+import { cléComparaison } from '../src/organisation.js';
 
 // ---------------------------------------------------------------------------
 // Découpage de la sortie
@@ -1209,4 +1212,250 @@ test('le journal n’est demandé à zotify que si la politique en a besoin', ()
   assert.equal(retire[retire.indexOf('--skip-prev-downloaded') + 1], 'true');
   assert.equal(retire[retire.indexOf('--song-archive-location') + 1], '/D',
     'le journal doit vivre avec les donnees de l’app, pas dans un coin du systeme');
+});
+
+// ---------------------------------------------------------------------------
+// Un succès ne se déduit pas d'une absence d'erreur connue
+//
+// LE DÉFAUT LE PLUS COÛTEUX DE L'AUDIT DU 21 AOÛT 2026, et sa reproduction.
+// Un zotify qui se lance et meurt sans écrire une ligne rendait un résultat
+// indiscernable d'une playlist déjà à jour : zéro erreur, zéro fichier, ni
+// « interrompu » ni « expiré ». La synchronisation marquait un succès, avançait
+// sa date de référence, remettait le compteur d'échecs à zéro et affichait
+// « Aucune nouveauté » — puis attendait 48 h pour recommencer à l'identique.
+// ---------------------------------------------------------------------------
+
+/** Ce que rend « télécharger » quand tout s'est bien passé. */
+const LANCEMENT_NORMAL = {
+  lancé: true, interrompu: false, expiré: false, codeSortie: 0,
+  nouveaux: [{ chemin: '/m/Été 2026/Prix Choc.ogg' }],
+  lignes: [{ type: 'info', texte: 'Downloaded' }],
+  erreurs: [],
+};
+
+test('un zotify qui se lance et meurt sans rien dire est un ÉCHEC', () => {
+  const résultat = {
+    ...LANCEMENT_NORMAL,
+    codeSortie: 1,
+    nouveaux: [],
+    lignes: [],   // il n'a écrit sur AUCUN de ses deux flux
+    erreurs: [],
+  };
+
+  const échec = échecDeLancement(résultat);
+  assert.ok(
+    échec,
+    'ce lancement est compté comme un succès : la date de référence avance, le '
+    + 'compteur d’échecs repart à zéro, et l’app affichera « Aucune nouveauté » '
+    + 'toutes les 48 h, indéfiniment, sans jamais rien télécharger',
+  );
+  assert.match(échec, /Diagnostic/, 'le message doit dire où aller regarder');
+});
+
+test('un zotify qui n’a pas pu être lancé du tout est un échec, ET dit pourquoi', () => {
+  // LA FORME EXACTE QUE `télécharger` PRODUIT, et pas une autre : ses deux
+  // sorties « lancé: false » posent `erreur: erreur.message`, donc une CHAÎNE.
+  //
+  // Une première version de ce test passait un `Error`. Il restait vert alors
+  // que la branche qui nomme la cause était morte en production — l'utilisateur
+  // lisait toujours « zotify n'a pas pu être lancé. » sans le ENOENT qui lui
+  // aurait dit quoi faire. C'est mot pour mot la leçon de la 1.0.5 : la
+  // doublure acceptait ce que le vrai code n'envoie pas.
+  const avecCause = échecDeLancement({ lancé: false, erreur: 'spawn zotify ENOENT' });
+  assert.ok(avecCause);
+  assert.match(
+    avecCause, /ENOENT/,
+    'la cause du lancement raté est jetée : c’est précisément l’information '
+    + 'pour laquelle cette fonction existe',
+  );
+
+  // Sans cause connue, on rend quand même un échec — jamais un succès.
+  assert.ok(échecDeLancement({ lancé: false }));
+  assert.ok(échecDeLancement({ lancé: false, erreur: '' }));
+  assert.ok(échecDeLancement(null), 'un résultat absent ne peut pas être un succès');
+});
+
+test('une expiration du chien de garde est un échec, pas un silence', () => {
+  // Le Wi-Fi tombe à 3 h du matin, zotify se fige sur une socket morte, le
+  // chien de garde le tue après quinze minutes. Zéro fichier. Sans cette
+  // garde, « expiré » n'atteignait jamais le bilan : succès marqué, et le
+  // recul exponentiel après échec ne s'enclenchait pas.
+  const échec = échecDeLancement({
+    ...LANCEMENT_NORMAL, expiré: true, nouveaux: [], lignes: [], codeSortie: 0,
+  });
+  assert.ok(échec, 'une expiration du chien de garde passe pour un succès');
+  assert.match(échec, /muet/);
+});
+
+test('un arrêt DEMANDÉ n’est pas un échec', () => {
+  // C'est la seule sortie anormale qui doit laisser la date de référence
+  // avancer : l'utilisateur a cliqué sur Arrêter, et ce qui est descendu est
+  // bien descendu. Le confondre avec une panne ferait reculer les tentatives
+  // suivantes pour un geste volontaire.
+  assert.equal(
+    échecDeLancement({ ...LANCEMENT_NORMAL, interrompu: true, nouveaux: [], lignes: [] }),
+    null,
+  );
+});
+
+test('une playlist déjà à jour n’est PAS un échec, même sans un seul fichier', () => {
+  // Le piège symétrique, et celui qui interdit une garde plus simple :
+  // « --skip-existing » fait qu'une playlist complète ne produit aucun
+  // nouveau fichier. Confondre les deux bloquerait l'app sur une bibliothèque
+  // à jour — le contraire exact du défaut qu'on corrige.
+  assert.equal(échecDeLancement({ ...LANCEMENT_NORMAL, nouveaux: [] }), null);
+
+  // Et même sans une seule ligne, tant que le code de sortie est nul : c'est
+  // le code NON NUL qui fait la différence, jamais le silence seul.
+  assert.equal(échecDeLancement({ ...LANCEMENT_NORMAL, nouveaux: [], lignes: [] }), null);
+});
+
+test('un code de sortie non nul ne suffit pas quand zotify a travaillé', () => {
+  // Le code de sortie de zotify vaut 0 même quand des pistes échouent : on ne
+  // s'y fie donc jamais SEUL. Un code non nul accompagné de fichiers ou de
+  // lignes est une exécution partielle, que les compteurs de titres perdus
+  // savent déjà décrire — pas un lancement raté.
+  assert.equal(échecDeLancement({ ...LANCEMENT_NORMAL, codeSortie: 1 }), null);
+  assert.equal(
+    échecDeLancement({ ...LANCEMENT_NORMAL, codeSortie: 1, nouveaux: [] }),
+    null,
+    'zotify a parlé : ce n’est pas un lancement raté',
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Les restes de travail : deux formes, pas une
+// ---------------------------------------------------------------------------
+
+test('le balayage de zotify ne reconnaît que les restes de zotify', () => {
+  // zotify : le « .tmp » est à la FIN.
+  assert.equal(estUnResteDeTravail('Prix Choc.ogg.tmp'), true);
+  assert.equal(estUnResteDeTravail('quelque chose.TMP'), true);
+});
+
+test('il ne touche JAMAIS au fichier qu’une conversion est en train d’écrire', () => {
+  // LE POINT LE PLUS IMPORTANT DE CE FICHIER, et une régression rattrapée en
+  // revue le 21 août 2026.
+  //
+  // Ce balayage s'exécute dans le gestionnaire de fermeture de `télécharger`,
+  // c'est-à-dire AVANT que la synchronisation n'arrête la moisson de
+  // conversion — laquelle continue volontairement à travailler après un arrêt.
+  // Une règle assez large pour reconnaître « .Titre.1234.tmp.flac » supprimait
+  // donc le fichier que ffmpeg écrivait, à chaque fin de playlist et à chaque
+  // clic sur « Arrêter ».
+  //
+  // La conversion nettoie ses propres restes, dans src/conversion.js, à un
+  // moment où elle sait que rien ne tourne.
+  assert.equal(
+    estUnResteDeTravail('.Prix Choc.1234.tmp.flac'), false,
+    'le balayage de zotify supprime le fichier de la conversion en cours : '
+    + 'le transcodage échoue, et rien ne le signale',
+  );
+  assert.equal(estUnResteDeTravail('.Titre.99.tmp.m4a'), false);
+});
+
+test('la garde reste étroite : on ne supprime jamais par défaut', () => {
+  // Un vrai morceau, même avec des points plein le nom.
+  assert.equal(estUnResteDeTravail('Prix Choc.ogg'), false);
+  assert.equal(estUnResteDeTravail('A.C.A.B. (Mix).mp3'), false);
+  // Un fichier caché qui n'est PAS un reste de travail : il ne nous appartient pas.
+  assert.equal(estUnResteDeTravail('.DS_Store'), false);
+  assert.equal(estUnResteDeTravail('._Prix Choc.flac'), false);
+});
+
+// ---------------------------------------------------------------------------
+// Le piège numéro un, au seul endroit du projet où il peut frapper
+//
+// AUDIT DU 21 AOÛT 2026. Le journal de zotify est écrit par PYTHON ; les chemins
+// auxquels on le compare sortent de « readdirSync ». C'est la seule comparaison
+// du projet qui traverse cette frontière — et elle ne passait pas par
+// « cléComparaison », alors que le commentaire d'organisation.js affirme que
+// TOUTE comparaison de chemins y passe.
+//
+// Et la doublure ne pouvait structurellement pas le montrer : elle inscrit au
+// journal la même chaîne JavaScript qu'elle vient de passer à writeFileSync.
+// Les deux côtés sont identiques par construction. Les tests qui gardaient
+// cette mécanique employaient pourtant des titres bourrés d'accents, ce qui
+// donnait l'illusion que le cas était couvert.
+// ---------------------------------------------------------------------------
+
+test('le journal de zotify se relit quelle que soit l’écriture des accents', () => {
+  const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'zotijean-nfd-'));
+  try {
+    const enNFC = path.join(dossier, 'Été 2026', 'Étienne de Crécy - Prix Choc.ogg');
+
+    // zotify inscrit la même destination, mais écrite en NFD — « e » suivi d'un
+    // accent combinant. Les deux s'affichent pareil et désignent le même
+    // fichier ; ce sont deux chaînes différentes.
+    const enNFD = enNFC.normalize('NFD');
+    assert.notEqual(enNFD, enNFC, 'le cas de test ne reproduit rien si les deux sont identiques');
+
+    fs.writeFileSync(
+      path.join(dossier, '.song_archive'),
+      `id0\t2026-08-19 15:00:00\tÉtienne de Crécy\tPrix Choc\t${enNFD}\n`,
+      'utf8',
+    );
+
+    const inscrits = cheminsDéjàTéléchargés(dossier);
+
+    assert.ok(
+      inscrits.has(cléComparaison(enNFC)),
+      'le chemin inscrit par zotify n’est pas reconnu : la politique de retrait '
+      + 'ne s’appliquera à AUCUN morceau accentué, et l’app annoncera à tort '
+      + 'qu’ils datent d’avant la mise en service du journal',
+    );
+  } finally {
+    fs.rmSync(dossier, { recursive: true, force: true });
+  }
+});
+
+test('un reste de conversion n’est pas compté comme un morceau téléchargé', () => {
+  // LA MOITIÉ MANQUANTE DU MÊME CORRECTIF. `listerAudio` avait été durci pour
+  // écarter les conversions inachevées ; `inventorier`, qui décide ce qui compte
+  // comme NOUVEAU fichier, employait sa propre copie de la règle et ne l'avait
+  // pas reçue. Un fichier écarté de la liste de lecture était donc quand même
+  // annoncé comme un morceau téléchargé. Les deux passent désormais par la même
+  // fonction, dans bibliotheque.js.
+  const racine = fs.mkdtempSync(path.join(os.tmpdir(), 'zotijean-inventaire-'));
+  try {
+    const playlist = path.join(racine, 'Été 2026');
+    fs.mkdirSync(playlist);
+    const avant = inventorier(racine);
+
+    // Ce que la conversion continue laisse quand l'app est fermée pendant son
+    // travail : un point devant, une extension audio derrière.
+    fs.writeFileSync(path.join(playlist, '.Prix Choc.1234.tmp.flac'), Buffer.alloc(5_000_000));
+
+    const { nouveaux } = nouveauxFichiers(avant, inventorier(racine));
+
+    assert.deepEqual(
+      nouveaux, [],
+      'un fichier de travail caché est annoncé comme un morceau téléchargé : il '
+      + 'gonfle le compte affiché et entre dans la liste de lecture',
+    );
+  } finally {
+    fs.rmSync(racine, { recursive: true, force: true });
+  }
+});
+
+test('un morceau dont le titre commence par un point est bien compté', () => {
+  // Le sens inverse, et le risque de toute règle d'exclusion : avec un schéma
+  // de rangement où le nom du fichier est le titre, « ...Baby One More Time »
+  // ou l'artiste « .38 Special » existent pour de bon.
+  const racine = fs.mkdtempSync(path.join(os.tmpdir(), 'zotijean-titrepointu-'));
+  try {
+    const playlist = path.join(racine, 'Été 2026');
+    fs.mkdirSync(playlist);
+    const avant = inventorier(racine);
+
+    fs.writeFileSync(path.join(playlist, '...Baby One More Time.ogg'), Buffer.alloc(5_000_000));
+
+    const { nouveaux } = nouveauxFichiers(avant, inventorier(racine));
+    assert.equal(
+      nouveaux.length, 1,
+      'un morceau légitime a disparu de l’inventaire à cause de son titre',
+    );
+  } finally {
+    fs.rmSync(racine, { recursive: true, force: true });
+  }
 });

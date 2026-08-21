@@ -25,10 +25,10 @@ import { fichierVerrou, assurerDossier, dossierDonnées, volumeMonté, espaceLib
 import { journal } from './journal.js';
 import { diagnostiquer, GRAVITÉ } from './diagnostic.js';
 import {
-  construireArguments, télécharger, saitReprendreSansLeFichier,
+  construireArguments, télécharger, saitReprendreSansLeFichier, échecDeLancement,
   assurerJournalTéléchargements, cheminsDéjàTéléchargés, sauvegarderJournalTéléchargements,
 } from './zotify.js';
-import { modèleActif } from './organisation.js';
+import { modèleActif, cléComparaison } from './organisation.js';
 import {
   nécessiteConversion, convertirLot, PROFILS,
   démarrerConversionContinue, rattraperConversions,
@@ -182,7 +182,17 @@ export function demanderArrêt() {
  * affiché et, plus tard, la politique d'assertion d'énergie côté macOS.
  */
 export async function synchroniser(déclencheur = 'manuelle', options = {}) {
-  const { playlistsCiblées = null } = options;
+  // `créerVeille` est injectable pour une seule raison : sans elle, le
+  // BRANCHEMENT de la veille du disque n'est testable par rien. Ses sondes
+  // (`volumeMonté`, `espaceLibre`) sont des liaisons de module qu'un test ne
+  // peut pas remplacer, et la leçon la plus chère de ce projet est qu'une garde
+  // correcte que personne n'appelle ne protège rien.
+  const { playlistsCiblées = null, créerVeille = créerVeilleDuDisque } = options;
+
+  // UNE SEULE INSTANCE POUR TOUTE L'EXÉCUTION. Construite ici, hors de la boucle
+  // des playlists : sa limitation dans le temps doit courir sur l'exécution
+  // entière, pas se réarmer à chaque playlist.
+  const veillerSurLeDisque = créerVeille();
 
   if (courante) {
     return { lancé: false, raison: 'Une synchronisation est déjà en cours.' };
@@ -230,6 +240,10 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
     // et jamais sur le second.
     nbSignalements: 0,
     nbErreurs: 0,
+    // Combien de fois zotify n'a rien prouvé. Distinct des deux chiffres
+    // ci-dessus : un lancement raté ne produit AUCUNE ligne, donc il ne pesait
+    // sur ni l'un ni l'autre — c'est exactement ce qui le rendait invisible.
+    lancementsRatés: 0,
     interrompu: false,
     réglagesNonAppliqués: [],
     // Conservées brutes pour que l'historique puisse les regrouper et les
@@ -506,6 +520,27 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
               }
             }
             diffuser({ ...événement, playlist: courante.playlistActuelle });
+
+            // LES GARDES DU DISQUE, RELUES PENDANT. Celles d'avant la boucle
+            // ont été passées à l'instant où la playlist a commencé — et pour
+            // deux mille titres à trente secondes, cet instant est seize heures
+            // avant la fin.
+            //
+            // Un REPORT, pas un échec : on n'avance pas `dernierSuccès`, donc la
+            // reprise se fera d'elle-même dès que le disque revient. On ne
+            // diffuse donc PAS « synchro-echec », qui peindrait en rouge une
+            // pause — les trois autres reports de cette boucle ne le font pas
+            // non plus.
+            const alerte = veillerSurLeDisque({
+              racine,
+              minimumOctets: (cp.gardes?.espaceMinimumGo ?? 2) * 1024 ** 3,
+            });
+            if (alerte && !bilan.interrompu) {
+              bilan.interrompu = true;
+              bilan.raisonInterruption = alerte;
+              journal.erreur(alerte);
+              courante.contrôleur.abort();
+            }
           },
         });
       } finally {
@@ -530,6 +565,25 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
       bilan.nbSignalements += lignesSignalées.length;
       bilan.nbErreurs += titresPerdus;
       if (résultat.interrompu) bilan.interrompu = true;
+
+      // UN SUCCÈS NE SE DÉDUIT PAS D'UNE ABSENCE D'ERREUR CONNUE.
+      //
+      // Sans cette garde, un zotify qui se lance et meurt sans écrire une ligne
+      // arrivait ici avec zéro erreur, zéro titre perdu, ni « interrompu » ni
+      // « expiré » — et repartait en succès : date de référence avancée,
+      // compteur d'échecs remis à zéro, « Aucune nouveauté » à l'écran, et
+      // 48 h d'attente avant de recommencer à l'identique. Indéfiniment.
+      //
+      // La décision vit dans `échecDeLancement`, à côté de la fonction dont
+      // elle lit le résultat, et elle est éprouvée là-bas.
+      const échecLancement = échecDeLancement(résultat);
+      if (échecLancement) {
+        bilan.lancementsRatés += 1;
+        journal.erreur(`Playlist « ${courante.playlistActuelle} » : ${échecLancement}`);
+        // La PREMIÈRE cause est conservée : c'est celle qui explique le mieux,
+        // les suivantes n'étant le plus souvent que la même panne répétée.
+        if (!bilan.échec) bilan.échec = échecLancement;
+      }
 
       // zotify a demandé une connexion Spotify et rien n'est arrivé : chaque
       // playlist suivante échouerait exactement pareil, en payant à chaque fois
@@ -608,6 +662,7 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
       // indéfiniment ne servirait qu'à repayer l'attente.
       const alléAuBout = !résultat.interrompu
         && !résultat.expiré
+        && !échecLancement
         && titresPerdus === 0;
 
       étatModule.majPlaylist(playlist.id, {
@@ -724,6 +779,7 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
       nbFichiers: bilan.nbFichiers,
       erreurs: bilan.lignesErreur,
       interrompu: bilan.interrompu,
+      échec: bilan.échec,
     });
 
     étatModule.enregistrerExécution(bilan);
@@ -845,7 +901,12 @@ export async function finaliserPlaylist({
     const inscrits = politiqueSources !== 'conserver'
       ? cheminsDéjàTéléchargés(dossierDonnées())
       : new Set();
-    const retirables = réussis.filter(({ source }) => inscrits.has(path.resolve(source)));
+    // `cléComparaison` et non le chemin brut : l'ensemble vient d'un journal
+    // écrit par Python, ces chemins-ci sortent de `readdirSync`. C'est la seule
+    // comparaison du projet qui traverse cette frontière, et elle l'ignorait.
+    const retirables = réussis.filter(
+      ({ source }) => inscrits.has(cléComparaison(path.resolve(source))),
+    );
 
     if (politiqueSources !== 'conserver' && réussis.length > retirables.length) {
       résultat.sourcesHorsJournal = réussis.length - retirables.length;
@@ -1038,4 +1099,83 @@ function ouvrirDansLeSystème(cible) {
     });
     processus.unref();
   });
+}
+
+/**
+ * Une veille du disque, à relire PENDANT le téléchargement.
+ *
+ * POURQUOI ELLE EXISTE. Les trois garde-fous du disque étaient bien dans la
+ * boucle des playlists — mais AVANT l'appel à zotify, et jamais ensuite. Avec
+ * les chiffres du projet, deux mille titres à trente secondes tiennent dans une
+ * seule playlist : le contrôle était donc fait une fois, à H+0, pour seize
+ * heures et quarante minutes de travail.
+ *
+ * Le commentaire du code promettait pourtant une relecture « au fil de
+ * l'exécution ». Elle existait, à la granularité de la playlist — ce qui, pour
+ * une bibliothèque rangée en une seule liste, revient à ne pas exister.
+ *
+ * Le scénario que ça laissait passer est celui que CLAUDE.md nomme comme cause
+ * numéro un : disque externe débranché à H+3, macOS recrée un dossier VIDE au
+ * même endroit sous /Volumes/, et treize heures de musique partent sur le
+ * disque de démarrage sans un mot.
+ *
+ * Limitée dans le temps : ce contrôle est appelé à chaque ligne de zotify,
+ * c'est-à-dire plusieurs fois par seconde. Un `statfs` par ligne serait une
+ * charge inutile pour un état qui bouge à l'échelle de la minute.
+ *
+ * Rend `null` tant que tout va bien, sinon la phrase à afficher.
+ */
+/**
+ * À quelle cadence relire l'état du disque pendant un téléchargement.
+ *
+ * Nommée, comme `BATTEMENT_MS` du planificateur et `SILENCE_MAXIMAL_MS` du
+ * pilote : ce sont les trois cadences du projet, et une cadence écrite en clair
+ * au milieu d'une signature ne se retrouve pas.
+ */
+const INTERVALLE_VEILLE_MS = 5 * 60 * 1000;
+
+export function créerVeilleDuDisque({
+  intervalleMs = INTERVALLE_VEILLE_MS,
+  maintenant = () => Date.now(),
+  monté = volumeMonté,
+  libre = espaceLibre,
+} = {}) {
+  // UNE SEULE VEILLE POUR TOUTE L'EXÉCUTION, et la racine se donne à l'appel.
+  //
+  // Une première version se construisait DANS la boucle des playlists, et
+  // repartait donc de zéro à chaque tour. Pour vingt playlists de trois minutes,
+  // elle ne se serait jamais déclenchée : le trou était refermé pour le cas
+  // « une grosse playlist » et rouvert pour le cas « beaucoup de petites ».
+  // Rattrapé en revue le 21 août 2026.
+  let dernierContrôle = maintenant();
+
+  return function veiller({ racine, minimumOctets }) {
+    const t = maintenant();
+
+    // GARDE CONTRE LE RECUL D'HORLOGE. C'est une règle du projet, et elle vaut
+    // ici comme pour la planification : une correction d'horloge au réveil du
+    // Mac peut faire reculer l'heure de plusieurs minutes. Sans cette ligne, la
+    // veille resterait muette pendant tout ce temps — dans une fenêtre de seize
+    // heures où elle est le seul filet.
+    if (t < dernierContrôle) dernierContrôle = t;
+
+    if (t - dernierContrôle < intervalleMs) return null;
+    dernierContrôle = t;
+
+    if (!monté(racine)) {
+      return 'le disque de destination a été débranché pendant le téléchargement. '
+        + 'Rebranchez-le : la synchronisation reprendra où elle en est.';
+    }
+
+    const place = libre(racine);
+    // `null` veut dire « inconnu », pas « zéro » : on ne bloque pas sur une
+    // mesure qu'on n'a pas pu prendre.
+    if (place !== null && place < minimumOctets) {
+      return `il ne reste que ${(place / 1024 ** 3).toFixed(1)} Go sur le disque de `
+        + `destination, sous le seuil de ${(minimumOctets / 1024 ** 3).toFixed(0)} Go que `
+        + 'vous avez fixé. Faites de la place : la synchronisation reprendra où elle en est.';
+    }
+
+    return null;
+  };
 }

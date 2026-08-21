@@ -85,7 +85,12 @@ Ces points ont été vérifiés sur sources primaires en août 2026. Ils contrai
 
 ### Qualité et formats
 
-- Le plafond est l'**Ogg Vorbis 320 kb/s**, et il exige Spotify Premium. Le lossless
+- **Spotify Premium est requis pour TÉLÉCHARGER, quelle que soit la qualité demandée.**
+  Ce n'est pas une condition du 320 kb/s, c'est la condition d'existence du logiciel.
+  Cinq textes de l'app disaient le contraire — dont un message d'erreur qui conseillait
+  de baisser la qualité et de relancer, ce qui ne peut pas marcher. Corrigés le 21 août
+  2026. Ne jamais laisser réapparaître l'idée qu'un compte gratuit livre du 160 kb/s.
+- Le plafond est l'**Ogg Vorbis 320 kb/s**. Le lossless
   Spotify (FLAC, livré en septembre 2025, inclus dans Premium) passe par un pipeline
   propriétaire **inaccessible à librespot**. Ne jamais laisser croire le contraire dans
   l'interface.
@@ -145,8 +150,11 @@ vérifiée le 16 août 2026 — jamais écrite au jugé.
 - **format** : aucun
 - **lint** : aucun
 - **typecheck** : aucun
-- **test** : `node --test` → 500 tests. **500 verts sur macOS**, la cible ;
-  le PC Windows en ignore 13, faute de pouvoir lancer le leurre zotify
+- **test** : `node --test` → 553 tests, **0 échec**. Le PC Windows en ignore 22,
+  faute de pouvoir lancer le leurre zotify : **un `node --test` vert ici ne dit
+  donc rien du téléchargement, du verrou, de la politique de retrait, de la liste
+  de lecture ni du bouton Arrêter.** Seules les branches macOS et Linux de
+  l'intégration continue les exercent
 - **build** : aucun en local ; le paquet est construit par
   `.github/workflows/publication.yml`
 - **run** : `node server.js` → http://127.0.0.1:8787

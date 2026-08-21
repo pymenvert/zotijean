@@ -146,8 +146,26 @@ async function contrôlerZotify(commandeConfigurée) {
 // ffmpeg
 // ---------------------------------------------------------------------------
 
-async function contrôlerFfmpeg() {
-  const chemin = trouverExécutable('ffmpeg');
+/**
+ * ffmpeg est-il là, ET répond-il ?
+ *
+ * LES DEUX QUESTIONS, PAS UNE. Jusqu'au 21 août 2026, ce contrôle lançait
+ * `ffmpeg -version` et rendait OK sans jamais regarder le code de sortie :
+ * n'importe quel fichier exécutable nommé « ffmpeg » dans le PATH passait — un
+ * binaire de la mauvaise architecture, un ffmpeg dont une bibliothèque
+ * dynamique manque, un homonyme.
+ *
+ * C'était le pire endroit possible pour cette indulgence. Sans ffmpeg qui
+ * FONCTIONNE, zotify renomme le fichier téléchargé avant de constater son
+ * absence et ne le restaure jamais : des morceaux détruits sans message. Ce
+ * contrôle existe uniquement pour empêcher ça, et il laissait passer le cas.
+ *
+ * `lancer` est injectable pour que ce chemin soit testable sans poser un faux
+ * binaire dans le PATH — un leurre exécutable étant impossible à écrire sous
+ * Windows depuis Node 20 (CVE-2024-27980).
+ */
+export async function contrôlerFfmpeg({ lancer = exécuter, localiser = trouverExécutable } = {}) {
+  const chemin = localiser('ffmpeg');
 
   if (!chemin) {
     return contrôle(
@@ -162,7 +180,31 @@ async function contrôlerFfmpeg() {
     );
   }
 
-  const résultat = await exécuter(chemin, ['-version'], { délaiMs: 15000 });
+  const résultat = await lancer(chemin, ['-version'], { délaiMs: 15000 });
+
+  // UN SUCCÈS NE SE DÉDUIT PAS D'UNE ABSENCE D'ERREUR CONNUE : on exige une
+  // preuve positive — le programme a démarré, il a rendu la main, et il a rendu
+  // zéro. Le nom du fichier ne prouve rien.
+  if (résultat.erreur || résultat.expiré || résultat.code !== 0) {
+    const cause = résultat.expiré
+      ? 'il ne répond pas'
+      : `il s’arrête sur une erreur (code ${résultat.code ?? '?'})`;
+    const détail = (résultat.stderr || résultat.erreur?.message || '').trim().split('\n')[0];
+
+    return contrôle(
+      'ffmpeg',
+      'ffmpeg',
+      GRAVITÉ.BLOQUANT,
+      `Un fichier « ffmpeg » a bien été trouvé (${chemin}), mais ${cause}. ` +
+        'C’est aussi grave qu’une absence : sans un ffmpeg qui fonctionne, zotify ' +
+        'renomme le fichier téléchargé avant de constater le problème, et ne le ' +
+        'restaure jamais. Réinstallez-le avec « brew install ffmpeg », puis ' +
+        'vérifiez qu’il répond en tapant « ffmpeg -version » dans le Terminal.' +
+        (détail ? ` Ce qu’il a répondu : ${détail}` : ''),
+      { chemin, version: null },
+    );
+  }
+
   const version = extraireVersion(résultat.stdout.split('\n')[0] || '');
 
   return contrôle(

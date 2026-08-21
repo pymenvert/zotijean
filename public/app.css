@@ -782,7 +782,13 @@ code.jeton { user-select: all; cursor: text; }   /* un clic sélectionne toute l
                     background: linear-gradient(90deg, var(--accent), var(--accent-fort));
                     transition: width 340ms cubic-bezier(.4,0,.2,1); }
 
-.onb-corps { padding: 26px 30px; overflow-y: auto; display: flex;
+/* `min-height: 0` N'EST PAS DÉCORATIF : sans lui, `overflow-y: auto` ne
+   s'active JAMAIS. Un élément flexible refuse par défaut de devenir plus petit
+   que son contenu, donc le corps grandit au lieu de défiler, et le dépassement
+   sort simplement sous le pied opaque. Mesuré le 21 août 2026 sur une fenêtre
+   de 356 px de large : le dernier paragraphe de l'écran « Ce qu'il faut
+   savoir » était entièrement recouvert et inatteignable, y compris au clavier. */
+.onb-corps { padding: 26px 30px; overflow-y: auto; min-height: 0; display: flex;
              flex-direction: column; gap: 12px; }
 .onb-corps .label { font-size: 11px; font-weight: 650; text-transform: uppercase;
                     letter-spacing: .1em; color: var(--texte-3); }
@@ -823,6 +829,12 @@ code.jeton { user-select: all; cursor: text; }   /* un clic sélectionne toute l
   color: var(--texte-2);
 }
 .onb-avertissement strong { color: var(--texte); }
+/* Le `gap` du corps ne sépare pas ces encadrés : ils vivent tous dans le même
+   enfant flexible. Sans cette marge, trois avertissements de même fond et même
+   bordure se touchent à un pixel près et se lisent comme un seul mur rouge —
+   celui du milieu, le plus important, disparaît dedans. */
+.onb-avertissement + .onb-avertissement,
+.onb-avertissement + p, p + .onb-avertissement { margin-top: 10px; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }

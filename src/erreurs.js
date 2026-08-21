@@ -64,12 +64,20 @@ export const CATALOGUE = [
   {
     code: 'premium_requis',
     motif: /premium|subscription required|not.*premium/i,
-    titre: 'Cette qualité demande un abonnement Premium',
+    titre: 'Le téléchargement demande un compte Spotify Premium',
     gravité: GRAVITÉ.SÉRIEUX,
+    // LE GESTE CONSEILLÉ ENVOYAIT DANS LE MUR. Il disait « passez la qualité sur
+    // Élevée » — ce qui n'y change rien, puisque Premium est requis pour
+    // télécharger, pas seulement pour le 320 kb/s. C'est le seul message qui
+    // intercepte l'échec d'un utilisateur sans abonnement : lui faire baisser la
+    // qualité et relancer lui coûtait une seconde exécution pour rien.
     explication:
-      'Sans Premium, Spotify plafonne à 160 kb/s. Il ne renvoie pas d’erreur : il ' +
-      'livre simplement une qualité inférieure à celle demandée.',
-    geste: 'Passez la qualité sur « Élevée » dans Qualité, ou vérifiez votre abonnement.',
+      'Spotify réserve le téléchargement aux comptes Premium. Baisser la qualité ' +
+      'ne change rien : c’est l’accès lui-même qui est refusé, pas le débit.',
+    geste:
+      'Vérifiez que le compte connecté à zotify est bien un compte Premium et que ' +
+      'l’abonnement est actif. Si vous venez de vous abonner, relancez zotify une ' +
+      'fois dans le Terminal pour qu’il rafraîchisse vos identifiants.',
   },
   {
     code: 'identifiants',
@@ -262,13 +270,24 @@ export function compterTitresPerdus(lignes) {
 }
 
 /** Une phrase résumant l'état d'une exécution, pour la notification et le bandeau. */
-export function phraseBilan({ nbFichiers = 0, erreurs = [], interrompu = false }) {
+export function phraseBilan({
+  nbFichiers = 0, erreurs = [], interrompu = false, échec = null,
+}) {
   const synthèse = synthétiser(erreurs);
   const sérieux = synthèse.filter((s) => s.gravité === GRAVITÉ.SÉRIEUX);
 
   const titres = nbFichiers === 0
     ? 'Aucune nouveauté'
     : `${nbFichiers} nouveau${nbFichiers > 1 ? 'x' : ''} titre${nbFichiers > 1 ? 's' : ''}`;
+
+  // UN ÉCHEC PASSE AVANT TOUT LE RESTE, et c'est le dernier tiers d'un correctif
+  // qui n'en avait que deux. Un zotify qui meurt sans rien dire ne produit ni
+  // fichier ni ligne d'erreur, et n'est pas « interrompu » : cette fonction
+  // rendait donc « Aucune nouveauté », que l'interface affichait EN VERT et
+  // envoyait en notification système, pendant que le bandeau, lui, disait bien
+  // l'échec. La date de référence et le compteur d'échecs étaient corrigés ;
+  // la phrase que l'utilisateur lit, non. Trouvé en revue le 21 août 2026.
+  if (échec) return 'La synchronisation a échoué';
 
   if (interrompu) return `${titres} — synchronisation interrompue`;
   if (sérieux.length) return `${titres} — ${sérieux[0].titre.toLowerCase()}`;

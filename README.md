@@ -79,7 +79,11 @@ mégaoctets, mis en cache). `construire.sh` compile la coquille et assemble le t
 
 ## À savoir avant de commencer
 
-**La qualité plafonne à 320 kb/s en Ogg Vorbis, et ça exige Spotify Premium.** Spotify a
+**Il faut un compte Spotify Premium.** Pas pour avoir une meilleure qualité : pour
+télécharger tout court. Spotify réserve cet accès à ses abonnés, et aucun réglage de
+l'application ne contourne ça.
+
+**La qualité plafonne à 320 kb/s en Ogg Vorbis.** Spotify a
 lancé son offre sans perte en septembre 2025 et elle est incluse dans votre abonnement,
 mais ce flux est réservé aux applications officielles de Spotify : aucun outil tiers n'y a
 accès. Convertir ensuite en FLAC n'ajoute aucune perte, mais n'en récupère aucune non plus.
