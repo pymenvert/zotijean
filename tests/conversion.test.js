@@ -33,6 +33,8 @@ import {
   convertir,
   convertirLot,
   démarrerConversionContinue,
+  estUnTemporaireDeConversion,
+  nettoyerTemporairesDeConversion,
 } from '../src/conversion.js';
 
 const base = { source: '/m/piste.ogg', destination: '/m/piste.flac' };
@@ -530,4 +532,82 @@ test('un converti légitimement plus léger que sa source reste plausible', () =
 
   // Et le sens inverse : un fichier coupé en cours de route reste refusé.
   assert.equal(tailleplausible(5_000_000, 1_000_000, 'aac_256'), false);
+});
+
+// ---------------------------------------------------------------------------
+// Le ramassage des conversions inachevées
+//
+// La conversion écrit son travail dans « .Titre.1234.tmp.flac » et ne renomme
+// qu'à la fin. Fermer l'application pendant un transcodage laisse ce fichier —
+// et c'est le chemin de fermeture NORMAL, puisqu'un onglet ouvert force la
+// sortie au bout de cinq secondes.
+//
+// CE RAMASSAGE VIT ICI, ET PAS DANS LE BALAYAGE DE ZOTIFY. Celui-là tourne à la
+// fermeture de chaque processus zotify, c'est-à-dire pendant que la moisson de
+// conversion travaille encore : il détruirait le fichier en cours d'écriture.
+// Une première version l'avait fait, rattrapée en revue le 21 août 2026.
+// ---------------------------------------------------------------------------
+
+test('un temporaire de conversion abandonné est reconnu', () => {
+  assert.equal(estUnTemporaireDeConversion('.Prix Choc.1234.tmp.flac', 9999), true);
+  assert.equal(estUnTemporaireDeConversion('.Étienne de Crécy - Prix Choc.42.tmp.m4a', 9999), true);
+});
+
+test('un temporaire du processus COURANT n’est jamais touché', () => {
+  // C'est le fichier que ffmpeg est peut-être en train d'écrire à l'instant.
+  // On ne supprime jamais par défaut, et surtout pas ce qu'on fabrique.
+  assert.equal(
+    estUnTemporaireDeConversion('.Prix Choc.1234.tmp.flac', 1234), false,
+    'le ramassage peut détruire une conversion en cours',
+  );
+});
+
+test('la forme exigée est entière : aucun morceau légitime ne correspond', () => {
+  // Le vrai risque de toute règle de suppression. Ces noms sont des morceaux,
+  // pas des restes — y compris ceux qui commencent par un point, qui existent
+  // dès qu'un schéma de rangement nomme le fichier d'après le titre.
+  for (const nom of [
+    'Prix Choc.flac',
+    'A.C.A.B. (Mix).mp3',
+    '...Baby One More Time.ogg',      // le titre commence par des points
+    '.38 Special - Hold On Loosely.mp3',
+    '.DS_Store',
+    '._Prix Choc.flac',              // compagnon macOS, pas un temporaire
+    'Prix Choc.1234.tmp.flac',       // sans le point de tête
+    '.Prix Choc.tmp.flac',           // sans le numéro de processus
+    '.Prix Choc.1234.tmp',           // c'est la forme de zotify, pas la nôtre
+  ]) {
+    assert.equal(
+      estUnTemporaireDeConversion(nom, 9999), false,
+      `« ${nom} » serait supprimé`,
+    );
+  }
+});
+
+test('le ramassage descend dans l’arborescence et épargne le reste', () => {
+  const racine = fs.mkdtempSync(path.join(os.tmpdir(), 'zotijean-ramassage-'));
+  try {
+    const playlist = path.join(racine, 'Été 2026');
+    fs.mkdirSync(playlist);
+
+    const abandonné = path.join(playlist, '.Prix Choc.999999.tmp.flac');
+    const enCours = path.join(playlist, `.Autre titre.${process.pid}.tmp.flac`);
+    const morceau = path.join(playlist, 'Prix Choc.flac');
+    const titrePointu = path.join(playlist, '...Baby One More Time.ogg');
+
+    for (const f of [abandonné, enCours, morceau, titrePointu]) fs.writeFileSync(f, 'x');
+
+    const supprimés = nettoyerTemporairesDeConversion(racine);
+
+    assert.deepEqual(
+      supprimés.map((s) => path.basename(s.chemin)), ['.Prix Choc.999999.tmp.flac'],
+    );
+    assert.equal(fs.existsSync(enCours), true,
+      'le temporaire du processus courant a été détruit — il pouvait être en cours d’écriture');
+    assert.equal(fs.existsSync(morceau), true, 'un morceau a été détruit');
+    assert.equal(fs.existsSync(titrePointu), true,
+      'un morceau dont le titre commence par un point a été détruit');
+  } finally {
+    fs.rmSync(racine, { recursive: true, force: true });
+  }
 });

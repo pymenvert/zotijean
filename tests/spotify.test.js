@@ -204,14 +204,27 @@ test('un rafraîchissement qui ne renvoie pas de nouveau jeton garde l’ancien'
   // au bout d'une heure, pour quelqu'un qui n'a rien fait de mal.
   poserJetons({ refresh_token: 'ANCIEN', client_id: 'c', access_token: 'périmé', expire_le: 0 });
 
-  await avecFetch([
+  const { appels } = await avecFetch([
     réponseFausse(200, { access_token: 'frais', expires_in: 3600 }),
     réponseFausse(200, { display_name: 'Pym', id: 'pym', product: 'premium' }),
   ], () => profil());
 
+  // D'ABORD PROUVER QUE LE RAFRAÎCHISSEMENT A EU LIEU. Sans ces deux lignes, le
+  // test resterait vert si rien ne se passait du tout : il n'assertionnerait
+  // qu'une valeur qu'il a lui-même écrite.
+  assert.equal(appels.length, 2, 'le rafraîchissement n’a pas eu lieu');
+  assert.equal(relireJetons().access_token, 'frais', 'le nouveau jeton n’a pas été gardé');
+
   assert.equal(relireJetons().refresh_token, 'ANCIEN',
     'le jeton de rafraîchissement a été perdu : l’utilisateur est déconnecté '
     + 'à la première heure écoulée');
+
+  // Et la requête doit porter ce que Spotify exige : sans `client_id`, il
+  // répond « invalid_client » et l'utilisateur est déconnecté pour de bon.
+  const corps = new URLSearchParams(appels[0].options.body);
+  assert.equal(corps.get('grant_type'), 'refresh_token');
+  assert.equal(corps.get('refresh_token'), 'ANCIEN');
+  assert.equal(corps.get('client_id'), 'c');
 });
 
 test('une autorisation révoquée exige une reconnexion, une panne passagère non', async () => {
@@ -231,6 +244,19 @@ test('une autorisation révoquée exige une reconnexion, une panne passagère no
     + 'pendant que toutes les requêtes échouent');
 
   // Le pendant : une panne côté Spotify ne doit RIEN exiger de l'utilisateur.
+  // On repart d'un drapeau EXPLICITEMENT posé, sinon l'assertion « false »
+  // serait vraie avant même l'appel et ne prouverait rien.
+  poserJetons({
+    refresh_token: 'R', client_id: 'c', access_token: 'périmé',
+    expire_le: 0, reconnexionNécessaire: true,
+  });
+  assert.equal(reconnexionNécessaire(), true, 'le cas de test n’est pas posé');
+
+  await avecFetch([réponseFausse(503, {})], () => profil());
+
+  assert.equal(reconnexionNécessaire(), true,
+    'une panne passagère a effacé un drapeau de reconnexion légitime');
+
   poserJetons({ refresh_token: 'R', client_id: 'c', access_token: 'périmé', expire_le: 0 });
   await avecFetch([réponseFausse(503, {})], () => profil());
 

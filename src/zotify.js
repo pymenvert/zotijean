@@ -22,6 +22,7 @@ import path from 'node:path';
 import { environnement } from './processus.js';
 import { journal } from './journal.js';
 import { cléComparaison } from './organisation.js';
+import { estUnFichierDeMorceau } from './bibliotheque.js';
 import { phraseJournal } from './erreurs.js';
 
 /**
@@ -454,7 +455,9 @@ export function événementDeLigne(classée) {
 // Inventaire du disque — la seule source de vérité
 // ---------------------------------------------------------------------------
 
-const EXTENSIONS_AUDIO = new Set(['.ogg', '.mp3', '.flac', '.aiff', '.aif', '.m4a', '.wav', '.opus']);
+// La règle « est-ce un morceau ? » vit dans bibliotheque.js, en un seul
+// exemplaire. Elle était recopiée ici, et les deux copies ont divergé : celle-là
+// comptait encore les conversions inachevées que l'autre avait appris à écarter.
 
 /** Inventorie récursivement les fichiers audio d'un dossier. */
 export function inventorier(dossier) {
@@ -473,7 +476,7 @@ export function inventorier(dossier) {
       if (entrée.isDirectory()) {
         if (entrée.name.startsWith('.') || entrée.name.startsWith('_')) continue;
         parcourir(complet);
-      } else if (EXTENSIONS_AUDIO.has(path.extname(entrée.name).toLowerCase())) {
+      } else if (estUnFichierDeMorceau(entrée.name)) {
         try {
           const stat = fs.statSync(complet);
           // La date d'écriture sert à reconnaître le fichier que zotify était en
@@ -669,29 +672,37 @@ export function saitReprendreSansLeFichier({ config = {}, capacités = {}, dossi
  * la bibliothèque, à raison de plusieurs mégaoctets chacun, sans que rien ne les
  * signale ni ne les efface.
  *
- * DEUX FORMES, PAS UNE — et la seconde manquait. La CONVERSION, elle, nomme son
- * travail en cours `.Titre.1234.tmp.flac` : un point devant, et l'extension de
- * la cible DERRIÈRE le « .tmp ». Ce reste-là ne finit donc pas par « .tmp », il
- * échappait à ce balayage comme à celui de la conversion (qui ne regarde que les
- * .ogg) — et, portant une extension audio, il était compté pour un morceau.
- * Trouvé par l'audit du 21 août 2026.
+ * CE BALAYAGE NE RAMASSE QUE LES RESTES DE ZOTIFY. Ceux de la conversion —
+ * `.Titre.1234.tmp.flac` — lui ressemblent, mais il ne doit surtout pas y
+ * toucher : il s'exécute pendant que la moisson de conversion travaille encore.
+ * `src/conversion.js` les ramasse lui-même, au bon moment. Voir le commentaire
+ * de `estUnResteDeTravail` juste au-dessus.
  *
  * On les supprime plutôt que de les mettre à l'abri : ce ne sont pas des
  * morceaux, seulement des fragments de téléchargement inachevés, et ils portent
  * un nom qui ne désigne rien pour l'utilisateur.
  */
 /**
- * Ce nom désigne-t-il un fichier de travail abandonné ?
+ * Ce nom désigne-t-il un fichier de travail abandonné PAR ZOTIFY ?
  *
- * Deux formes seulement, et volontairement étroites : ce qui FINIT par « .tmp »
- * (zotify), et ce qui commence par un point ET porte « .tmp. » juste avant son
- * extension (la conversion). Élargir la règle risquerait d'emporter un fichier
- * que l'utilisateur a déposé lui-même — on ne supprime jamais par défaut.
+ * Une seule forme : ce qui FINIT par « .tmp ». Et c'est délibérément étroit.
+ *
+ * CE BALAYAGE NE DOIT JAMAIS TOUCHER AUX FICHIERS DE LA CONVERSION, et la
+ * raison est une question de calendrier, pas de goût. Il s'exécute dans le
+ * gestionnaire de fermeture de `télécharger` (voir plus bas), c'est-à-dire
+ * AVANT que la synchronisation n'arrête la moisson de conversion — laquelle
+ * continue volontairement à travailler après un arrêt. Une règle assez large
+ * pour reconnaître `.Titre.1234.tmp.flac` supprimerait donc le fichier que
+ * ffmpeg est en train d'écrire, à chaque fin de playlist et à chaque clic sur
+ * « Arrêter ».
+ *
+ * C'est exactement ce qui a été tenté le 21 août 2026, et rattrapé en revue par
+ * deux agents avec la même reproduction. La conversion nettoie ses propres
+ * restes, dans `src/conversion.js`, à un moment où elle sait que rien ne tourne.
+ * Chaque module ramasse derrière lui, jamais derrière son voisin.
  */
 export function estUnResteDeTravail(nom) {
-  const bas = String(nom).toLowerCase();
-  if (bas.endsWith('.tmp')) return true;
-  return bas.startsWith('.') && /\.tmp\.[a-z0-9]+$/.test(bas);
+  return String(nom).toLowerCase().endsWith('.tmp');
 }
 
 export function nettoyerRestesTemporaires(dossierRacine) {
@@ -1088,8 +1099,23 @@ export function échecDeLancement(résultat) {
   if (!résultat) return 'zotify n’a rien rendu du tout.';
 
   if (résultat.lancé === false) {
-    return résultat.erreur?.message
-      ? `zotify n’a pas pu être lancé : ${résultat.erreur.message}`
+    // `erreur` EST UNE CHAÎNE, PAS UN OBJET. Les deux seules sorties
+    // « lancé: false » de `télécharger` posent `erreur: erreur.message`. Une
+    // première version lisait `résultat.erreur?.message` — recopié depuis
+    // `contrôlerFfmpeg`, où `exécuter` rend bien un vrai `Error` — et la
+    // branche utile était donc morte : l'utilisateur recevait toujours la
+    // phrase générique, sans le ENOENT ni le EACCES qui lui aurait dit quoi
+    // faire. C'est exactement le cas pour lequel cette fonction existe.
+    //
+    // Le test l'avait manqué parce qu'il passait un `Error`, une forme que
+    // `télécharger` ne produit jamais : la doublure acceptait ce que le vrai
+    // code n'envoie pas. Rattrapé en revue le 21 août 2026.
+    const cause = typeof résultat.erreur === 'string'
+      ? résultat.erreur.trim()
+      : String(résultat.erreur?.message ?? '').trim();
+
+    return cause
+      ? `zotify n’a pas pu être lancé : ${cause}`
       : 'zotify n’a pas pu être lancé.';
   }
 

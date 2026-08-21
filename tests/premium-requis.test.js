@@ -64,6 +64,52 @@ test('aucun texte ne présente Premium comme une simple affaire de qualité', ()
   }
 });
 
+test('aucun texte ne dit que le logiciel marche SANS le compte Spotify', () => {
+  // GARDER L'IDÉE, PAS LA PHRASE. Les deux tests ci-dessus épinglent des
+  // formulations littérales : un synonyme les contournerait. Ceux-ci visent la
+  // construction dangereuse elle-même — « sans X, ça marche quand même », et
+  // « sans X, la qualité redescend ». La phrase retirée de src/options.js
+  // (« Exige un abonnement Premium : sans lui, Spotify redescend silencieusement
+  // à 160 kb/s ») pourrait sinon revenir mot pour mot sans faire rougir un test.
+  // LA FRONTIÈRE EST ÉTROITE, et une première version de ce test l'a franchie :
+  // elle attrapait « Sans elle, Zotijean fonctionne » — une phrase VRAIE, qui
+  // parle de l'accès en lecture aux playlists, lequel EST facultatif. Interdire
+  // la construction en général rendrait l'interface incapable de dire ce qui
+  // est réellement optionnel. On vise donc le seul couple dangereux : « sans
+  // l'abonnement » suivi d'une promesse de dégradation ou de fonctionnement.
+  const PROMESSE_FAUSSE = /(?:sans (?:premium|abonnement)|sans lui)[^.]{0,80}(?:160 ?kb|96 ?kb|plafonne|redescend|qualité inférieure|marche|fonctionne)/i;
+
+  for (const texte of [...TEXTES_AFFICHÉS(), lire('README.md')]) {
+    assert.doesNotMatch(
+      texte, PROMESSE_FAUSSE,
+      'un texte laisse croire que le sans-Premium fonctionne, en moins bien',
+    );
+    assert.doesNotMatch(
+      texte, /tout marche sans/i,
+      'un texte affirme que « tout marche sans » — sans dire sans QUOI, ce qui '
+      + 'englobe le compte Premium',
+    );
+  }
+});
+
+test('le détecteur de promesse fausse trouve ce qu’il doit trouver', () => {
+  // UN DÉTECTEUR QUI NE TROUVE RIEN DOIT D'ABORD PROUVER QU'IL TROUVE. Les deux
+  // phrases ci-dessous sont celles qui ont réellement été retirées du code le
+  // 21 août 2026 : si un jour ce motif cesse de les reconnaître, le test
+  // au-dessus deviendrait vert pour la mauvaise raison.
+  const MOTIF = /(?:sans (?:premium|abonnement)|sans lui)[^.]{0,80}(?:160 ?kb|96 ?kb|plafonne|redescend|qualité inférieure|marche|fonctionne)/i;
+
+  assert.match(
+    'Exige un abonnement Premium : sans lui, Spotify redescend silencieusement à 160 kb/s.',
+    MOTIF,
+  );
+  assert.match('Sans Premium, Spotify plafonne à 160 kb/s sans le dire.', MOTIF);
+
+  // Et le contre-exemple, qui doit rester permis : l'accès en lecture aux
+  // playlists est réellement facultatif, l'interface a le droit de le dire.
+  assert.doesNotMatch('Sans elle, Zotijean fonctionne : il passe vos liens à zotify.', MOTIF);
+});
+
 test('la notice annonce Premium comme obligatoire, dans ses prérequis', () => {
   const notice = lire('public/notice.html');
   assert.match(notice, /compte Spotify Premium/i, 'le prérequis ne nomme pas Premium');
@@ -93,9 +139,21 @@ test('la carte de connexion distingue les DEUX authentifications Spotify', () =>
   // Spotify » laissait conclure qu'aucun compte n'était nécessaire.
   const app = lire('public/app.js');
   assert.match(
-    app, /sans rapport avec le compte Spotify Premium/,
-    'le mot « Facultatif » n’est pas désambiguïsé : un utilisateur peut en '
+    app, /Rien à voir avec le compte Premium/,
+    'le mot « facultatif » n’est pas désambiguïsé : un utilisateur peut en '
     + 'conclure qu’aucun compte Spotify n’est nécessaire',
+  );
+  assert.match(
+    app, /<strong>celui-là reste indispensable pour télécharger/,
+    'le gras met en avant « facultatif » au lieu de l’exigence : la typographie '
+    + 'dit alors le contraire du texte',
+  );
+
+  // Le titre de la carte compte autant que son texte : « Compte Spotify » suivi
+  // du mot « facultatif » se lisait comme « le compte Spotify est facultatif ».
+  assert.doesNotMatch(
+    lire('public/index.html'), /<h2>Compte Spotify<\/h2>/,
+    'le titre de la carte redit « Compte Spotify » tout court',
   );
 });
 

@@ -1148,9 +1148,9 @@ async function rendreSpotify() {
   // Non connecté : on explique ce que ça apporte ET ce que ça coûte, comme
   // pour toute autre option de l'app.
   zone.innerHTML = avertissementRévocation + `
-    <p class="aide"><strong>Facultatif, et sans rapport avec le compte Spotify Premium
-    qui sert à télécharger.</strong> Celui-là reste indispensable dans tous les cas.
-    Cette connexion-ci sert seulement à <em>lire</em> vos playlists.</p>
+    <p class="aide">Rien à voir avec le compte Premium que vous donnez à zotify :
+    <strong>celui-là reste indispensable pour télécharger, dans tous les cas.</strong>
+    Cet accès-ci est facultatif, et sert seulement à <em>lire</em> vos playlists.</p>
     <p class="aide">Sans elle, Zotijean fonctionne : il passe vos liens à zotify et
     regarde ce qui apparaît sur le disque. Avec, il sait en plus quelles playlists
     n’ont pas bougé — et les saute, ce qui fait gagner des heures — quels morceaux

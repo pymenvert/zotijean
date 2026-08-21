@@ -161,9 +161,26 @@ function inscrireAuJournal(destination, piste, index) {
   if (!dossierJournal || sansJournal) return;
   const fichier = path.join(dossierJournal, '.song_archive');
   if (!fs.existsSync(fichier)) return;
+
+  // EN NFD, ET C'EST TOUT L'INTÉRÊT DE CETTE LIGNE.
+  //
+  // Le vrai zotify écrit ce journal depuis Python, sur un Mac. Un « é » y arrive
+  // couramment en NFD — « e » suivi d'un accent combinant — alors que
+  // `readdirSync` rend le même nom en NFC. Les deux s'affichent à l'identique et
+  // désignent le même fichier ; ce sont deux chaînes différentes. C'est ce que
+  // CLAUDE.md appelle la cause numéro un de retéléchargements infinis.
+  //
+  // Cette doublure inscrivait jusqu'ici la MÊME chaîne JavaScript qu'elle venait
+  // de passer à `writeFileSync` : les deux côtés de la comparaison étaient donc
+  // identiques par construction, et aucun test d'intégration ne pouvait voir le
+  // piège. Elle était plus complaisante que l'original — exactement le défaut
+  // qui a coûté au projet quatre versions sans un seul téléchargement.
+  //
+  // Les titres de ce leurre sont tous accentués : le cas est réellement atteint.
   fs.appendFileSync(
     fichier,
-    `id${index}\t2026-08-19 15:00:00\t${piste.artist}\t${piste.song_name}\t${destination}\n`,
+    `id${index}\t2026-08-19 15:00:00\t${piste.artist}\t${piste.song_name}\t`
+    + `${String(destination).normalize('NFD')}\n`,
   );
 }
 

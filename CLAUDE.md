@@ -150,8 +150,11 @@ vérifiée le 16 août 2026 — jamais écrite au jugé.
 - **format** : aucun
 - **lint** : aucun
 - **typecheck** : aucun
-- **test** : `node --test` → 500 tests. **500 verts sur macOS**, la cible ;
-  le PC Windows en ignore 13, faute de pouvoir lancer le leurre zotify
+- **test** : `node --test` → 553 tests, **0 échec**. Le PC Windows en ignore 22,
+  faute de pouvoir lancer le leurre zotify : **un `node --test` vert ici ne dit
+  donc rien du téléchargement, du verrou, de la politique de retrait, de la liste
+  de lecture ni du bouton Arrêter.** Seules les branches macOS et Linux de
+  l'intégration continue les exercent
 - **build** : aucun en local ; le paquet est construit par
   `.github/workflows/publication.yml`
 - **run** : `node server.js` → http://127.0.0.1:8787

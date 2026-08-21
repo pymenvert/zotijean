@@ -182,7 +182,17 @@ export function demanderArrêt() {
  * affiché et, plus tard, la politique d'assertion d'énergie côté macOS.
  */
 export async function synchroniser(déclencheur = 'manuelle', options = {}) {
-  const { playlistsCiblées = null } = options;
+  // `créerVeille` est injectable pour une seule raison : sans elle, le
+  // BRANCHEMENT de la veille du disque n'est testable par rien. Ses sondes
+  // (`volumeMonté`, `espaceLibre`) sont des liaisons de module qu'un test ne
+  // peut pas remplacer, et la leçon la plus chère de ce projet est qu'une garde
+  // correcte que personne n'appelle ne protège rien.
+  const { playlistsCiblées = null, créerVeille = créerVeilleDuDisque } = options;
+
+  // UNE SEULE INSTANCE POUR TOUTE L'EXÉCUTION. Construite ici, hors de la boucle
+  // des playlists : sa limitation dans le temps doit courir sur l'exécution
+  // entière, pas se réarmer à chaque playlist.
+  const veillerSurLeDisque = créerVeille();
 
   if (courante) {
     return { lancé: false, raison: 'Une synchronisation est déjà en cours.' };
@@ -494,15 +504,6 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
         })
         : null;
 
-      // LES GARDES CI-DESSUS ONT ÉTÉ PASSÉES À L'INSTANT — et c'est tout le
-      // problème qu'elles avaient. Une playlist de deux mille titres tient
-      // seize heures ; sans relecture PENDANT, un disque débranché à H+3 ne
-      // serait vu qu'à la playlist suivante, c'est-à-dire jamais.
-      const veillerSurLeDisque = créerVeilleDuDisque({
-        racine,
-        minimumOctets: (cp.gardes?.espaceMinimumGo ?? 2) * 1024 ** 3,
-      });
-
       let résultat;
       let convertisAuFilDeLEau = { convertis: [], échecs: [] };
       try {
@@ -520,14 +521,24 @@ export async function synchroniser(déclencheur = 'manuelle', options = {}) {
             }
             diffuser({ ...événement, playlist: courante.playlistActuelle });
 
-            // Un REPORT, pas un échec : on n'avance pas `dernierSuccès`, donc
-            // la reprise se fera d'elle-même dès que le disque revient.
-            const alerte = veillerSurLeDisque();
+            // LES GARDES DU DISQUE, RELUES PENDANT. Celles d'avant la boucle
+            // ont été passées à l'instant où la playlist a commencé — et pour
+            // deux mille titres à trente secondes, cet instant est seize heures
+            // avant la fin.
+            //
+            // Un REPORT, pas un échec : on n'avance pas `dernierSuccès`, donc la
+            // reprise se fera d'elle-même dès que le disque revient. On ne
+            // diffuse donc PAS « synchro-echec », qui peindrait en rouge une
+            // pause — les trois autres reports de cette boucle ne le font pas
+            // non plus.
+            const alerte = veillerSurLeDisque({
+              racine,
+              minimumOctets: (cp.gardes?.espaceMinimumGo ?? 2) * 1024 ** 3,
+            });
             if (alerte && !bilan.interrompu) {
               bilan.interrompu = true;
               bilan.raisonInterruption = alerte;
               journal.erreur(alerte);
-              diffuser({ type: 'synchro-echec', message: alerte });
               courante.contrôleur.abort();
             }
           },
@@ -1113,25 +1124,45 @@ function ouvrirDansLeSystème(cible) {
  *
  * Rend `null` tant que tout va bien, sinon la phrase à afficher.
  */
+/**
+ * À quelle cadence relire l'état du disque pendant un téléchargement.
+ *
+ * Nommée, comme `BATTEMENT_MS` du planificateur et `SILENCE_MAXIMAL_MS` du
+ * pilote : ce sont les trois cadences du projet, et une cadence écrite en clair
+ * au milieu d'une signature ne se retrouve pas.
+ */
+const INTERVALLE_VEILLE_MS = 5 * 60 * 1000;
+
 export function créerVeilleDuDisque({
-  racine,
-  minimumOctets,
-  intervalleMs = 5 * 60 * 1000,
+  intervalleMs = INTERVALLE_VEILLE_MS,
   maintenant = () => Date.now(),
   monté = volumeMonté,
   libre = espaceLibre,
-}) {
-  // On part de l'instant présent : les gardes viennent d'être passées juste
-  // avant, il n'y a rien à revérifier tout de suite.
+} = {}) {
+  // UNE SEULE VEILLE POUR TOUTE L'EXÉCUTION, et la racine se donne à l'appel.
+  //
+  // Une première version se construisait DANS la boucle des playlists, et
+  // repartait donc de zéro à chaque tour. Pour vingt playlists de trois minutes,
+  // elle ne se serait jamais déclenchée : le trou était refermé pour le cas
+  // « une grosse playlist » et rouvert pour le cas « beaucoup de petites ».
+  // Rattrapé en revue le 21 août 2026.
   let dernierContrôle = maintenant();
 
-  return function veiller() {
+  return function veiller({ racine, minimumOctets }) {
     const t = maintenant();
+
+    // GARDE CONTRE LE RECUL D'HORLOGE. C'est une règle du projet, et elle vaut
+    // ici comme pour la planification : une correction d'horloge au réveil du
+    // Mac peut faire reculer l'heure de plusieurs minutes. Sans cette ligne, la
+    // veille resterait muette pendant tout ce temps — dans une fenêtre de seize
+    // heures où elle est le seul filet.
+    if (t < dernierContrôle) dernierContrôle = t;
+
     if (t - dernierContrôle < intervalleMs) return null;
     dernierContrôle = t;
 
     if (!monté(racine)) {
-      return 'Le disque de destination a été débranché pendant le téléchargement. '
+      return 'le disque de destination a été débranché pendant le téléchargement. '
         + 'Rebranchez-le : la synchronisation reprendra où elle en est.';
     }
 
@@ -1139,7 +1170,7 @@ export function créerVeilleDuDisque({
     // `null` veut dire « inconnu », pas « zéro » : on ne bloque pas sur une
     // mesure qu'on n'a pas pu prendre.
     if (place !== null && place < minimumOctets) {
-      return `Il ne reste que ${(place / 1024 ** 3).toFixed(1)} Go sur le disque de `
+      return `il ne reste que ${(place / 1024 ** 3).toFixed(1)} Go sur le disque de `
         + `destination, sous le seuil de ${(minimumOctets / 1024 ** 3).toFixed(0)} Go que `
         + 'vous avez fixé. Faites de la place : la synchronisation reprendra où elle en est.';
     }

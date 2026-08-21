@@ -1252,9 +1252,26 @@ test('un zotify qui se lance et meurt sans rien dire est un ÉCHEC', () => {
   assert.match(échec, /Diagnostic/, 'le message doit dire où aller regarder');
 });
 
-test('un zotify qui n’a pas pu être lancé du tout est un échec', () => {
-  assert.ok(échecDeLancement({ lancé: false, erreur: new Error('ENOENT') }));
+test('un zotify qui n’a pas pu être lancé du tout est un échec, ET dit pourquoi', () => {
+  // LA FORME EXACTE QUE `télécharger` PRODUIT, et pas une autre : ses deux
+  // sorties « lancé: false » posent `erreur: erreur.message`, donc une CHAÎNE.
+  //
+  // Une première version de ce test passait un `Error`. Il restait vert alors
+  // que la branche qui nomme la cause était morte en production — l'utilisateur
+  // lisait toujours « zotify n'a pas pu être lancé. » sans le ENOENT qui lui
+  // aurait dit quoi faire. C'est mot pour mot la leçon de la 1.0.5 : la
+  // doublure acceptait ce que le vrai code n'envoie pas.
+  const avecCause = échecDeLancement({ lancé: false, erreur: 'spawn zotify ENOENT' });
+  assert.ok(avecCause);
+  assert.match(
+    avecCause, /ENOENT/,
+    'la cause du lancement raté est jetée : c’est précisément l’information '
+    + 'pour laquelle cette fonction existe',
+  );
+
+  // Sans cause connue, on rend quand même un échec — jamais un succès.
   assert.ok(échecDeLancement({ lancé: false }));
+  assert.ok(échecDeLancement({ lancé: false, erreur: '' }));
   assert.ok(échecDeLancement(null), 'un résultat absent ne peut pas être un succès');
 });
 
@@ -1310,19 +1327,31 @@ test('un code de sortie non nul ne suffit pas quand zotify a travaillé', () => 
 // Les restes de travail : deux formes, pas une
 // ---------------------------------------------------------------------------
 
-test('les deux formes de reste de travail sont reconnues', () => {
+test('le balayage de zotify ne reconnaît que les restes de zotify', () => {
   // zotify : le « .tmp » est à la FIN.
   assert.equal(estUnResteDeTravail('Prix Choc.ogg.tmp'), true);
   assert.equal(estUnResteDeTravail('quelque chose.TMP'), true);
+});
 
-  // La conversion : point devant, et l'extension de la cible APRÈS le « .tmp ».
-  // C'est cette forme-là qui échappait au balayage, et qui était en plus
-  // comptée pour un morceau puisqu'elle porte une extension audio.
+test('il ne touche JAMAIS au fichier qu’une conversion est en train d’écrire', () => {
+  // LE POINT LE PLUS IMPORTANT DE CE FICHIER, et une régression rattrapée en
+  // revue le 21 août 2026.
+  //
+  // Ce balayage s'exécute dans le gestionnaire de fermeture de `télécharger`,
+  // c'est-à-dire AVANT que la synchronisation n'arrête la moisson de
+  // conversion — laquelle continue volontairement à travailler après un arrêt.
+  // Une règle assez large pour reconnaître « .Titre.1234.tmp.flac » supprimait
+  // donc le fichier que ffmpeg écrivait, à chaque fin de playlist et à chaque
+  // clic sur « Arrêter ».
+  //
+  // La conversion nettoie ses propres restes, dans src/conversion.js, à un
+  // moment où elle sait que rien ne tourne.
   assert.equal(
-    estUnResteDeTravail('.Prix Choc.1234.tmp.flac'), true,
-    'le reste laissé par une conversion interrompue n’est jamais nettoyé',
+    estUnResteDeTravail('.Prix Choc.1234.tmp.flac'), false,
+    'le balayage de zotify supprime le fichier de la conversion en cours : '
+    + 'le transcodage échoue, et rien ne le signale',
   );
-  assert.equal(estUnResteDeTravail('.Titre.99.tmp.m4a'), true);
+  assert.equal(estUnResteDeTravail('.Titre.99.tmp.m4a'), false);
 });
 
 test('la garde reste étroite : on ne supprime jamais par défaut', () => {
@@ -1332,8 +1361,6 @@ test('la garde reste étroite : on ne supprime jamais par défaut', () => {
   // Un fichier caché qui n'est PAS un reste de travail : il ne nous appartient pas.
   assert.equal(estUnResteDeTravail('.DS_Store'), false);
   assert.equal(estUnResteDeTravail('._Prix Choc.flac'), false);
-  // « tmp » sans point devant, au milieu du nom : ce n'est pas notre forme.
-  assert.equal(estUnResteDeTravail('Prix Choc.tmp.flac'), false);
 });
 
 // ---------------------------------------------------------------------------
@@ -1379,5 +1406,56 @@ test('le journal de zotify se relit quelle que soit l’écriture des accents', 
     );
   } finally {
     fs.rmSync(dossier, { recursive: true, force: true });
+  }
+});
+
+test('un reste de conversion n’est pas compté comme un morceau téléchargé', () => {
+  // LA MOITIÉ MANQUANTE DU MÊME CORRECTIF. `listerAudio` avait été durci pour
+  // écarter les conversions inachevées ; `inventorier`, qui décide ce qui compte
+  // comme NOUVEAU fichier, employait sa propre copie de la règle et ne l'avait
+  // pas reçue. Un fichier écarté de la liste de lecture était donc quand même
+  // annoncé comme un morceau téléchargé. Les deux passent désormais par la même
+  // fonction, dans bibliotheque.js.
+  const racine = fs.mkdtempSync(path.join(os.tmpdir(), 'zotijean-inventaire-'));
+  try {
+    const playlist = path.join(racine, 'Été 2026');
+    fs.mkdirSync(playlist);
+    const avant = inventorier(racine);
+
+    // Ce que la conversion continue laisse quand l'app est fermée pendant son
+    // travail : un point devant, une extension audio derrière.
+    fs.writeFileSync(path.join(playlist, '.Prix Choc.1234.tmp.flac'), Buffer.alloc(5_000_000));
+
+    const { nouveaux } = nouveauxFichiers(avant, inventorier(racine));
+
+    assert.deepEqual(
+      nouveaux, [],
+      'un fichier de travail caché est annoncé comme un morceau téléchargé : il '
+      + 'gonfle le compte affiché et entre dans la liste de lecture',
+    );
+  } finally {
+    fs.rmSync(racine, { recursive: true, force: true });
+  }
+});
+
+test('un morceau dont le titre commence par un point est bien compté', () => {
+  // Le sens inverse, et le risque de toute règle d'exclusion : avec un schéma
+  // de rangement où le nom du fichier est le titre, « ...Baby One More Time »
+  // ou l'artiste « .38 Special » existent pour de bon.
+  const racine = fs.mkdtempSync(path.join(os.tmpdir(), 'zotijean-titrepointu-'));
+  try {
+    const playlist = path.join(racine, 'Été 2026');
+    fs.mkdirSync(playlist);
+    const avant = inventorier(racine);
+
+    fs.writeFileSync(path.join(playlist, '...Baby One More Time.ogg'), Buffer.alloc(5_000_000));
+
+    const { nouveaux } = nouveauxFichiers(avant, inventorier(racine));
+    assert.equal(
+      nouveaux.length, 1,
+      'un morceau légitime a disparu de l’inventaire à cause de son titre',
+    );
+  } finally {
+    fs.rmSync(racine, { recursive: true, force: true });
   }
 });
